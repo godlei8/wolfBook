@@ -203,6 +203,7 @@ async function uploadTo(target: 'portrait' | 'fullIllustration', options: Upload
   try {
     const result = await api.upload(options.file as File)
     form[target] = result.url
+    ElMessage.success(target === 'portrait' ? '头像已上传' : '立绘已上传')
     options.onSuccess?.(result)
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '图片上传失败')
@@ -282,6 +283,22 @@ onMounted(load)
         <el-tag effect="plain">{{ form.roleType }}</el-tag>
         <el-tag effect="plain">{{ campPreview }}</el-tag>
       </div>
+      <div class="role-media-grid">
+        <div class="media-preview-card">
+          <div class="media-preview-label">Portrait</div>
+          <div class="media-preview-frame media-preview-frame--portrait" :class="{ 'is-empty': !form.portrait }">
+            <img v-if="form.portrait" :src="form.portrait" alt="角色头像预览" />
+            <span v-else>上传后在这里预览头像</span>
+          </div>
+        </div>
+        <div class="media-preview-card">
+          <div class="media-preview-label">Illustration</div>
+          <div class="media-preview-frame media-preview-frame--illustration" :class="{ 'is-empty': !form.fullIllustration }">
+            <img v-if="form.fullIllustration" :src="form.fullIllustration" alt="角色立绘预览" />
+            <span v-else>上传后在这里预览立绘</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <el-form label-position="top">
@@ -334,6 +351,15 @@ onMounted(load)
         </el-form-item>
       </div>
 
+      <div v-if="form.portrait || form.fullIllustration" class="role-upload-preview-grid">
+        <div v-if="form.portrait" class="inline-image-preview inline-image-preview--portrait">
+          <img :src="form.portrait" alt="角色头像预览" />
+        </div>
+        <div v-if="form.fullIllustration" class="inline-image-preview inline-image-preview--illustration">
+          <img :src="form.fullIllustration" alt="角色立绘预览" />
+        </div>
+      </div>
+
       <div class="array-section">
         <div class="array-header">
           <strong>FAQ</strong>
@@ -355,6 +381,40 @@ onMounted(load)
 </template>
 
 <style scoped>
+:deep(.el-dialog) {
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+}
+
+:deep(.el-dialog__header),
+:deep(.el-dialog__footer) {
+  flex: 0 0 auto;
+}
+
+:deep(.el-dialog__body) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 192, 0, 0.42) rgba(255, 255, 255, 0.05);
+}
+
+:deep(.el-dialog__body::-webkit-scrollbar) {
+  width: 8px;
+}
+
+:deep(.el-dialog__body::-webkit-scrollbar-track) {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 999px;
+}
+
+:deep(.el-dialog__body::-webkit-scrollbar-thumb) {
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 211, 92, 0.72), rgba(182, 126, 12, 0.74));
+}
+
 .panel-card {
   border-radius: 18px;
 }
@@ -478,6 +538,68 @@ onMounted(load)
   gap: 10px;
 }
 
+.role-media-grid {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.media-preview-card {
+  display: grid;
+  gap: 10px;
+}
+
+.media-preview-label {
+  color: #f5d069;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.media-preview-frame {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 192, 0, 0.16);
+  background: linear-gradient(180deg, rgba(28, 28, 28, 0.94), rgba(12, 12, 12, 0.94));
+}
+
+.media-preview-frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 32%, rgba(0, 0, 0, 0.16));
+}
+
+.media-preview-frame--portrait {
+  aspect-ratio: 1 / 1;
+}
+
+.media-preview-frame--illustration {
+  aspect-ratio: 3 / 4;
+}
+
+.media-preview-frame img,
+.inline-image-preview img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.media-preview-frame.is-empty {
+  display: grid;
+  place-items: center;
+  min-height: 160px;
+  padding: 16px;
+  color: #8d8d8d;
+  text-align: center;
+  line-height: 1.6;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -521,6 +643,28 @@ onMounted(load)
   margin-bottom: 12px;
 }
 
+.role-upload-preview-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 220px));
+  gap: 14px;
+}
+
+.inline-image-preview {
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 192, 0, 0.14);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.inline-image-preview--portrait {
+  aspect-ratio: 1 / 1;
+}
+
+.inline-image-preview--illustration {
+  aspect-ratio: 3 / 4;
+}
+
 .upload-stack {
   display: flex;
   gap: 12px;
@@ -546,6 +690,8 @@ onMounted(load)
     display: grid;
   }
 
+  .role-media-grid,
+  .role-upload-preview-grid,
   .form-grid,
   .form-grid-role,
   .faq-row {

@@ -697,16 +697,20 @@ onMounted(loadAll)
   min-width: 0;
 }
 
+.panel-card :deep(.el-card__body) {
+  padding-top: 10px;
+}
+
 .panel-actions {
   display: flex;
   justify-content: flex-end;
-  margin-bottom: 12px;
+  margin-bottom: 4px;
   min-width: 0;
 }
 
 .panel-actions :deep(.el-button) {
   min-width: 116px;
-  height: 40px;
+  height: 36px;
   padding: 0 18px;
   border-radius: 12px;
   border-color: rgba(255, 192, 0, 0.22);
@@ -727,8 +731,8 @@ onMounted(loadAll)
   position: sticky;
   top: var(--panel-sticky-offset, 0px);
   z-index: 15;
-  margin: 0 -12px 18px;
-  padding: 10px 12px 14px;
+  margin: 0 -12px 14px;
+  padding: 4px 12px 10px;
   padding-right: 148px;
   background:
     linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(18, 18, 18, 0.94) 72%, rgba(18, 18, 18, 0.84));
@@ -960,6 +964,13 @@ onMounted(loadAll)
   gap: 12px;
 }
 
+.publish-box :deep(.el-button) {
+  justify-self: end;
+  width: auto;
+  min-width: 220px;
+  padding-inline: 24px;
+}
+
 .table-scroll-shell {
   width: 100%;
   min-width: 0;
@@ -986,6 +997,14 @@ onMounted(loadAll)
 
 .table-scroll-shell :deep(.el-table) {
   min-width: 100%;
+}
+
+.table-scroll-shell :deep(.el-scrollbar__wrap) {
+  overflow-x: hidden !important;
+}
+
+.table-scroll-shell :deep(.el-scrollbar__bar.is-horizontal) {
+  display: none !important;
 }
 
 .table-scroll-shell--knowledge :deep(.el-table),
@@ -1116,6 +1135,11 @@ onMounted(loadAll)
 
   .table-footer :deep(.el-pagination) {
     margin-left: 0;
+  }
+
+  .publish-box :deep(.el-button) {
+    justify-self: stretch;
+    min-width: 0;
   }
 }
 </style>

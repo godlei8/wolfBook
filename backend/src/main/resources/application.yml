@@ -3,6 +3,8 @@ server:
 spring:
   application:
     name: wolfbook-backend
+  config:
+    import: optional:classpath:application-local.yml
   datasource:
     url: ${DB_URL:jdbc:mysql://localhost:3306/wolfbook?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8}
     username: ${DB_USERNAME:root}

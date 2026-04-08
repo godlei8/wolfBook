@@ -238,6 +238,7 @@ async function uploadCover(options: UploadRequestOptions) {
   try {
     const result = await api.upload(options.file as File)
     form.coverImage = result.url
+    ElMessage.success('封面已上传')
     options.onSuccess?.(result)
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '封面上传失败')
@@ -312,17 +313,29 @@ onMounted(load)
 
   <el-dialog v-model="dialogVisible" width="1040px" :title="form.id ? '编辑板子' : '新建板子'">
     <div class="preview-card">
-      <div class="preview-meta">Preview</div>
-      <div class="preview-title">{{ form.name || '未命名板子' }}</div>
-      <div class="preview-line">
-        <span>{{ form.playerCount }} 人局</span>
-        <span>{{ form.difficulty }}</span>
-        <span>{{ form.ruleType || '标准板' }}</span>
-      </div>
-      <div class="preview-lineup">{{ lineupPreview || '请先配置角色阵容' }}</div>
-      <div class="preview-desc">{{ cardDescriptionPreview }}</div>
-      <div class="preview-count" :class="{ warning: configuredPlayers !== Number(form.playerCount) }">
-        当前配置 {{ configuredPlayers }} 人 / 目标 {{ form.playerCount }} 人
+      <div class="preview-layout">
+        <div>
+          <div class="preview-meta">Preview</div>
+          <div class="preview-title">{{ form.name || '未命名板子' }}</div>
+          <div class="preview-line">
+            <span>{{ form.playerCount }} 人局</span>
+            <span>{{ form.difficulty }}</span>
+            <span>{{ form.ruleType || '标准板' }}</span>
+          </div>
+          <div class="preview-lineup">{{ lineupPreview || '请先配置角色阵容' }}</div>
+          <div class="preview-desc">{{ cardDescriptionPreview }}</div>
+          <div class="preview-count" :class="{ warning: configuredPlayers !== Number(form.playerCount) }">
+            当前配置 {{ configuredPlayers }} 人 / 目标 {{ form.playerCount }} 人
+          </div>
+        </div>
+
+        <div class="media-preview-card">
+          <div class="media-preview-label">Cover Preview</div>
+          <div class="media-preview-frame media-preview-frame--board" :class="{ 'is-empty': !form.coverImage }">
+            <img v-if="form.coverImage" :src="form.coverImage" alt="板子封面预览" />
+            <span v-else>上传后在这里预览封面</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -364,11 +377,16 @@ onMounted(load)
           />
         </el-form-item>
         <el-form-item class="span-2" label="封面图">
-          <div class="upload-stack">
-            <el-input v-model="form.coverImage" placeholder="可直接填写图片 URL" />
-            <el-upload :show-file-list="false" :http-request="uploadCover">
-              <el-button>上传图片</el-button>
-            </el-upload>
+          <div class="upload-panel">
+            <div class="upload-stack">
+              <el-input v-model="form.coverImage" placeholder="可直接填写图片 URL" />
+              <el-upload :show-file-list="false" :http-request="uploadCover">
+                <el-button>上传图片</el-button>
+              </el-upload>
+            </div>
+            <div v-if="form.coverImage" class="inline-image-preview inline-image-preview--board">
+              <img :src="form.coverImage" alt="板子封面预览" />
+            </div>
           </div>
         </el-form-item>
       </div>
@@ -378,29 +396,31 @@ onMounted(load)
           <strong>角色配置</strong>
           <el-button text type="primary" @click="addRole">添加角色</el-button>
         </div>
-        <div v-for="(item, index) in form.roles" :key="index" class="role-config-row">
-          <div class="role-config-main">
-            <div class="role-field-label">角色</div>
-            <el-select v-model="item.roleId" placeholder="选择角色" filterable>
-              <el-option v-for="role in roleOptions" :key="role.value" :label="role.label" :value="role.value" />
-            </el-select>
-          </div>
-          <div class="role-config-count">
-            <div class="role-field-label">数量</div>
-            <div class="count-shell">
-              <el-input-number v-model="item.count" :min="1" :max="12" />
+        <div class="role-config-grid">
+          <div v-for="(item, index) in form.roles" :key="index" class="role-config-row">
+            <div class="role-config-main">
+              <div class="role-field-label">角色</div>
+              <el-select v-model="item.roleId" placeholder="选择角色" filterable>
+                <el-option v-for="role in roleOptions" :key="role.value" :label="role.label" :value="role.value" />
+              </el-select>
             </div>
-          </div>
-          <div class="role-config-actions">
-            <div class="role-field-label role-field-label--ghost">操作</div>
-            <el-button
-              class="role-delete-button"
-              text
-              type="danger"
-              @click="removeListItem(form.roles, index, { roleId: 0, count: 1 })"
-            >
-              删除
-            </el-button>
+            <div class="role-config-count">
+              <div class="role-field-label">数量</div>
+              <div class="count-shell">
+                <el-input-number v-model="item.count" :min="1" :max="12" />
+              </div>
+            </div>
+            <div class="role-config-actions">
+              <div class="role-field-label role-field-label--ghost">操作</div>
+              <el-button
+                class="role-delete-button"
+                text
+                type="danger"
+                @click="removeListItem(form.roles, index, { roleId: 0, count: 1 })"
+              >
+                删除
+              </el-button>
+            </div>
           </div>
         </div>
       </div>
@@ -451,6 +471,40 @@ onMounted(load)
 </template>
 
 <style scoped>
+:deep(.el-dialog) {
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+}
+
+:deep(.el-dialog__header),
+:deep(.el-dialog__footer) {
+  flex: 0 0 auto;
+}
+
+:deep(.el-dialog__body) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 192, 0, 0.42) rgba(255, 255, 255, 0.05);
+}
+
+:deep(.el-dialog__body::-webkit-scrollbar) {
+  width: 8px;
+}
+
+:deep(.el-dialog__body::-webkit-scrollbar-track) {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 999px;
+}
+
+:deep(.el-dialog__body::-webkit-scrollbar-thumb) {
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 211, 92, 0.72), rgba(182, 126, 12, 0.74));
+}
+
 .panel-card {
   border-radius: 18px;
 }
@@ -538,6 +592,13 @@ onMounted(load)
   background: linear-gradient(180deg, rgba(255, 192, 0, 0.1), rgba(255, 255, 255, 0.02));
 }
 
+.preview-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) 260px;
+  gap: 18px;
+  align-items: start;
+}
+
 .preview-meta {
   color: #ffc000;
   font-size: 12px;
@@ -577,6 +638,57 @@ onMounted(load)
   line-height: 1.7;
 }
 
+.media-preview-card {
+  display: grid;
+  gap: 10px;
+}
+
+.media-preview-label {
+  color: #f5d069;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.media-preview-frame {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 192, 0, 0.16);
+  background: linear-gradient(180deg, rgba(28, 28, 28, 0.94), rgba(12, 12, 12, 0.94));
+}
+
+.media-preview-frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 32%, rgba(0, 0, 0, 0.16));
+}
+
+.media-preview-frame--board {
+  aspect-ratio: 4 / 3;
+}
+
+.media-preview-frame img,
+.inline-image-preview img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.media-preview-frame.is-empty {
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+  padding: 18px;
+  color: #8d8d8d;
+  text-align: center;
+  line-height: 1.6;
+}
+
 .preview-count.warning {
   color: #ff725e;
 }
@@ -589,6 +701,23 @@ onMounted(load)
 
 .span-2 {
   grid-column: span 2;
+}
+
+.upload-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.inline-image-preview {
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 192, 0, 0.14);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.inline-image-preview--board {
+  max-width: 320px;
+  aspect-ratio: 16 / 10;
 }
 
 .array-section {
@@ -611,12 +740,17 @@ onMounted(load)
   line-height: 1.6;
 }
 
+.role-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
 .role-config-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 228px 72px;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) 200px 72px;
+  gap: 14px;
   align-items: end;
-  margin-bottom: 14px;
   padding: 14px;
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 14px;
@@ -707,10 +841,12 @@ onMounted(load)
 }
 
 @media (max-width: 900px) {
+  .preview-layout,
   .form-grid,
   .faq-row,
   .inline-row,
   .single-input-row,
+  .role-config-grid,
   .role-config-row {
     grid-template-columns: 1fr;
   }

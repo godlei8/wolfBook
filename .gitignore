@@ -2,6 +2,7 @@ backend/target/
 backend/uploads/
 uploads/
 backend/src/main/resources/application-dev.yml
+backend/src/main/resources/application-local.yml
 admin/node_modules/
 admin/dist/
 admin/.vite/
