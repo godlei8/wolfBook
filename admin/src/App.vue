@@ -14,30 +14,10 @@ const authenticated = ref(Boolean(getStoredToken()))
 const summary = ref<DashboardSummary | null>(null)
 const loadingSummary = ref(false)
 
-const pageMeta = computed(() => {
-  switch (activeMenu.value) {
-    case 'boards':
-      return {
-        title: '板子管理',
-        description: '维护板型封面、阵容配置、规则说明和对局摘要。',
-      }
-    case 'roles':
-      return {
-        title: '角色管理',
-        description: '维护阵营、角色类型、技能描述与立绘资源。',
-      }
-    case 'community':
-      return {
-        title: '社区治理',
-        description: '统一处理帖子状态、评论删除与举报闭环。',
-      }
-    default:
-      return {
-        title: '运营总览',
-        description: '围绕板子、角色、社区三条主线查看全局运行状态。',
-      }
-  }
-})
+const pageMeta = computed(() => ({
+  title: '运营总览',
+  description: '围绕板子、角色、社区三条主线查看整体运行状态。',
+}))
 
 async function loadSummary() {
   if (!authenticated.value) {
@@ -96,7 +76,11 @@ onMounted(() => {
           <span class="menu-label">角色管理</span>
           <span class="menu-hint">Roles</span>
         </button>
-        <button class="menu-item" :class="{ active: activeMenu === 'community' }" @click="activeMenu = 'community'">
+        <button
+          class="menu-item"
+          :class="{ active: activeMenu === 'community' }"
+          @click="activeMenu = 'community'"
+        >
           <span class="menu-label">社区治理</span>
           <span class="menu-hint">Community</span>
         </button>
@@ -109,24 +93,26 @@ onMounted(() => {
     </aside>
 
     <main class="main-panel" v-loading="loadingSummary">
-      <header class="page-header">
-        <div class="eyebrow">BLACK GOLD CONTROL ROOM</div>
-        <h1>{{ pageMeta.title }}</h1>
-        <p>{{ pageMeta.description }}</p>
-      </header>
+      <template v-if="activeMenu === 'overview'">
+        <header class="page-header">
+          <div class="eyebrow">BLACK GOLD CONTROL ROOM</div>
+          <h1>{{ pageMeta.title }}</h1>
+          <p>{{ pageMeta.description }}</p>
+        </header>
 
-      <OverviewPanel :summary="summary" />
+        <OverviewPanel :summary="summary" />
+      </template>
 
-      <section class="content-stack">
+      <section class="content-stack" :class="{ 'content-stack--tight': activeMenu !== 'overview' }">
         <el-card v-if="activeMenu === 'overview'" class="welcome-card">
           <div class="welcome-grid">
             <div>
               <div class="welcome-eyebrow">Deployment</div>
               <h3>三端闭环已经成型</h3>
               <p>
-                当前后台接入真实后端接口，管理动作会直接回写数据库。建议联调顺序为：
-                先启动 `backend`，再启动 `admin`，最后在微信开发者工具中加载
-                `miniprogram-vue/dist/build/mp-weixin`。
+                当前后台已经接入真实后端接口，管理动作会直接回写数据库。建议联调顺序为：先启动
+                <code>backend</code>，再启动 <code>admin</code>，最后在微信开发者工具中加载
+                <code>miniprogram-vue/dist/build/mp-weixin</code>。
               </p>
             </div>
             <div class="welcome-panel">
@@ -157,14 +143,14 @@ onMounted(() => {
 .app-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 300px 1fr;
+  grid-template-columns: 272px 1fr;
 }
 
 .side-nav {
   position: sticky;
   top: 0;
   min-height: 100vh;
-  padding: 28px 24px;
+  padding: 20px 18px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -174,42 +160,43 @@ onMounted(() => {
 
 .nav-top {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .brand-mark {
   display: inline-flex;
   width: fit-content;
-  padding: 6px 12px;
+  padding: 5px 10px;
   background: rgba(255, 192, 0, 0.12);
   color: #ffc000;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.18em;
 }
 
 .brand-title {
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
 }
 
 .brand-sub {
   color: #8d8d8d;
-  line-height: 1.7;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .menu-stack {
   display: grid;
-  gap: 12px;
-  margin: 36px 0 auto;
+  gap: 10px;
+  margin: 24px 0 auto;
 }
 
 .menu-item {
-  padding: 16px 18px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 12px;
   text-align: left;
@@ -224,24 +211,24 @@ onMounted(() => {
 }
 
 .menu-label {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
 }
 
 .menu-hint {
   color: #8d8d8d;
-  font-size: 12px;
+  font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
 .nav-bottom {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .ghost-action {
-  height: 44px;
+  height: 40px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 10px;
   background: transparent;
@@ -255,17 +242,17 @@ onMounted(() => {
 }
 
 .main-panel {
-  padding: 32px;
+  padding: 24px;
 }
 
 .page-header {
   display: grid;
-  gap: 10px;
+  gap: 6px;
 }
 
 .eyebrow {
   color: #ffc000;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -273,21 +260,25 @@ onMounted(() => {
 
 .page-header h1 {
   margin: 0;
-  font-size: 42px;
-  line-height: 1;
+  font-size: 34px;
+  line-height: 1.02;
 }
 
 .page-header p {
   margin: 0;
-  max-width: 760px;
+  max-width: 640px;
   color: #8d8d8d;
-  line-height: 1.8;
+  line-height: 1.55;
 }
 
 .content-stack {
-  margin-top: 24px;
+  margin-top: 16px;
   display: grid;
-  gap: 20px;
+  gap: 16px;
+}
+
+.content-stack--tight {
+  margin-top: 0;
 }
 
 .welcome-card {
@@ -296,39 +287,45 @@ onMounted(() => {
 
 .welcome-grid {
   display: grid;
-  grid-template-columns: 1.4fr 0.9fr;
-  gap: 20px;
+  grid-template-columns: 1.3fr 0.9fr;
+  gap: 18px;
 }
 
 .welcome-eyebrow {
   color: #ffc000;
-  font-size: 12px;
+  font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
 }
 
 .welcome-grid h3 {
-  margin: 12px 0 10px;
-  font-size: 28px;
+  margin: 10px 0 8px;
+  font-size: 24px;
 }
 
 .welcome-grid p {
   margin: 0;
   color: #b5b5b5;
-  line-height: 1.8;
+  line-height: 1.7;
+}
+
+.welcome-grid code {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .welcome-panel {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .welcome-item {
-  padding: 16px;
+  padding: 14px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.03);
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .welcome-item span {
@@ -339,7 +336,7 @@ onMounted(() => {
 }
 
 .welcome-item strong {
-  font-size: 18px;
+  font-size: 17px;
 }
 
 @media (max-width: 1140px) {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { UploadRequestOptions } from 'element-plus'
 import { api } from '../services/api'
@@ -11,12 +11,20 @@ const roles = ref<Role[]>([])
 const loading = ref(false)
 const dialogVisible = ref(false)
 
+const keyword = ref('')
+const factionFilter = ref('ALL')
+const roleTypeFilter = ref('ALL')
+const currentPage = ref(1)
+const pageSize = ref(8)
+
 const factionOptions = ['好人', '狼人', '第三方']
-const roleTypeOptions: Record<string, string[]> = {
+const roleTypeOptionsMap: Record<string, string[]> = {
   好人: ['平民', '神职'],
   狼人: ['狼人', '功能狼'],
   第三方: ['第三方'],
 }
+
+const allRoleTypes = ['平民', '神职', '狼人', '功能狼', '第三方']
 
 function buildCamp(faction: string, roleType: string) {
   if (!faction && !roleType) return ''
@@ -25,13 +33,13 @@ function buildCamp(faction: string, roleType: string) {
 }
 
 function splitCamp(camp = '') {
-  const normalized = camp.replace('路', '·')
+  if (!camp) {
+    return { faction: '好人', roleType: '神职' }
+  }
+  const normalized = camp.replace('/', '·').replace('-', '·')
   if (normalized.includes('·')) {
     const [faction, roleType] = normalized.split('·', 2)
     return { faction, roleType }
-  }
-  if (normalized.startsWith('好人')) {
-    return { faction: '好人', roleType: '神职' }
   }
   if (normalized.startsWith('狼人')) {
     return { faction: '狼人', roleType: '狼人' }
@@ -58,8 +66,30 @@ const emptyRole = (): Role => ({
 
 const form = reactive<Role>(emptyRole())
 
-const availableRoleTypes = computed(() => roleTypeOptions[form.faction] || [])
+const availableRoleTypes = computed(() => roleTypeOptionsMap[form.faction] || [])
 const campPreview = computed(() => buildCamp(form.faction, form.roleType))
+
+const filteredRoles = computed(() => {
+  const normalizedKeyword = keyword.value.trim().toLowerCase()
+  return roles.value.filter((role) => {
+    const searchableText = [role.name, role.alias || '', role.camp, role.faction, role.roleType]
+      .join(' ')
+      .toLowerCase()
+    const matchesKeyword = !normalizedKeyword || searchableText.includes(normalizedKeyword)
+    const matchesFaction = factionFilter.value === 'ALL' || role.faction === factionFilter.value
+    const matchesType = roleTypeFilter.value === 'ALL' || role.roleType === roleTypeFilter.value
+    return matchesKeyword && matchesFaction && matchesType
+  })
+})
+
+const pagedRoles = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredRoles.value.slice(start, start + pageSize.value)
+})
+
+watch([keyword, factionFilter, roleTypeFilter, pageSize], () => {
+  currentPage.value = 1
+})
 
 function syncCamp() {
   form.camp = buildCamp(form.faction, form.roleType)
@@ -95,6 +125,13 @@ function resetForm(role?: Role) {
   ensureRoleType()
 }
 
+function resetFilters() {
+  keyword.value = ''
+  factionFilter.value = 'ALL'
+  roleTypeFilter.value = 'ALL'
+  currentPage.value = 1
+}
+
 function addFaq() {
   form.faqs.push({ question: '', answer: '' })
 }
@@ -111,6 +148,9 @@ async function load() {
   loading.value = true
   try {
     roles.value = await api.getRoles()
+    if ((currentPage.value - 1) * pageSize.value >= roles.value.length) {
+      currentPage.value = 1
+    }
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '角色数据加载失败')
   } finally {
@@ -185,16 +225,30 @@ onMounted(load)
   <el-card class="panel-card">
     <template #header>
       <div class="panel-header">
-        <div>
+        <div class="panel-copy">
           <div class="panel-kicker">Roles</div>
           <h3>角色管理</h3>
-          <p>角色类型已固定为 平民 / 神职 / 狼人 / 功能狼 / 第三方，防止后台录入发散。</p>
+          <p>角色类型固定为平民 / 神职 / 狼人 / 功能狼 / 第三方，避免后台录入发散。</p>
         </div>
         <el-button type="primary" @click="resetForm(); dialogVisible = true">新建角色</el-button>
       </div>
     </template>
 
-    <el-table :data="roles" v-loading="loading">
+    <div class="table-toolbar">
+      <el-input v-model="keyword" clearable placeholder="搜索角色名称、别名或组合标签" />
+      <el-select v-model="factionFilter">
+        <el-option label="全部阵营" value="ALL" />
+        <el-option v-for="item in factionOptions" :key="item" :label="item" :value="item" />
+      </el-select>
+      <el-select v-model="roleTypeFilter">
+        <el-option label="全部类型" value="ALL" />
+        <el-option v-for="item in allRoleTypes" :key="item" :label="item" :value="item" />
+      </el-select>
+      <el-button @click="resetFilters">重置</el-button>
+      <div class="toolbar-summary">当前 {{ filteredRoles.length }} 条</div>
+    </div>
+
+    <el-table :data="pagedRoles" v-loading="loading" empty-text="暂无符合条件的角色">
       <el-table-column prop="name" label="角色名称" min-width="150" />
       <el-table-column prop="faction" label="阵营" width="110">
         <template #default="{ row }">
@@ -213,6 +267,20 @@ onMounted(load)
         </template>
       </el-table-column>
     </el-table>
+
+    <div class="table-footer">
+      <div class="table-total">共 {{ filteredRoles.length }} 条角色</div>
+      <el-pagination
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        background
+        size="small"
+        layout="sizes, prev, pager, next"
+        :pager-count="5"
+        :page-sizes="[8, 10, 20, 30]"
+        :total="filteredRoles.length"
+      />
+    </div>
   </el-card>
 
   <el-dialog v-model="dialogVisible" width="880px" :title="form.id ? '编辑角色' : '新建角色'">
@@ -305,25 +373,84 @@ onMounted(load)
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  align-items: center;
+  align-items: flex-start;
+}
+
+.panel-copy {
+  display: grid;
+  gap: 4px;
 }
 
 .panel-kicker {
   color: #ffc000;
-  font-size: 12px;
+  font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
 }
 
 .panel-header h3 {
-  margin: 8px 0 6px;
-  font-size: 28px;
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.1;
 }
 
 .panel-header p {
   margin: 0;
   color: #8d8d8d;
-  line-height: 1.7;
+  line-height: 1.55;
+}
+
+.table-toolbar {
+  margin-bottom: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.table-toolbar > :nth-child(1) {
+  flex: 1 1 360px;
+  min-width: 280px;
+}
+
+.table-toolbar > :nth-child(2),
+.table-toolbar > :nth-child(3) {
+  flex: 0 0 150px;
+}
+
+.table-toolbar > :nth-child(4) {
+  flex: 0 0 90px;
+}
+
+.toolbar-summary {
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: #8d8d8d;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.table-footer {
+  margin-top: 14px;
+  padding-top: 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.table-total {
+  color: #8d8d8d;
+  font-size: 13px;
+}
+
+.table-footer :deep(.el-pagination) {
+  margin-left: auto;
 }
 
 .preview-card {
@@ -402,11 +529,45 @@ onMounted(load)
   gap: 12px;
 }
 
+@media (max-width: 1080px) {
+  .table-toolbar > :nth-child(1) {
+    flex-basis: 100%;
+  }
+
+  .toolbar-summary {
+    margin-left: 0;
+  }
+
+  .table-footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
 @media (max-width: 980px) {
+  .panel-header {
+    display: grid;
+  }
+
   .form-grid,
   .form-grid-role,
   .faq-row {
     grid-template-columns: 1fr;
+  }
+
+  .table-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .table-toolbar > :nth-child(1),
+  .table-toolbar > :nth-child(2),
+  .table-toolbar > :nth-child(3),
+  .table-toolbar > :nth-child(4),
+  .toolbar-summary {
+    flex: initial;
+    min-width: 0;
+    margin-left: 0;
   }
 
   .upload-stack {

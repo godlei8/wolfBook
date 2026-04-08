@@ -1,10 +1,34 @@
 <script setup>
 const props = defineProps({
-  board: {
-    type: Object,
+  boardId: {
+    type: Number,
     required: true,
   },
+  coverImage: {
+    type: String,
+    default: '',
+  },
+  difficulty: {
+    type: String,
+    default: '',
+  },
   metaText: {
+    type: String,
+    default: '',
+  },
+  name: {
+    type: String,
+    default: '',
+  },
+  playerCount: {
+    type: [Number, String],
+    default: '',
+  },
+  cardRoles: {
+    type: Array,
+    default: () => [],
+  },
+  description: {
     type: String,
     default: '',
   },
@@ -17,11 +41,11 @@ const props = defineProps({
 const emit = defineEmits(['select', 'favorite-toggle'])
 
 function handleSelect() {
-  emit('select', props.board.id)
+  emit('select', props.boardId)
 }
 
 function handleFavorite() {
-  emit('favorite-toggle', props.board.id)
+  emit('favorite-toggle', props.boardId)
 }
 
 function shouldShowCount(role) {
@@ -32,7 +56,7 @@ function shouldShowCount(role) {
 <template>
   <view class="glass-card board-card" @tap="handleSelect">
     <view class="board-cover-wrap">
-      <image class="board-cover" :src="board.coverImage" mode="aspectFill" />
+      <image class="board-cover" :src="coverImage" mode="aspectFill" />
       <view class="board-favorite" :class="{ active: favorite }" @tap.stop="handleFavorite">
         {{ favorite ? '♥' : '♡' }}
       </view>
@@ -40,24 +64,24 @@ function shouldShowCount(role) {
 
     <view class="board-overlay">
       <view class="board-topline">
-        <view class="pill pill-gold">{{ board.difficulty }}</view>
+        <view class="pill pill-gold">{{ difficulty }}</view>
         <view v-if="metaText" class="section-meta">{{ metaText }}</view>
       </view>
 
       <view class="board-title-row">
-        <view class="board-name">{{ board.name }}</view>
+        <view class="board-name">{{ name }}</view>
         <view class="board-player-badge">
           <view class="board-player-inner">
-            <text class="board-player-number">{{ board.playerCount }}</text>
+            <text class="board-player-number">{{ playerCount }}</text>
             <text class="board-player-unit">人</text>
           </view>
         </view>
       </view>
 
-      <view v-if="board.cardRoles && board.cardRoles.length" class="board-role-row">
+      <view v-if="cardRoles && cardRoles.length" class="board-role-row">
         <view
-          v-for="role in board.cardRoles"
-          :key="`${board.id}-${role.roleId}-${role.name}`"
+          v-for="role in cardRoles"
+          :key="`${boardId}-${role.roleId}-${role.name}`"
           class="board-role-chip"
           :class="`role-tone-${role.toneClass}`"
         >
@@ -68,8 +92,8 @@ function shouldShowCount(role) {
         </view>
       </view>
 
-      <view v-if="board.cardDescription || board.summary" class="board-summary">
-        {{ board.cardDescription || board.summary }}
+      <view v-if="description" class="board-summary">
+        {{ description }}
       </view>
     </view>
   </view>

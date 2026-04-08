@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../services/api'
 import type { CommentView, PostSummary, ReportItem } from '../types'
@@ -15,11 +15,21 @@ const loading = ref(false)
 const postKeyword = ref('')
 const postStatusFilter = ref('ALL')
 const commentKeyword = ref('')
+const reportKeyword = ref('')
 const reportStatusFilter = ref('ALL')
+
+const postPage = ref(1)
+const postPageSize = ref(8)
+const commentPage = ref(1)
+const commentPageSize = ref(10)
+const reportPage = ref(1)
+const reportPageSize = ref(8)
 
 const filteredPosts = computed(() =>
   posts.value.filter((post) => {
-    const matchesKeyword = !postKeyword.value || post.content.includes(postKeyword.value) || post.nickname.includes(postKeyword.value)
+    const normalizedKeyword = postKeyword.value.trim().toLowerCase()
+    const searchableText = [post.content, post.nickname, post.openid].join(' ').toLowerCase()
+    const matchesKeyword = !normalizedKeyword || searchableText.includes(normalizedKeyword)
     const normalizedStatus = post.status === 1 ? 'PUBLISHED' : 'OFFLINE'
     const matchesStatus = postStatusFilter.value === 'ALL' || normalizedStatus === postStatusFilter.value
     return matchesKeyword && matchesStatus
@@ -27,18 +37,70 @@ const filteredPosts = computed(() =>
 )
 
 const filteredComments = computed(() =>
-  comments.value.filter(
-    (comment) =>
-      !commentKeyword.value ||
-      comment.content.includes(commentKeyword.value) ||
-      comment.nickname.includes(commentKeyword.value) ||
-      String(comment.postId).includes(commentKeyword.value),
-  ),
+  comments.value.filter((comment) => {
+    const normalizedKeyword = commentKeyword.value.trim().toLowerCase()
+    const searchableText = [comment.content, comment.nickname, comment.openid, String(comment.postId)]
+      .join(' ')
+      .toLowerCase()
+    return !normalizedKeyword || searchableText.includes(normalizedKeyword)
+  }),
 )
 
 const filteredReports = computed(() =>
-  reports.value.filter((report) => reportStatusFilter.value === 'ALL' || report.processStatus === reportStatusFilter.value),
+  reports.value.filter((report) => {
+    const normalizedKeyword = reportKeyword.value.trim().toLowerCase()
+    const searchableText = [report.reason, report.openid, report.targetType, String(report.targetId)]
+      .join(' ')
+      .toLowerCase()
+    const matchesKeyword = !normalizedKeyword || searchableText.includes(normalizedKeyword)
+    const matchesStatus = reportStatusFilter.value === 'ALL' || report.processStatus === reportStatusFilter.value
+    return matchesKeyword && matchesStatus
+  }),
 )
+
+const pagedPosts = computed(() => {
+  const start = (postPage.value - 1) * postPageSize.value
+  return filteredPosts.value.slice(start, start + postPageSize.value)
+})
+
+const pagedComments = computed(() => {
+  const start = (commentPage.value - 1) * commentPageSize.value
+  return filteredComments.value.slice(start, start + commentPageSize.value)
+})
+
+const pagedReports = computed(() => {
+  const start = (reportPage.value - 1) * reportPageSize.value
+  return filteredReports.value.slice(start, start + reportPageSize.value)
+})
+
+watch([postKeyword, postStatusFilter, postPageSize], () => {
+  postPage.value = 1
+})
+
+watch([commentKeyword, commentPageSize], () => {
+  commentPage.value = 1
+})
+
+watch([reportKeyword, reportStatusFilter, reportPageSize], () => {
+  reportPage.value = 1
+})
+
+function resetPostFilters() {
+  postKeyword.value = ''
+  postStatusFilter.value = 'ALL'
+  postPage.value = 1
+}
+
+function resetCommentFilters() {
+  commentKeyword.value = ''
+  commentPage.value = 1
+}
+
+function resetReportFilters() {
+  reportKeyword.value = ''
+  reportStatusFilter.value = 'ALL'
+  reportPage.value = 1
+}
 
 async function load() {
   loading.value = true
@@ -109,7 +171,7 @@ onMounted(load)
   <el-card class="panel-card" v-loading="loading">
     <template #header>
       <div class="panel-header">
-        <div>
+        <div class="panel-copy">
           <div class="panel-kicker">Community</div>
           <h3>社区治理</h3>
           <p>对帖子、评论、举报进行统一治理，处理结果会直接沉淀到后端数据。</p>
@@ -120,15 +182,17 @@ onMounted(load)
     <el-tabs v-model="activeTab">
       <el-tab-pane label="帖子审核" name="posts">
         <div class="toolbar">
-          <el-input v-model="postKeyword" placeholder="搜索作者或帖子内容" clearable />
+          <el-input v-model="postKeyword" clearable placeholder="搜索作者、openid 或帖子内容" />
           <el-select v-model="postStatusFilter">
             <el-option label="全部状态" value="ALL" />
             <el-option label="已发布" value="PUBLISHED" />
             <el-option label="已下线" value="OFFLINE" />
           </el-select>
+          <el-button @click="resetPostFilters">重置</el-button>
+          <div class="toolbar-summary">当前 {{ filteredPosts.length }} 条</div>
         </div>
 
-        <el-table :data="filteredPosts">
+        <el-table :data="pagedPosts" empty-text="暂无符合条件的帖子">
           <el-table-column prop="nickname" label="作者" width="130" />
           <el-table-column prop="content" label="内容" min-width="280" show-overflow-tooltip />
           <el-table-column prop="likeCount" label="点赞" width="80" />
@@ -150,14 +214,30 @@ onMounted(load)
             </template>
           </el-table-column>
         </el-table>
+
+        <div class="table-footer">
+          <div class="table-total">共 {{ filteredPosts.length }} 条帖子</div>
+          <el-pagination
+            v-model:current-page="postPage"
+            v-model:page-size="postPageSize"
+            background
+            size="small"
+            layout="sizes, prev, pager, next"
+            :pager-count="5"
+            :page-sizes="[6, 8, 10, 20]"
+            :total="filteredPosts.length"
+          />
+        </div>
       </el-tab-pane>
 
       <el-tab-pane label="评论管理" name="comments">
-        <div class="toolbar">
-          <el-input v-model="commentKeyword" placeholder="搜索评论、作者或帖子 ID" clearable />
+        <div class="toolbar comments-toolbar">
+          <el-input v-model="commentKeyword" clearable placeholder="搜索评论内容、评论人或帖子 ID" />
+          <el-button @click="resetCommentFilters">重置</el-button>
+          <div class="toolbar-summary">当前 {{ filteredComments.length }} 条</div>
         </div>
 
-        <el-table :data="filteredComments">
+        <el-table :data="pagedComments" empty-text="暂无符合条件的评论">
           <el-table-column prop="nickname" label="评论人" width="130" />
           <el-table-column prop="postId" label="帖子 ID" width="90" />
           <el-table-column prop="content" label="内容" min-width="320" show-overflow-tooltip />
@@ -169,19 +249,36 @@ onMounted(load)
             </template>
           </el-table-column>
         </el-table>
+
+        <div class="table-footer">
+          <div class="table-total">共 {{ filteredComments.length }} 条评论</div>
+          <el-pagination
+            v-model:current-page="commentPage"
+            v-model:page-size="commentPageSize"
+            background
+            size="small"
+            layout="sizes, prev, pager, next"
+            :pager-count="5"
+            :page-sizes="[8, 10, 20, 30]"
+            :total="filteredComments.length"
+          />
+        </div>
       </el-tab-pane>
 
       <el-tab-pane label="举报处理" name="reports">
         <div class="toolbar">
+          <el-input v-model="reportKeyword" clearable placeholder="搜索举报原因、举报人或目标 ID" />
           <el-select v-model="reportStatusFilter">
             <el-option label="全部状态" value="ALL" />
             <el-option label="OPEN" value="OPEN" />
             <el-option label="RESOLVED" value="RESOLVED" />
             <el-option label="DISMISSED" value="DISMISSED" />
           </el-select>
+          <el-button @click="resetReportFilters">重置</el-button>
+          <div class="toolbar-summary">当前 {{ filteredReports.length }} 条</div>
         </div>
 
-        <el-table :data="filteredReports">
+        <el-table :data="pagedReports" empty-text="暂无符合条件的举报">
           <el-table-column prop="targetType" label="类型" width="110" />
           <el-table-column prop="targetId" label="目标 ID" width="100" />
           <el-table-column prop="openid" label="举报人" min-width="180" />
@@ -202,6 +299,20 @@ onMounted(load)
             </template>
           </el-table-column>
         </el-table>
+
+        <div class="table-footer">
+          <div class="table-total">共 {{ filteredReports.length }} 条举报</div>
+          <el-pagination
+            v-model:current-page="reportPage"
+            v-model:page-size="reportPageSize"
+            background
+            size="small"
+            layout="sizes, prev, pager, next"
+            :pager-count="5"
+            :page-sizes="[6, 8, 10, 20]"
+            :total="filteredReports.length"
+          />
+        </div>
       </el-tab-pane>
     </el-tabs>
   </el-card>
@@ -216,37 +327,119 @@ onMounted(load)
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  align-items: center;
+  align-items: flex-start;
+}
+
+.panel-copy {
+  display: grid;
+  gap: 4px;
 }
 
 .panel-kicker {
   color: #ffc000;
-  font-size: 12px;
+  font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
 }
 
 .panel-header h3 {
-  margin: 8px 0 6px;
-  font-size: 28px;
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.1;
 }
 
 .panel-header p {
   margin: 0;
   color: #8d8d8d;
-  line-height: 1.7;
+  line-height: 1.55;
 }
 
 .toolbar {
-  display: grid;
-  grid-template-columns: minmax(240px, 420px) 180px;
+  display: flex;
+  flex-wrap: wrap;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.toolbar > :nth-child(1) {
+  flex: 1 1 360px;
+  min-width: 280px;
+}
+
+.toolbar > :nth-child(2) {
+  flex: 0 0 160px;
+}
+
+.toolbar > :nth-child(3) {
+  flex: 0 0 90px;
+}
+
+.comments-toolbar > :nth-child(2) {
+  flex: 0 0 90px;
+}
+
+.toolbar-summary {
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: #8d8d8d;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.table-footer {
+  margin-top: 14px;
+  padding-top: 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.table-total {
+  color: #8d8d8d;
+  font-size: 13px;
+}
+
+.table-footer :deep(.el-pagination) {
+  margin-left: auto;
+}
+
+@media (max-width: 1080px) {
+  .toolbar > :nth-child(1) {
+    flex-basis: 100%;
+  }
+
+  .toolbar-summary {
+    margin-left: 0;
+  }
+
+  .table-footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
 @media (max-width: 900px) {
-  .toolbar {
+  .toolbar,
+  .comments-toolbar {
+    display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .toolbar > :nth-child(1),
+  .toolbar > :nth-child(2),
+  .toolbar > :nth-child(3),
+  .comments-toolbar > :nth-child(2),
+  .toolbar-summary {
+    flex: initial;
+    min-width: 0;
+    margin-left: 0;
   }
 }
 </style>

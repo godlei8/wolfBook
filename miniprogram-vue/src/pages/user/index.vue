@@ -1,28 +1,25 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { reactive, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import api from '../../services/api'
 import storage from '../../services/storage'
 
 const user = ref(null)
-const favoritesCount = ref(0)
-const sessionsCount = ref(0)
 const profileEditorVisible = ref(false)
 const loginLoading = ref(false)
 const profileSaving = ref(false)
 
+const viewState = reactive({
+  favoritesCount: 0,
+  sessionsCount: 0,
+  profileStatusText: '未登录',
+  avatarPreview: '',
+  profileInitial: '我',
+})
+
 const profileForm = reactive({
   nickname: '',
   avatar: '',
-})
-
-const avatarPreview = computed(() => profileForm.avatar || user.value?.avatar || '')
-const profileInitial = computed(() => (profileForm.nickname || user.value?.nickname || '我').trim().slice(0, 1))
-const profileStatusText = computed(() => {
-  if (!user.value) {
-    return '未登录'
-  }
-  return looksLikeMockProfile(user.value) ? '建议完善头像与昵称' : '资料已同步'
 })
 
 function looksLikeMockProfile(profile) {
@@ -30,18 +27,26 @@ function looksLikeMockProfile(profile) {
   return !profile.avatar || profile.avatar.includes('picsum.photos') || /^夜行者/i.test(profile.nickname || '')
 }
 
-function syncCounters() {
-  favoritesCount.value = storage.getFavorites().length
-  sessionsCount.value = storage.getSessions().length
+function syncViewState() {
+  viewState.favoritesCount = storage.getFavorites().length
+  viewState.sessionsCount = storage.getSessions().length
+  viewState.avatarPreview = profileForm.avatar || user.value?.avatar || ''
+  viewState.profileInitial = (profileForm.nickname || user.value?.nickname || '我').trim().slice(0, 1) || '我'
+  viewState.profileStatusText = !user.value
+    ? '未登录，仅浏览本地内容'
+    : looksLikeMockProfile(user.value)
+      ? '建议完善头像与昵称'
+      : '资料已同步'
 }
 
 function fillProfileForm(profile) {
   profileForm.nickname = profile?.nickname || ''
   profileForm.avatar = profile?.avatar || ''
+  syncViewState()
 }
 
 async function refreshData() {
-  syncCounters()
+  syncViewState()
   const token = storage.getAuthToken()
   if (!token) {
     user.value = null
@@ -100,11 +105,13 @@ function handleChooseAvatar(event) {
   const avatarUrl = event?.detail?.avatarUrl
   if (avatarUrl) {
     profileForm.avatar = avatarUrl
+    syncViewState()
   }
 }
 
 function handleNicknameInput(event) {
   profileForm.nickname = event.detail?.value || ''
+  syncViewState()
 }
 
 async function saveWechatProfile() {
@@ -164,114 +171,127 @@ onShow(() => {
 </script>
 
 <template>
-  <view class="page-shell user-page-shell">
-    <view class="page-kicker">PRIVATE GARAGE</view>
+  <view class="page-shell">
     <view class="hero-title">我的</view>
     <view class="hero-subtitle">账号、收藏和本地对局记录都在这里。</view>
 
-    <view class="profile-stage">
-      <view class="stage-topline">
-        <view class="stage-kicker">WECHAT PROFILE</view>
-        <view class="stage-status">{{ profileStatusText }}</view>
+    <view class="glass-card section-card profile-card">
+      <view class="profile-header">
+        <view class="profile-header-copy">
+          <view class="section-title">微信资料</view>
+          <view class="section-meta">
+            {{ user ? '社区互动、身份展示与资料同步入口' : '登录后可参与社区互动并同步微信资料' }}
+          </view>
+        </view>
+        <view class="profile-badge" :class="{ active: !!user }">{{ viewState.profileStatusText }}</view>
       </view>
 
       <template v-if="user">
-        <view class="profile-main">
+        <view class="profile-body">
           <image v-if="user.avatar" class="profile-avatar" :src="user.avatar" mode="aspectFill" />
-          <view v-else class="profile-avatar profile-placeholder">{{ profileInitial }}</view>
+          <view v-else class="profile-avatar profile-placeholder">{{ viewState.profileInitial }}</view>
 
           <view class="profile-copy">
             <view class="profile-name">{{ user.nickname || '微信用户' }}</view>
             <view class="profile-openid">{{ user.openid }}</view>
-            <view class="profile-helper">用于社区互动、身份展示与资料同步。</view>
+            <view class="profile-helper">用于社区身份展示、发帖互动和资料同步。</view>
           </view>
         </view>
 
-        <button class="ghost-cta" @tap="openProfileEditor">更新微信头像和昵称</button>
+        <button class="action-button action-button--ghost profile-action" @tap="openProfileEditor">
+          更新微信头像和昵称
+        </button>
       </template>
 
       <template v-else>
-        <view class="login-copy">
+        <view class="login-panel">
           <view class="login-title">未登录</view>
           <view class="login-desc">登录后可发帖、评论、点赞，并同步你的微信资料。</view>
         </view>
-        <button class="gold-cta" :loading="loginLoading" @tap="handleLogin">微信登录</button>
+        <button class="action-button action-button--primary profile-action" :loading="loginLoading" @tap="handleLogin">
+          微信登录
+        </button>
       </template>
     </view>
 
-    <view class="nav-stack">
-      <view class="nav-panel" @tap="openFavorites">
-        <view class="nav-copy">
-          <view class="nav-kicker">FAVORITES</view>
-          <view class="nav-title">我的收藏</view>
-          <view class="nav-desc">查看已收藏的板子与配置。</view>
+    <view class="entry-stack">
+      <view class="glass-card section-card entry-card" @tap="openFavorites">
+        <view class="entry-copy">
+          <view class="entry-title">我的收藏</view>
+          <view class="entry-desc">查看已收藏的板子与配置。</view>
         </view>
-        <view class="nav-meta">
-          <view class="nav-value">{{ favoritesCount }}</view>
-          <view class="nav-unit">个板子</view>
-          <view class="nav-arrow">›</view>
-        </view>
-      </view>
-
-      <view class="nav-panel" @tap="openSessions">
-        <view class="nav-copy">
-          <view class="nav-kicker">LOCAL NOTES</view>
-          <view class="nav-title">本地笔记</view>
-          <view class="nav-desc">继续记录发言、投票和夜间信息。</view>
-        </view>
-        <view class="nav-meta">
-          <view class="nav-value">{{ sessionsCount }}</view>
-          <view class="nav-unit">条记录</view>
-          <view class="nav-arrow">›</view>
+        <view class="entry-side">
+          <view class="entry-count">{{ viewState.favoritesCount }}</view>
+          <view class="entry-unit">个板子</view>
+          <view class="entry-arrow">›</view>
         </view>
       </view>
 
-      <view class="nav-panel" @tap="openSettings">
-        <view class="nav-copy">
-          <view class="nav-kicker">SYSTEM</view>
-          <view class="nav-title">设置</view>
-          <view class="nav-desc">清理缓存、查看版本与本地数据状态。</view>
+      <view class="glass-card section-card entry-card" @tap="openSessions">
+        <view class="entry-copy">
+          <view class="entry-title">本地笔记</view>
+          <view class="entry-desc">继续记录发言、投票和夜间信息。</view>
         </view>
-        <view class="nav-meta nav-meta-light">
-          <view class="nav-arrow">›</view>
+        <view class="entry-side">
+          <view class="entry-count">{{ viewState.sessionsCount }}</view>
+          <view class="entry-unit">条记录</view>
+          <view class="entry-arrow">›</view>
+        </view>
+      </view>
+
+      <view class="glass-card section-card entry-card" @tap="openSettings">
+        <view class="entry-copy">
+          <view class="entry-title">设置</view>
+          <view class="entry-desc">清理缓存、查看版本与本地数据状态。</view>
+        </view>
+        <view class="entry-side entry-side--solo">
+          <view class="entry-arrow">›</view>
         </view>
       </view>
     </view>
 
     <view v-if="profileEditorVisible" class="editor-mask" @tap="profileEditorVisible = false">
-      <view class="editor-panel" @tap.stop>
-        <view class="sheet-topline">
+      <view class="glass-card editor-panel" @tap.stop>
+        <view class="editor-handle" />
+
+        <view class="editor-header">
           <view>
-            <view class="sheet-kicker">WECHAT PROFILE</view>
-            <view class="sheet-title">完善微信资料</view>
+            <view class="section-title">完善微信资料</view>
+            <view class="section-meta">选择微信头像并确认昵称，资料会同步保存到后端。</view>
           </view>
-          <view class="sheet-close" @tap="profileEditorVisible = false">关闭</view>
+          <view class="editor-close" @tap="profileEditorVisible = false">关闭</view>
         </view>
 
-        <view class="sheet-desc">选择微信头像并确认昵称，资料会同步保存到后端。</view>
+        <view class="editor-avatar-row">
+          <image
+            v-if="viewState.avatarPreview"
+            class="editor-avatar"
+            :src="viewState.avatarPreview"
+            mode="aspectFill"
+          />
+          <view v-else class="editor-avatar profile-placeholder">{{ viewState.profileInitial }}</view>
 
-        <view class="sheet-avatar-stage">
-          <image v-if="avatarPreview" class="sheet-avatar" :src="avatarPreview" mode="aspectFill" />
-          <view v-else class="sheet-avatar profile-placeholder">{{ profileInitial }}</view>
-          <button class="ghost-cta avatar-cta" open-type="chooseAvatar" @chooseavatar="handleChooseAvatar">
+          <button class="action-button action-button--ghost avatar-button" open-type="chooseAvatar" @chooseavatar="handleChooseAvatar">
             选择微信头像
           </button>
         </view>
 
-        <view class="sheet-field">
-          <view class="sheet-label">微信昵称</view>
+        <view class="editor-field">
+          <view class="editor-label">微信昵称</view>
           <input
             :value="profileForm.nickname"
             type="nickname"
-            class="sheet-input"
+            class="field-input editor-input"
             placeholder="请输入或选择微信昵称"
             @input="handleNicknameInput"
           />
         </view>
 
-        <view class="sheet-actions">
-          <button class="ghost-cta half-button" @tap="profileEditorVisible = false">取消</button>
-          <button class="gold-cta half-button" :loading="profileSaving" @tap="saveWechatProfile">保存资料</button>
+        <view class="editor-actions">
+          <button class="action-button action-button--ghost half-button" @tap="profileEditorVisible = false">取消</button>
+          <button class="action-button action-button--primary half-button" :loading="profileSaving" @tap="saveWechatProfile">
+            保存资料
+          </button>
         </view>
       </view>
     </view>
@@ -279,61 +299,40 @@ onShow(() => {
 </template>
 
 <style scoped lang="scss">
-.user-page-shell {
-  background: #000000;
+.profile-card {
+  margin-top: 28rpx;
 }
 
-.page-kicker {
-  color: #ffc000;
-  font-size: 20rpx;
-  letter-spacing: 6rpx;
-  margin-bottom: 16rpx;
-}
-
-.hero-title {
-  font-size: 68rpx;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.hero-subtitle {
-  max-width: 560rpx;
-  color: #7d7d7d;
-}
-
-.profile-stage,
-.nav-panel,
-.editor-panel {
-  background: #181818;
-}
-
-.profile-stage {
-  margin-top: 32rpx;
-  padding: 28rpx;
-}
-
-.stage-topline,
-.sheet-topline {
+.profile-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 20rpx;
 }
 
-.stage-kicker,
-.sheet-kicker,
-.nav-kicker {
-  color: #ffc000;
-  font-size: 18rpx;
-  letter-spacing: 4rpx;
+.profile-header-copy {
+  min-width: 0;
+  flex: 1;
 }
 
-.stage-status {
-  color: #7d7d7d;
+.profile-badge {
+  flex-shrink: 0;
+  max-width: 240rpx;
+  padding: 10rpx 18rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.06);
+  color: #9f9f9f;
   font-size: 22rpx;
+  line-height: 1.3;
+  text-align: center;
 }
 
-.profile-main {
+.profile-badge.active {
+  background: rgba(255, 192, 0, 0.14);
+  color: #ffc000;
+}
+
+.profile-body {
   display: flex;
   align-items: center;
   gap: 24rpx;
@@ -341,11 +340,12 @@ onShow(() => {
 }
 
 .profile-avatar,
-.sheet-avatar {
+.editor-avatar {
   width: 128rpx;
   height: 128rpx;
   flex-shrink: 0;
-  background: #202020;
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .profile-placeholder {
@@ -378,106 +378,102 @@ onShow(() => {
 
 .profile-helper,
 .login-desc,
-.sheet-desc,
-.nav-desc {
+.entry-desc {
   margin-top: 12rpx;
-  color: #7d7d7d;
+  color: #8e8e8e;
   font-size: 24rpx;
   line-height: 1.7;
 }
 
-.login-copy {
+.profile-action {
+  margin-top: 28rpx;
+}
+
+.login-panel {
   margin-top: 28rpx;
 }
 
 .login-title,
-.sheet-title,
-.nav-title {
+.entry-title {
   color: #ffffff;
   font-size: 38rpx;
-  line-height: 1.12;
+  line-height: 1.14;
   font-weight: 700;
 }
 
-.ghost-cta,
-.gold-cta {
-  height: 88rpx;
-  line-height: 88rpx;
-  padding: 0 28rpx;
-  border-radius: 0;
-  font-size: 28rpx;
-  font-weight: 700;
-}
-
-.ghost-cta::after,
-.gold-cta::after {
-  border: none;
-}
-
-.ghost-cta {
-  margin-top: 28rpx;
-  background: transparent;
-  color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.48);
-}
-
-.gold-cta {
-  margin-top: 28rpx;
-  background: #ffc000;
-  color: #000000;
-}
-
-.nav-stack {
-  margin-top: 28rpx;
+.entry-stack {
   display: grid;
-  gap: 2rpx;
+  gap: 20rpx;
+  margin-top: 28rpx;
 }
 
-.nav-panel {
-  min-height: 170rpx;
-  padding: 28rpx;
+.entry-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 20rpx;
+  min-height: 160rpx;
 }
 
-.nav-copy {
+.entry-copy {
   min-width: 0;
   flex: 1;
 }
 
-.nav-title {
-  margin-top: 12rpx;
+.entry-side {
+  display: grid;
+  justify-items: end;
+  gap: 6rpx;
+  min-width: 110rpx;
 }
 
-.nav-meta {
-  min-width: 124rpx;
-  text-align: right;
+.entry-side--solo {
+  min-width: auto;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
 }
 
-.nav-meta-light {
-  min-width: 48rpx;
-}
-
-.nav-value {
+.entry-count {
   color: #ffc000;
-  font-size: 54rpx;
+  font-size: 56rpx;
   line-height: 0.92;
   font-weight: 700;
 }
 
-.nav-unit {
-  margin-top: 8rpx;
+.entry-unit {
   color: #969696;
   font-size: 22rpx;
 }
 
-.nav-arrow {
-  margin-top: 6rpx;
+.entry-arrow {
   color: #ffffff;
-  font-size: 38rpx;
+  font-size: 40rpx;
   line-height: 1;
+}
+
+.action-button {
+  height: 88rpx;
+  line-height: 88rpx;
+  padding: 0 28rpx;
+  border-radius: 14rpx;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.action-button::after {
+  border: none;
+}
+
+.action-button--primary {
+  background: #ffc000;
+  color: #000000;
+}
+
+.action-button--ghost {
+  background: rgba(255, 255, 255, 0.03);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 .editor-mask {
@@ -491,50 +487,60 @@ onShow(() => {
 
 .editor-panel {
   width: 100%;
-  padding: 28rpx 28rpx calc(env(safe-area-inset-bottom) + 28rpx);
+  padding: 18rpx 24rpx calc(env(safe-area-inset-bottom) + 28rpx);
+  border-top-left-radius: 28rpx;
+  border-top-right-radius: 28rpx;
 }
 
-.sheet-close {
-  color: #969696;
-  font-size: 22rpx;
+.editor-handle {
+  width: 88rpx;
+  height: 8rpx;
+  border-radius: 999rpx;
+  margin: 0 auto 22rpx;
+  background: rgba(255, 255, 255, 0.18);
 }
 
-.sheet-desc {
-  margin-top: 16rpx;
-}
-
-.sheet-avatar-stage {
-  margin-top: 28rpx;
-  display: grid;
-  justify-items: start;
+.editor-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 20rpx;
 }
 
-.avatar-cta {
-  width: 280rpx;
-  margin-top: 0;
+.editor-close {
+  color: #9c9c9c;
+  font-size: 24rpx;
+  flex-shrink: 0;
 }
 
-.sheet-field {
+.editor-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
   margin-top: 28rpx;
 }
 
-.sheet-label {
+.avatar-button {
+  flex: 1;
+  margin-top: 0;
+}
+
+.editor-field {
+  margin-top: 28rpx;
+}
+
+.editor-label {
   color: #ffffff;
   font-size: 24rpx;
   margin-bottom: 12rpx;
 }
 
-.sheet-input {
+.editor-input {
   height: 88rpx;
-  padding: 0 22rpx;
-  box-sizing: border-box;
-  background: #202020;
-  color: #ffffff;
-  border-radius: 0;
+  line-height: 88rpx;
 }
 
-.sheet-actions {
+.editor-actions {
   margin-top: 28rpx;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -543,6 +549,5 @@ onShow(() => {
 
 .half-button {
   width: 100%;
-  margin-top: 0;
 }
 </style>

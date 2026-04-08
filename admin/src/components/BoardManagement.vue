@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { UploadRequestOptions } from 'element-plus'
 import { api } from '../services/api'
@@ -11,6 +11,14 @@ const loading = ref(false)
 const dialogVisible = ref(false)
 const boards = ref<Board[]>([])
 const roles = ref<Role[]>([])
+
+const keyword = ref('')
+const difficultyFilter = ref('ALL')
+const playerCountFilter = ref<number | 'ALL'>('ALL')
+const currentPage = ref(1)
+const pageSize = ref(8)
+
+const difficultyOptions = ['ALL', '入门', '进阶', '烧脑']
 
 const emptyBoard = (): Board => ({
   id: 0,
@@ -33,6 +41,10 @@ const emptyBoard = (): Board => ({
 const form = reactive<Board>(emptyBoard())
 
 const rolesById = computed(() => new Map(roles.value.map((role) => [role.id, role])))
+
+const playerCountOptions = computed(() =>
+  [...new Set(boards.value.map((board) => Number(board.playerCount)).filter(Boolean))].sort((a, b) => a - b),
+)
 
 const roleOptions = computed(() =>
   roles.value.map((role) => ({
@@ -62,28 +74,47 @@ const lineupPreview = computed(() =>
     .join(' '),
 )
 
-const briefConfigPreview = computed(() =>
-  form.roles
-    .filter((item) => item.roleId && item.count > 0)
-    .map((item) => {
-      const role = rolesById.value.get(item.roleId)
-      return role ? `${role.name}x${item.count}` : ''
-    })
-    .filter(Boolean)
-    .join(' '),
-)
-
 const cardDescriptionPreview = computed(() =>
   form.cardDescription?.trim()
   || form.tips.find((item) => item && item.trim())
   || form.specialRules.find((item) => item && item.trim())
-  || '卡片底部描述会优先显示首条小贴士，若为空则显示首条规则说明'
+  || '卡片底部描述会优先显示这里填写的列表简介，未填写时会回退到提示或规则说明。',
 )
+
+const filteredBoards = computed(() => {
+  const normalizedKeyword = keyword.value.trim().toLowerCase()
+  return boards.value.filter((board) => {
+    const searchableText = [
+      board.name,
+      board.cardDescription,
+      board.briefConfig,
+      board.ruleType,
+      board.tags.join(' '),
+    ]
+      .join(' ')
+      .toLowerCase()
+
+    const matchesKeyword = !normalizedKeyword || searchableText.includes(normalizedKeyword)
+    const matchesDifficulty = difficultyFilter.value === 'ALL' || board.difficulty === difficultyFilter.value
+    const matchesPlayerCount = playerCountFilter.value === 'ALL' || board.playerCount === playerCountFilter.value
+    return matchesKeyword && matchesDifficulty && matchesPlayerCount
+  })
+})
+
+const pagedBoards = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredBoards.value.slice(start, start + pageSize.value)
+})
+
+watch([keyword, difficultyFilter, playerCountFilter, pageSize], () => {
+  currentPage.value = 1
+})
 
 function normalizeBoard(board?: Board): Board {
   if (!board) {
     return emptyBoard()
   }
+
   const next = JSON.parse(JSON.stringify(board)) as Board
   next.cardDescription = next.cardDescription || ''
   next.tags = next.tags?.length ? next.tags : ['经典']
@@ -94,8 +125,24 @@ function normalizeBoard(board?: Board): Board {
   return next
 }
 
+function getBoardDescription(board: Board) {
+  return (
+    board.cardDescription?.trim()
+    || board.tips.find((item) => item && item.trim())
+    || board.specialRules.find((item) => item && item.trim())
+    || '未填写列表简介'
+  )
+}
+
 function resetForm(board?: Board) {
   Object.assign(form, normalizeBoard(board))
+}
+
+function resetFilters() {
+  keyword.value = ''
+  difficultyFilter.value = 'ALL'
+  playerCountFilter.value = 'ALL'
+  currentPage.value = 1
 }
 
 function openCreate() {
@@ -114,6 +161,9 @@ async function load() {
     const [boardData, roleData] = await Promise.all([api.getBoards(), api.getRoles()])
     boards.value = boardData
     roles.value = roleData
+    if ((currentPage.value - 1) * pageSize.value >= filteredBoards.value.length) {
+      currentPage.value = 1
+    }
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '板子数据加载失败')
   } finally {
@@ -202,7 +252,7 @@ onMounted(load)
   <el-card class="panel-card">
     <template #header>
       <div class="panel-header">
-        <div>
+        <div class="panel-copy">
           <div class="panel-kicker">Boards</div>
           <h3>板子管理</h3>
           <p>维护封面、阵容配置、规则、小贴士与 FAQ，并自动生成阵容摘要。</p>
@@ -211,8 +261,26 @@ onMounted(load)
       </div>
     </template>
 
-    <el-table :data="boards" v-loading="loading">
-      <el-table-column prop="name" label="板子名称" min-width="180" />
+    <div class="table-toolbar">
+      <el-input v-model="keyword" clearable placeholder="搜索板子名称、标签、规则或列表简介" />
+      <el-select v-model="difficultyFilter">
+        <el-option
+          v-for="item in difficultyOptions"
+          :key="item"
+          :label="item === 'ALL' ? '全部难度' : item"
+          :value="item"
+        />
+      </el-select>
+      <el-select v-model="playerCountFilter">
+        <el-option label="全部人数" value="ALL" />
+        <el-option v-for="count in playerCountOptions" :key="count" :label="`${count} 人`" :value="count" />
+      </el-select>
+      <el-button @click="resetFilters">重置</el-button>
+      <div class="toolbar-summary">当前 {{ filteredBoards.length }} 条</div>
+    </div>
+
+    <el-table :data="pagedBoards" v-loading="loading" empty-text="暂无符合条件的板子">
+      <el-table-column prop="name" label="板子名称" min-width="180" fixed="left" show-overflow-tooltip />
       <el-table-column prop="playerCount" label="人数" width="90" />
       <el-table-column prop="difficulty" label="难度" width="100" />
       <el-table-column label="标签" min-width="180">
@@ -222,7 +290,13 @@ onMounted(load)
           </div>
         </template>
       </el-table-column>
-      <el-table-column prop="briefConfig" label="阵容摘要" min-width="260" show-overflow-tooltip />
+      <el-table-column label="列表简介" min-width="280">
+        <template #default="{ row }">
+          <div class="description-cell" :title="getBoardDescription(row)">
+            {{ getBoardDescription(row) }}
+          </div>
+        </template>
+      </el-table-column>
       <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
           <el-button text type="primary" @click="openEdit(row)">编辑</el-button>
@@ -230,6 +304,20 @@ onMounted(load)
         </template>
       </el-table-column>
     </el-table>
+
+    <div class="table-footer">
+      <div class="table-total">共 {{ filteredBoards.length }} 条板子</div>
+      <el-pagination
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        background
+        size="small"
+        layout="sizes, prev, pager, next"
+        :pager-count="5"
+        :page-sizes="[6, 8, 10, 20]"
+        :total="filteredBoards.length"
+      />
+    </div>
   </el-card>
 
   <el-dialog v-model="dialogVisible" width="1040px" :title="form.id ? '编辑板子' : '新建板子'">
@@ -242,7 +330,6 @@ onMounted(load)
         <span>{{ form.ruleType || '标准板' }}</span>
       </div>
       <div class="preview-lineup">{{ lineupPreview || '请先配置角色阵容' }}</div>
-      <div class="preview-brief">{{ briefConfigPreview || '自动生成的 brief_config 会显示在这里' }}</div>
       <div class="preview-desc">{{ cardDescriptionPreview }}</div>
       <div class="preview-count" :class="{ warning: configuredPlayers !== Number(form.playerCount) }">
         当前配置 {{ configuredPlayers }} 人 / 目标 {{ form.playerCount }} 人
@@ -301,14 +388,30 @@ onMounted(load)
           <strong>角色配置</strong>
           <el-button text type="primary" @click="addRole">添加角色</el-button>
         </div>
-        <div v-for="(item, index) in form.roles" :key="index" class="inline-row">
-          <el-select v-model="item.roleId" placeholder="选择角色">
-            <el-option v-for="role in roleOptions" :key="role.value" :label="role.label" :value="role.value" />
-          </el-select>
-          <el-input-number v-model="item.count" :min="1" :max="12" />
-          <el-button text type="danger" @click="removeListItem(form.roles, index, { roleId: 0, count: 1 })">
-            删除
-          </el-button>
+        <div v-for="(item, index) in form.roles" :key="index" class="role-config-row">
+          <div class="role-config-main">
+            <div class="role-field-label">角色</div>
+            <el-select v-model="item.roleId" placeholder="选择角色" filterable>
+              <el-option v-for="role in roleOptions" :key="role.value" :label="role.label" :value="role.value" />
+            </el-select>
+          </div>
+          <div class="role-config-count">
+            <div class="role-field-label">数量</div>
+            <div class="count-shell">
+              <el-input-number v-model="item.count" :min="1" :max="12" />
+            </div>
+          </div>
+          <div class="role-config-actions">
+            <div class="role-field-label role-field-label--ghost">操作</div>
+            <el-button
+              class="role-delete-button"
+              text
+              type="danger"
+              @click="removeListItem(form.roles, index, { roleId: 0, count: 1 })"
+            >
+              删除
+            </el-button>
+          </div>
         </div>
       </div>
 
@@ -343,11 +446,7 @@ onMounted(load)
         <div v-for="(faq, index) in form.faqs" :key="`faq-${index}`" class="faq-row">
           <el-input v-model="faq.question" placeholder="问题" />
           <el-input v-model="faq.answer" type="textarea" :rows="2" placeholder="答案" />
-          <el-button
-            text
-            type="danger"
-            @click="removeListItem(form.faqs, index, { question: '', answer: '' })"
-          >
+          <el-button text type="danger" @click="removeListItem(form.faqs, index, { question: '', answer: '' })">
             删除
           </el-button>
         </div>
@@ -370,25 +469,93 @@ onMounted(load)
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  align-items: center;
+  align-items: flex-start;
+}
+
+.panel-copy {
+  display: grid;
+  gap: 4px;
 }
 
 .panel-kicker {
   color: #ffc000;
-  font-size: 12px;
+  font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
 }
 
 .panel-header h3 {
-  margin: 8px 0 6px;
-  font-size: 28px;
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.1;
 }
 
 .panel-header p {
   margin: 0;
   color: #8d8d8d;
-  line-height: 1.7;
+  line-height: 1.55;
+}
+
+.table-toolbar {
+  margin-bottom: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.table-toolbar > :nth-child(1) {
+  flex: 1 1 360px;
+  min-width: 280px;
+}
+
+.table-toolbar > :nth-child(2),
+.table-toolbar > :nth-child(3) {
+  flex: 0 0 150px;
+}
+
+.table-toolbar > :nth-child(4) {
+  flex: 0 0 90px;
+}
+
+.toolbar-summary {
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: #8d8d8d;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.description-cell {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  color: #cfcfcf;
+  line-height: 1.65;
+}
+
+.table-footer {
+  margin-top: 14px;
+  padding-top: 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.table-total {
+  color: #8d8d8d;
+  font-size: 13px;
+}
+
+.table-footer :deep(.el-pagination) {
+  margin-left: auto;
 }
 
 .tag-row {
@@ -429,12 +596,6 @@ onMounted(load)
 .preview-lineup {
   margin-top: 14px;
   font-size: 18px;
-  line-height: 1.7;
-}
-
-.preview-brief {
-  margin-top: 10px;
-  color: #9f9f9f;
   line-height: 1.7;
 }
 
@@ -484,6 +645,61 @@ onMounted(load)
   line-height: 1.6;
 }
 
+.role-config-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 228px 72px;
+  gap: 16px;
+  align-items: end;
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.015));
+}
+
+.role-config-main,
+.role-config-count,
+.role-config-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.role-field-label {
+  color: #8d8d8d;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.role-field-label--ghost {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.count-shell :deep(.el-input-number) {
+  width: 100%;
+}
+
+.count-shell :deep(.el-input-number__decrease),
+.count-shell :deep(.el-input-number__increase) {
+  width: 44px;
+}
+
+.count-shell :deep(.el-input__inner) {
+  text-align: center;
+  font-weight: 700;
+}
+
+.role-config-actions {
+  align-items: stretch;
+}
+
+.role-delete-button {
+  min-height: 48px;
+  justify-content: center;
+}
+
 .inline-row {
   display: grid;
   grid-template-columns: 1fr 120px 70px;
@@ -509,19 +725,60 @@ onMounted(load)
   gap: 12px;
 }
 
-@media (max-width: 980px) {
+@media (max-width: 1080px) {
+  .table-toolbar > :nth-child(1) {
+    flex-basis: 100%;
+  }
+
+  .toolbar-summary {
+    margin-left: 0;
+  }
+
+  .table-footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 900px) {
+  .panel-header,
   .form-grid,
   .faq-row,
-  .inline-row {
+  .inline-row,
+  .single-input-row,
+  .role-config-row {
     grid-template-columns: 1fr;
   }
 
-  .span-2 {
-    grid-column: auto;
+  .panel-header {
+    display: grid;
+  }
+
+  .table-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .table-toolbar > :nth-child(1),
+  .table-toolbar > :nth-child(2),
+  .table-toolbar > :nth-child(3),
+  .table-toolbar > :nth-child(4),
+  .toolbar-summary {
+    flex: initial;
+    min-width: 0;
+    margin-left: 0;
   }
 
   .upload-stack {
     flex-direction: column;
+  }
+
+  .span-2 {
+    grid-column: span 1;
+  }
+
+  .role-field-label--ghost {
+    display: none;
   }
 }
 </style>
