@@ -84,6 +84,6 @@ public class ApiCommunityController {
 
     @PostMapping("/upload")
     public ApiResponse<WolfbookDtos.UploadResponse> upload(@RequestHeader("Authorization") String authorization, @RequestPart("file") MultipartFile file) {
-        return ApiResponse.success(new WolfbookDtos.UploadResponse(uploadProvider.upload(file)));
+        return ApiResponse.success(new WolfbookDtos.UploadResponse(uploadProvider.upload(file, "community/media")));
     }
 }

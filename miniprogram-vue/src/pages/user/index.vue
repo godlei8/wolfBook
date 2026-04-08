@@ -1,6 +1,7 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
+import AssistantDock from '../../components/assistant/AssistantDock.vue'
 import api from '../../services/api'
 import storage from '../../services/storage'
 
@@ -295,12 +296,17 @@ onShow(() => {
         </view>
       </view>
     </view>
+
+    <AssistantDock
+      scene="user_index"
+      :page-context="{ page: 'user/index', loggedIn: !!user, favoritesCount: viewState.favoritesCount, sessionsCount: viewState.sessionsCount }"
+    />
   </view>
 </template>
 
 <style scoped lang="scss">
 .profile-card {
-  margin-top: 28rpx;
+  margin-top: 20rpx;
 }
 
 .profile-header {
@@ -379,40 +385,42 @@ onShow(() => {
 .profile-helper,
 .login-desc,
 .entry-desc {
-  margin-top: 12rpx;
+  margin-top: 6rpx;
   color: #8e8e8e;
-  font-size: 24rpx;
-  line-height: 1.7;
+  font-size: 20rpx;
+  line-height: 1.5;
 }
 
 .profile-action {
-  margin-top: 28rpx;
+  margin-top: 20rpx;
 }
 
 .login-panel {
-  margin-top: 28rpx;
+  margin-top: 20rpx;
 }
 
 .login-title,
 .entry-title {
   color: #ffffff;
-  font-size: 38rpx;
+  font-size: 30rpx;
   line-height: 1.14;
   font-weight: 700;
 }
 
 .entry-stack {
   display: grid;
-  gap: 20rpx;
-  margin-top: 28rpx;
+  gap: 12rpx;
+  margin-top: 18rpx;
 }
 
 .entry-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20rpx;
-  min-height: 160rpx;
+  gap: 14rpx;
+  min-height: 112rpx;
+  padding-top: 20rpx;
+  padding-bottom: 20rpx;
 }
 
 .entry-copy {
@@ -422,9 +430,13 @@ onShow(() => {
 
 .entry-side {
   display: grid;
+  grid-template-columns: auto auto;
+  grid-template-rows: auto auto;
   justify-items: end;
-  gap: 6rpx;
-  min-width: 110rpx;
+  column-gap: 10rpx;
+  row-gap: 0;
+  min-width: 106rpx;
+  align-items: end;
 }
 
 .entry-side--solo {
@@ -435,29 +447,38 @@ onShow(() => {
 }
 
 .entry-count {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  align-self: center;
   color: #ffc000;
-  font-size: 56rpx;
-  line-height: 0.92;
+  font-size: 42rpx;
+  line-height: 0.94;
   font-weight: 700;
 }
 
 .entry-unit {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: end;
   color: #969696;
-  font-size: 22rpx;
+  font-size: 18rpx;
+  line-height: 1;
 }
 
 .entry-arrow {
+  grid-column: 2;
+  grid-row: 2;
   color: #ffffff;
-  font-size: 40rpx;
+  font-size: 30rpx;
   line-height: 1;
 }
 
 .action-button {
-  height: 88rpx;
-  line-height: 88rpx;
-  padding: 0 28rpx;
+  height: 72rpx;
+  line-height: 72rpx;
+  padding: 0 24rpx;
   border-radius: 14rpx;
-  font-size: 28rpx;
+  font-size: 24rpx;
   font-weight: 700;
 }
 

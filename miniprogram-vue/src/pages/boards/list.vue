@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
 import BoardCard from '../../components/BoardCard.vue'
+import AssistantDock from '../../components/assistant/AssistantDock.vue'
 import api from '../../services/api'
 import storage from '../../services/storage'
 
@@ -154,6 +155,8 @@ onPullDownRefresh(async () => {
       @select="openDetail"
       @favorite-toggle="toggleFavorite"
     />
+
+    <AssistantDock scene="boards_list" :page-context="{ page: 'boards/list', keyword, playerFilter, difficultyFilter, tagFilter }" />
   </view>
 </template>
 
@@ -213,5 +216,15 @@ onPullDownRefresh(async () => {
 
 .filter-title {
   margin: 18rpx 0 10rpx;
+}
+
+.chip-row {
+  margin: 0 -6rpx;
+  padding: 4rpx 10rpx 8rpx 6rpx;
+  box-sizing: border-box;
+}
+
+.chip {
+  padding: 10rpx 24rpx;
 }
 </style>

@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
+import AssistantDock from '../../components/assistant/AssistantDock.vue'
 import api from '../../services/api'
 
 const groups = ref([])
@@ -40,6 +41,8 @@ onLoad(loadRoles)
         </view>
       </view>
     </view>
+
+    <AssistantDock scene="roles_list" :page-context="{ page: 'roles/list', groups: groups.map((group) => group.title) }" />
   </view>
 </template>
 

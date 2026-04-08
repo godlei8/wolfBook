@@ -49,6 +49,12 @@
       }
     },
     {
+      "path": "pages/assistant/chat",
+      "style": {
+        "navigationBarTitleText": "AI 助手"
+      }
+    },
+    {
       "path": "pages/community/post",
       "style": {
         "navigationBarTitleText": "发布帖子"

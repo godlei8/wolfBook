@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
+import AssistantDock from '../../components/assistant/AssistantDock.vue'
 import storage from '../../services/storage'
 import { formatDateTime } from '../../utils/format'
 
@@ -80,6 +81,7 @@ onShow(refreshSessions)
     </view>
 
     <view class="floating-plus" @tap="createSession">+</view>
+    <AssistantDock scene="sessions_index" :page-context="{ page: 'sessions/index', sessionCount: sessions.length }" />
   </view>
 </template>
 

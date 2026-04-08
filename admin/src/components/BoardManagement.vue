@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { UploadRequestOptions } from 'element-plus'
@@ -250,17 +250,6 @@ onMounted(load)
 
 <template>
   <el-card class="panel-card">
-    <template #header>
-      <div class="panel-header">
-        <div class="panel-copy">
-          <div class="panel-kicker">Boards</div>
-          <h3>板子管理</h3>
-          <p>维护封面、阵容配置、规则、小贴士与 FAQ，并自动生成阵容摘要。</p>
-        </div>
-        <el-button type="primary" @click="openCreate">新建板子</el-button>
-      </div>
-    </template>
-
     <div class="table-toolbar">
       <el-input v-model="keyword" clearable placeholder="搜索板子名称、标签、规则或列表简介" />
       <el-select v-model="difficultyFilter">
@@ -277,6 +266,7 @@ onMounted(load)
       </el-select>
       <el-button @click="resetFilters">重置</el-button>
       <div class="toolbar-summary">当前 {{ filteredBoards.length }} 条</div>
+      <el-button type="primary" @click="openCreate">新建板子</el-button>
     </div>
 
     <el-table :data="pagedBoards" v-loading="loading" empty-text="暂无符合条件的板子">
@@ -465,37 +455,6 @@ onMounted(load)
   border-radius: 18px;
 }
 
-.panel-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: flex-start;
-}
-
-.panel-copy {
-  display: grid;
-  gap: 4px;
-}
-
-.panel-kicker {
-  color: #ffc000;
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
-.panel-header h3 {
-  margin: 0;
-  font-size: 22px;
-  line-height: 1.1;
-}
-
-.panel-header p {
-  margin: 0;
-  color: #8d8d8d;
-  line-height: 1.55;
-}
-
 .table-toolbar {
   margin-bottom: 14px;
   display: flex;
@@ -522,9 +481,16 @@ onMounted(load)
   flex: 0 0 90px;
 }
 
-.toolbar-summary {
+.table-toolbar > :nth-child(5) {
   margin-left: auto;
   flex: 0 0 auto;
+}
+
+.table-toolbar > :nth-child(6) {
+  flex: 0 0 auto;
+}
+
+.toolbar-summary {
   color: #8d8d8d;
   font-size: 13px;
   white-space: nowrap;
@@ -730,7 +696,7 @@ onMounted(load)
     flex-basis: 100%;
   }
 
-  .toolbar-summary {
+  .table-toolbar > :nth-child(5) {
     margin-left: 0;
   }
 
@@ -741,17 +707,12 @@ onMounted(load)
 }
 
 @media (max-width: 900px) {
-  .panel-header,
   .form-grid,
   .faq-row,
   .inline-row,
   .single-input-row,
   .role-config-row {
     grid-template-columns: 1fr;
-  }
-
-  .panel-header {
-    display: grid;
   }
 
   .table-toolbar {
@@ -763,6 +724,8 @@ onMounted(load)
   .table-toolbar > :nth-child(2),
   .table-toolbar > :nth-child(3),
   .table-toolbar > :nth-child(4),
+  .table-toolbar > :nth-child(5),
+  .table-toolbar > :nth-child(6),
   .toolbar-summary {
     flex: initial;
     min-width: 0;

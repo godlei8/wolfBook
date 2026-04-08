@@ -2,6 +2,7 @@ const AUTH_TOKEN_KEY = 'auth_token'
 const USER_PROFILE_KEY = 'user_profile'
 const FAVORITES_KEY = 'favorite_boards'
 const SESSIONS_KEY = 'werewolf_sessions'
+const ASSISTANT_DOCK_KEY = 'assistant_dock_state'
 
 function parseMaybeJson(value) {
   if (typeof value !== 'string') {
@@ -172,10 +173,17 @@ export default {
     this.setSessions(next)
     return next
   },
+  getAssistantDockState() {
+    return getJson(ASSISTANT_DOCK_KEY, { side: 'right', top: 420 })
+  },
+  setAssistantDockState(value) {
+    setJson(ASSISTANT_DOCK_KEY, value)
+  },
   clearAllLocalData() {
     uni.removeStorageSync(AUTH_TOKEN_KEY)
     uni.removeStorageSync(USER_PROFILE_KEY)
     uni.removeStorageSync(FAVORITES_KEY)
     uni.removeStorageSync(SESSIONS_KEY)
+    uni.removeStorageSync(ASSISTANT_DOCK_KEY)
   },
 }

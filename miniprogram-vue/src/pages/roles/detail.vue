@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
+import AssistantDock from '../../components/assistant/AssistantDock.vue'
 import api from '../../services/api'
 
 const role = ref(null)
@@ -63,6 +64,11 @@ onLoad((options) => loadRole(Number(options?.id || 0)))
         </view>
       </scroll-view>
     </view>
+
+    <AssistantDock
+      scene="role_detail"
+      :page-context="{ page: 'roles/detail', roleId: role.id, roleName: role.name, faction: role.faction, roleType: role.roleType }"
+    />
   </view>
 </template>
 

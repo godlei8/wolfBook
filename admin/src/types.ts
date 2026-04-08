@@ -112,3 +112,101 @@ export interface ReportItem {
   processTime: string | null
   createTime: string
 }
+
+export interface AssistantAppearance {
+  mascot: string
+  accentColor: string
+  dockLabel: string
+}
+
+export interface AssistantFeatureFlags {
+  webSearchEnabled: boolean
+  historyEnabled: boolean
+}
+
+export interface AssistantBootstrapResponse {
+  enabled: boolean
+  welcomeMessage: string
+  quickQuestions: string[]
+  latestSessionId: string | null
+  appearance: AssistantAppearance
+  featureFlags: AssistantFeatureFlags
+}
+
+export interface AdminAiConfig {
+  base: {
+    enabled: boolean
+    welcomeMessage: string
+    quickQuestions: string[]
+    chatModel: string
+    embeddingModel: string
+    temperature: number
+    maxSuggestions: number
+  }
+  prompt: {
+    systemPrompt: string
+    recommendationPrompt: string
+    refusalPrompt: string
+  }
+  retrieval: {
+    topK: number
+    similarityThreshold: number
+    historyWindow: number
+  }
+  search: {
+    webSearchEnabled: boolean
+    timeoutSeconds: number
+    provider: string
+  }
+  safety: {
+    unsupportedMessage: string
+    blockedKeywords: string[]
+  }
+  ui: {
+    mascot: string
+    dockLabel: string
+    accentColor: string
+  }
+}
+
+export interface AdminAiDocument {
+  id: number
+  name: string
+  fileName: string | null
+  sourceType: string
+  sourceKey: string
+  sourceId: string | null
+  summary: string | null
+  chunkCount: number
+  processingStatus: string
+  reviewStatus: string
+  publishVersionId: number | null
+  lastError: string | null
+  createTime: string
+  updateTime: string
+}
+
+export interface AdminAiVersion {
+  id: number
+  versionName: string
+  notes: string | null
+  documentIds: number[]
+  current: boolean
+  publishedBy: string | null
+  createTime: string
+}
+
+export interface AdminAiLog {
+  id: number
+  openid: string | null
+  sessionId: string | null
+  userMessage: string
+  answerType: string
+  hitSources: string[]
+  usedWebSearch: boolean
+  latencyMs: number
+  success: boolean
+  failureType: string | null
+  traceId: string
+  createTime: string
+}

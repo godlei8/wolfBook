@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
+import AssistantDock from '../../components/assistant/AssistantDock.vue'
 import api from '../../services/api'
 
 const board = ref(null)
@@ -73,6 +74,11 @@ onLoad((options) => {
         <view class="faq-a">A. {{ faq.answer }}</view>
       </view>
     </view>
+
+    <AssistantDock
+      scene="board_detail"
+      :page-context="{ page: 'boards/detail', boardId: board.id, boardName: board.name, playerCount: board.playerCount, difficulty: board.difficulty }"
+    />
   </view>
 </template>
 

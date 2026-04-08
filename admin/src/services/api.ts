@@ -1,5 +1,9 @@
 import axios from 'axios'
 import type {
+  AdminAiConfig,
+  AdminAiDocument,
+  AdminAiLog,
+  AdminAiVersion,
   ApiResponse,
   Board,
   CommentView,
@@ -106,5 +110,47 @@ export const api = {
         headers: { 'Content-Type': 'multipart/form-data' },
       }),
     )
+  },
+  async getAiConfig() {
+    return unwrap<AdminAiConfig>(http.get('/admin/ai/config'))
+  },
+  async saveAiConfig(payload: AdminAiConfig) {
+    return unwrap<AdminAiConfig>(http.put('/admin/ai/config', payload))
+  },
+  async getAiDocuments() {
+    return unwrap<AdminAiDocument[]>(http.get('/admin/ai/documents'))
+  },
+  async uploadAiDocument(file: File) {
+    const formData = new FormData()
+    formData.append('file', file)
+    return unwrap<AdminAiDocument>(
+      http.post('/admin/ai/documents', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }),
+    )
+  },
+  async updateAiDocumentReview(id: number, reviewStatus: string) {
+    return unwrap<AdminAiDocument>(http.patch(`/admin/ai/documents/${id}`, { reviewStatus }))
+  },
+  async reindexAiDocument(id: number) {
+    return unwrap<AdminAiDocument>(http.post(`/admin/ai/documents/${id}/reindex`))
+  },
+  async clearAiDocuments() {
+    return unwrap<number>(http.delete('/admin/ai/documents'))
+  },
+  async getAiVersions() {
+    return unwrap<AdminAiVersion[]>(http.get('/admin/ai/publish'))
+  },
+  async publishAiVersion(notes: string) {
+    return unwrap<AdminAiVersion>(http.post('/admin/ai/publish', { notes }))
+  },
+  async rollbackAiVersion(versionId: number) {
+    return unwrap<AdminAiVersion>(http.post('/admin/ai/publish/rollback', { versionId }))
+  },
+  async getAiLogs() {
+    return unwrap<AdminAiLog[]>(http.get('/admin/ai/logs'))
+  },
+  async clearAiLogs() {
+    return unwrap<number>(http.delete('/admin/ai/logs'))
   },
 }

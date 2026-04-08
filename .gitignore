@@ -1,9 +1,13 @@
 backend/target/
 backend/uploads/
+uploads/
+backend/src/main/resources/application-dev.yml
 admin/node_modules/
 admin/dist/
 admin/.vite/
 miniprogram-vue/node_modules/
 miniprogram-vue/dist/
+.local/
+SecretKey.csv
 .codex/
 .vscode/

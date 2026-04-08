@@ -169,16 +169,6 @@ onMounted(load)
 
 <template>
   <el-card class="panel-card" v-loading="loading">
-    <template #header>
-      <div class="panel-header">
-        <div class="panel-copy">
-          <div class="panel-kicker">Community</div>
-          <h3>社区治理</h3>
-          <p>对帖子、评论、举报进行统一治理，处理结果会直接沉淀到后端数据。</p>
-        </div>
-      </div>
-    </template>
-
     <el-tabs v-model="activeTab">
       <el-tab-pane label="帖子审核" name="posts">
         <div class="toolbar">

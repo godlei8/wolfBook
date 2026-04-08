@@ -133,6 +133,6 @@ public class AdminController {
     @PostMapping("/upload")
     public ApiResponse<WolfbookDtos.UploadResponse> upload(@RequestHeader("Authorization") String authorization, @RequestPart("file") MultipartFile file) {
         adminService.requireAdmin(authorization);
-        return ApiResponse.success(new WolfbookDtos.UploadResponse(uploadProvider.upload(file)));
+        return ApiResponse.success(new WolfbookDtos.UploadResponse(uploadProvider.upload(file, "admin/assets")));
     }
 }

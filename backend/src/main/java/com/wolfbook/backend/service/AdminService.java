@@ -9,6 +9,7 @@ import com.wolfbook.backend.domain.Report;
 import com.wolfbook.backend.dto.WolfbookDtos;
 import com.wolfbook.backend.entity.*;
 import com.wolfbook.backend.mapper.*;
+import com.wolfbook.backend.service.assistant.AssistantKnowledgeService;
 import com.wolfbook.backend.support.DomainConverter;
 import com.wolfbook.backend.support.TokenService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -31,6 +32,7 @@ public class AdminService {
     private final ReportMapper reportMapper;
     private final BoardService boardService;
     private final CommunityService communityService;
+    private final AssistantKnowledgeService assistantKnowledgeService;
     private final TokenService tokenService;
     private final DomainConverter converter;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
@@ -45,6 +47,7 @@ public class AdminService {
             ReportMapper reportMapper,
             BoardService boardService,
             CommunityService communityService,
+            AssistantKnowledgeService assistantKnowledgeService,
             TokenService tokenService,
             DomainConverter converter
     ) {
@@ -57,6 +60,7 @@ public class AdminService {
         this.reportMapper = reportMapper;
         this.boardService = boardService;
         this.communityService = communityService;
+        this.assistantKnowledgeService = assistantKnowledgeService;
         this.tokenService = tokenService;
         this.converter = converter;
     }
@@ -134,6 +138,7 @@ public class AdminService {
             ref.setBoardId(entity.getId());
             boardRoleMapper.insert(ref);
         }
+        assistantKnowledgeService.rebuildStructuredKnowledge();
         return boardService.getBoard(entity.getId());
     }
 
@@ -141,6 +146,7 @@ public class AdminService {
         boardService.getBoard(id);
         boardRoleMapper.delete(new LambdaQueryWrapper<BoardRoleEntity>().eq(BoardRoleEntity::getBoardId, id));
         boardMapper.deleteById(id);
+        assistantKnowledgeService.rebuildStructuredKnowledge();
     }
 
     public List<WolfbookDtos.AdminRoleView> listRoles() {
@@ -169,6 +175,7 @@ public class AdminService {
         } else {
             roleMapper.updateById(entity);
         }
+        assistantKnowledgeService.rebuildStructuredKnowledge();
         return toAdminRoleView(entity);
     }
 
@@ -181,6 +188,7 @@ public class AdminService {
             throw new ApiException(4002, "该角色已被板子使用，无法删除");
         }
         roleMapper.deleteById(id);
+        assistantKnowledgeService.rebuildStructuredKnowledge();
     }
 
     public PageResponse<WolfbookDtos.PostSummaryView> listPosts(int page, int size) {

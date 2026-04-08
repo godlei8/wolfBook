@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
+import AssistantDock from '../../components/assistant/AssistantDock.vue'
 import api from '../../services/api'
 import storage from '../../services/storage'
 import { formatDateTime } from '../../utils/format'
@@ -102,6 +103,11 @@ onLoad((options) => {
       <textarea v-model="commentText" class="field-textarea" placeholder="输入你的判断或复盘结论" />
       <button class="button-primary submit-btn" @tap="submitComment">发送评论</button>
     </view>
+
+    <AssistantDock
+      scene="community_detail"
+      :page-context="{ page: 'community/detail', postId: post.id, nickname: post.nickname, commentCount: (post.comments || []).length }"
+    />
   </view>
 </template>
 

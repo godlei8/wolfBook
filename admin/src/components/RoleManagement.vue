@@ -223,17 +223,6 @@ onMounted(load)
 
 <template>
   <el-card class="panel-card">
-    <template #header>
-      <div class="panel-header">
-        <div class="panel-copy">
-          <div class="panel-kicker">Roles</div>
-          <h3>角色管理</h3>
-          <p>角色类型固定为平民 / 神职 / 狼人 / 功能狼 / 第三方，避免后台录入发散。</p>
-        </div>
-        <el-button type="primary" @click="resetForm(); dialogVisible = true">新建角色</el-button>
-      </div>
-    </template>
-
     <div class="table-toolbar">
       <el-input v-model="keyword" clearable placeholder="搜索角色名称、别名或组合标签" />
       <el-select v-model="factionFilter">
@@ -246,6 +235,7 @@ onMounted(load)
       </el-select>
       <el-button @click="resetFilters">重置</el-button>
       <div class="toolbar-summary">当前 {{ filteredRoles.length }} 条</div>
+      <el-button type="primary" @click="resetForm(); dialogVisible = true">新建角色</el-button>
     </div>
 
     <el-table :data="pagedRoles" v-loading="loading" empty-text="暂无符合条件的角色">
@@ -426,9 +416,16 @@ onMounted(load)
   flex: 0 0 90px;
 }
 
-.toolbar-summary {
+.table-toolbar > :nth-child(5) {
   margin-left: auto;
   flex: 0 0 auto;
+}
+
+.table-toolbar > :nth-child(6) {
+  flex: 0 0 auto;
+}
+
+.toolbar-summary {
   color: #8d8d8d;
   font-size: 13px;
   white-space: nowrap;
@@ -534,7 +531,7 @@ onMounted(load)
     flex-basis: 100%;
   }
 
-  .toolbar-summary {
+  .table-toolbar > :nth-child(5) {
     margin-left: 0;
   }
 
@@ -564,6 +561,8 @@ onMounted(load)
   .table-toolbar > :nth-child(2),
   .table-toolbar > :nth-child(3),
   .table-toolbar > :nth-child(4),
+  .table-toolbar > :nth-child(5),
+  .table-toolbar > :nth-child(6),
   .toolbar-summary {
     flex: initial;
     min-width: 0;

@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
+import AssistantDock from '../../components/assistant/AssistantDock.vue'
 import api from '../../services/api'
 import { fromNow } from '../../utils/format'
 
@@ -54,6 +55,7 @@ onPullDownRefresh(async () => {
     </view>
 
     <view class="floating-plus" @tap="createPost">+</view>
+    <AssistantDock scene="community_index" :page-context="{ page: 'community/index', postCount: posts.length }" />
   </view>
 </template>
 
