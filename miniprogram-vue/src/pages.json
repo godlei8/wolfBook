@@ -1,0 +1,120 @@
+{
+  "pages": [
+    {
+      "path": "pages/boards/list",
+      "style": {
+        "navigationBarTitleText": "板子库"
+      }
+    },
+    {
+      "path": "pages/community/index",
+      "style": {
+        "navigationBarTitleText": "社区"
+      }
+    },
+    {
+      "path": "pages/sessions/index",
+      "style": {
+        "navigationBarTitleText": "笔记"
+      }
+    },
+    {
+      "path": "pages/user/index",
+      "style": {
+        "navigationBarTitleText": "我的"
+      }
+    },
+    {
+      "path": "pages/boards/detail",
+      "style": {
+        "navigationBarTitleText": "板子详情"
+      }
+    },
+    {
+      "path": "pages/roles/list",
+      "style": {
+        "navigationBarTitleText": "角色图鉴"
+      }
+    },
+    {
+      "path": "pages/roles/detail",
+      "style": {
+        "navigationBarTitleText": "角色详情"
+      }
+    },
+    {
+      "path": "pages/community/detail",
+      "style": {
+        "navigationBarTitleText": "帖子详情"
+      }
+    },
+    {
+      "path": "pages/community/post",
+      "style": {
+        "navigationBarTitleText": "发布帖子"
+      }
+    },
+    {
+      "path": "pages/sessions/edit",
+      "style": {
+        "navigationBarTitleText": "创建对局"
+      }
+    },
+    {
+      "path": "pages/sessions/detail",
+      "style": {
+        "navigationBarTitleText": "对局笔记"
+      }
+    },
+    {
+      "path": "pages/user/favorites",
+      "style": {
+        "navigationBarTitleText": "我的收藏"
+      }
+    },
+    {
+      "path": "pages/user/settings",
+      "style": {
+        "navigationBarTitleText": "设置"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "white",
+    "navigationBarTitleText": "狼人杀图鉴",
+    "navigationBarBackgroundColor": "#000000",
+    "backgroundColor": "#000000"
+  },
+  "tabBar": {
+    "color": "#8d8d8d",
+    "selectedColor": "#ffc000",
+    "backgroundColor": "#050505",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/boards/list",
+        "text": "板子",
+        "iconPath": "static/tabbar/board-inactive.png",
+        "selectedIconPath": "static/tabbar/board-active.png"
+      },
+      {
+        "pagePath": "pages/community/index",
+        "text": "社区",
+        "iconPath": "static/tabbar/community-inactive.png",
+        "selectedIconPath": "static/tabbar/community-active.png"
+      },
+      {
+        "pagePath": "pages/sessions/index",
+        "text": "笔记",
+        "iconPath": "static/tabbar/sessions-inactive.png",
+        "selectedIconPath": "static/tabbar/sessions-active.png"
+      },
+      {
+        "pagePath": "pages/user/index",
+        "text": "我的",
+        "iconPath": "static/tabbar/user-inactive.png",
+        "selectedIconPath": "static/tabbar/user-active.png"
+      }
+    ]
+  }
+}
