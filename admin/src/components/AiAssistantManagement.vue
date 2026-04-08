@@ -495,54 +495,56 @@ onMounted(loadAll)
             </div>
 
             <template v-if="documents.length">
-              <el-table :data="pagedDocuments" class="knowledge-table" empty-text="暂无知识文档">
-                <el-table-column prop="name" label="名称" min-width="220">
-                  <template #default="{ row }">
-                    <div class="document-name-cell">
-                      <strong>{{ row.name }}</strong>
-                      <span>{{ row.fileName || row.sourceKey }}</span>
-                    </div>
-                  </template>
-                </el-table-column>
-                <el-table-column label="来源" width="120">
-                  <template #default="{ row }">
-                    <el-tag effect="plain">{{ sourceTypeLabel(row.sourceType) }}</el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column label="解析状态" width="126">
-                  <template #default="{ row }">
-                    <el-tag :type="statusTagType(row.processingStatus)" effect="dark">
-                      {{ processingStatusLabel(row.processingStatus) }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column label="审核状态" width="126">
-                  <template #default="{ row }">
-                    <el-tag :type="statusTagType(row.reviewStatus)" effect="dark">
-                      {{ reviewStatusLabel(row.reviewStatus) }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column label="切片数" width="92" align="center">
-                  <template #default="{ row }">
-                    <span class="document-chunk-count">{{ row.chunkCount }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="摘要" min-width="320" show-overflow-tooltip>
-                  <template #default="{ row }">
-                    <span class="document-summary">{{ row.summary || '暂无摘要，等待解析完成。' }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="操作" width="220" fixed="right">
-                  <template #default="{ row }">
-                    <div class="document-actions">
-                      <el-button text type="primary" @click="updateReview(row, 'APPROVED')">通过</el-button>
-                      <el-button text type="warning" @click="updateReview(row, 'REJECTED')">驳回</el-button>
-                      <el-button text @click="reindex(row)">重建索引</el-button>
-                    </div>
-                  </template>
-                </el-table-column>
-              </el-table>
+              <div class="table-scroll-shell table-scroll-shell--knowledge">
+                <el-table :data="pagedDocuments" class="knowledge-table wide-table wide-table--knowledge" empty-text="暂无知识文档">
+                  <el-table-column prop="name" label="名称" min-width="220">
+                    <template #default="{ row }">
+                      <div class="document-name-cell">
+                        <strong>{{ row.name }}</strong>
+                        <span>{{ row.fileName || row.sourceKey }}</span>
+                      </div>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="来源" width="120">
+                    <template #default="{ row }">
+                      <el-tag effect="plain">{{ sourceTypeLabel(row.sourceType) }}</el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="解析状态" width="126">
+                    <template #default="{ row }">
+                      <el-tag :type="statusTagType(row.processingStatus)" effect="dark">
+                        {{ processingStatusLabel(row.processingStatus) }}
+                      </el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="审核状态" width="126">
+                    <template #default="{ row }">
+                      <el-tag :type="statusTagType(row.reviewStatus)" effect="dark">
+                        {{ reviewStatusLabel(row.reviewStatus) }}
+                      </el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="切片数" width="92" align="center">
+                    <template #default="{ row }">
+                      <span class="document-chunk-count">{{ row.chunkCount }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="摘要" min-width="320" show-overflow-tooltip>
+                    <template #default="{ row }">
+                      <span class="document-summary">{{ row.summary || '暂无摘要，等待解析完成。' }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="操作" width="220" fixed="right">
+                    <template #default="{ row }">
+                      <div class="document-actions">
+                        <el-button text type="primary" @click="updateReview(row, 'APPROVED')">通过</el-button>
+                        <el-button text type="warning" @click="updateReview(row, 'REJECTED')">驳回</el-button>
+                        <el-button text @click="reindex(row)">重建索引</el-button>
+                      </div>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </div>
 
               <div class="table-footer">
                 <div class="table-total">共 {{ documents.length }} 条知识资产</div>
@@ -584,29 +586,31 @@ onMounted(loadAll)
           </div>
         </el-card>
 
-        <el-table :data="pagedVersions" empty-text="暂无发布版本">
-          <el-table-column prop="versionName" label="版本" min-width="180" />
-          <el-table-column label="状态" width="110">
-            <template #default="{ row }">
-              <el-tag :type="row.current ? 'warning' : 'info'">
-                {{ row.current ? '当前线上' : '历史版本' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="发布人" width="120">
-            <template #default="{ row }">{{ row.publishedBy || '系统' }}</template>
-          </el-table-column>
-          <el-table-column prop="notes" label="说明" min-width="280" show-overflow-tooltip />
-          <el-table-column label="文档数" width="100">
-            <template #default="{ row }">{{ row.documentIds.length }}</template>
-          </el-table-column>
-          <el-table-column prop="createTime" label="发布时间" width="180" />
-          <el-table-column label="操作" width="120" fixed="right">
-            <template #default="{ row }">
-              <el-button text :disabled="row.current" @click="rollback(row.id)">回滚到此</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <div class="table-scroll-shell">
+          <el-table :data="pagedVersions" class="wide-table wide-table--publish" empty-text="暂无发布版本">
+            <el-table-column prop="versionName" label="版本" min-width="180" />
+            <el-table-column label="状态" width="110">
+              <template #default="{ row }">
+                <el-tag :type="row.current ? 'warning' : 'info'">
+                  {{ row.current ? '当前线上' : '历史版本' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="发布人" width="120">
+              <template #default="{ row }">{{ row.publishedBy || '系统' }}</template>
+            </el-table-column>
+            <el-table-column prop="notes" label="说明" min-width="280" show-overflow-tooltip />
+            <el-table-column label="文档数" width="100">
+              <template #default="{ row }">{{ row.documentIds.length }}</template>
+            </el-table-column>
+            <el-table-column prop="createTime" label="发布时间" width="180" />
+            <el-table-column label="操作" width="120" fixed="right">
+              <template #default="{ row }">
+                <el-button text :disabled="row.current" @click="rollback(row.id)">回滚到此</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
 
         <div v-if="versions.length" class="table-footer">
           <div class="table-total">共 {{ versions.length }} 个版本</div>
@@ -634,37 +638,39 @@ onMounted(loadAll)
           </el-button>
         </div>
 
-        <el-table :data="pagedLogs" empty-text="暂无问答日志">
-          <el-table-column prop="createTime" label="时间" width="180" />
-          <el-table-column prop="openid" label="用户" width="180" show-overflow-tooltip />
-          <el-table-column prop="userMessage" label="问题" min-width="280" show-overflow-tooltip />
-          <el-table-column prop="answerType" label="答案类型" width="180" />
-          <el-table-column label="命中来源" min-width="260">
-            <template #default="{ row }">
-              <div class="tag-row">
-                <el-tag v-for="item in formatHitSources(row.hitSources)" :key="item" effect="plain">{{ item }}</el-tag>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="联网" width="80">
-            <template #default="{ row }">
-              <el-tag :type="row.usedWebSearch ? 'warning' : 'info'">
-                {{ row.usedWebSearch ? '是' : '否' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="耗时" width="90">
-            <template #default="{ row }">{{ row.latencyMs }}ms</template>
-          </el-table-column>
-          <el-table-column label="结果" width="90">
-            <template #default="{ row }">
-              <el-tag :type="row.success ? 'success' : 'danger'">
-                {{ row.success ? '成功' : '失败' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="failureType" label="失败类型" width="160" show-overflow-tooltip />
-        </el-table>
+        <div class="table-scroll-shell">
+          <el-table :data="pagedLogs" class="wide-table wide-table--logs" empty-text="暂无问答日志">
+            <el-table-column prop="createTime" label="时间" width="180" />
+            <el-table-column prop="openid" label="用户" width="180" show-overflow-tooltip />
+            <el-table-column prop="userMessage" label="问题" min-width="280" show-overflow-tooltip />
+            <el-table-column prop="answerType" label="答案类型" width="180" />
+            <el-table-column label="命中来源" min-width="260">
+              <template #default="{ row }">
+                <div class="tag-row">
+                  <el-tag v-for="item in formatHitSources(row.hitSources)" :key="item" effect="plain">{{ item }}</el-tag>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="联网" width="80">
+              <template #default="{ row }">
+                <el-tag :type="row.usedWebSearch ? 'warning' : 'info'">
+                  {{ row.usedWebSearch ? '是' : '否' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="耗时" width="90">
+              <template #default="{ row }">{{ row.latencyMs }}ms</template>
+            </el-table-column>
+            <el-table-column label="结果" width="90">
+              <template #default="{ row }">
+                <el-tag :type="row.success ? 'success' : 'danger'">
+                  {{ row.success ? '成功' : '失败' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="failureType" label="失败类型" width="160" show-overflow-tooltip />
+          </el-table>
+        </div>
 
         <div v-if="logs.length" class="table-footer">
           <div class="table-total">共 {{ logs.length }} 条问答日志</div>
@@ -688,16 +694,14 @@ onMounted(loadAll)
 .panel-card {
   position: relative;
   border-radius: 18px;
+  min-width: 0;
 }
 
 .panel-actions {
-  position: sticky;
-  top: calc(var(--panel-sticky-offset, 0px) + 12px);
-  z-index: 16;
-  height: 0;
   display: flex;
   justify-content: flex-end;
-  pointer-events: none;
+  margin-bottom: 12px;
+  min-width: 0;
 }
 
 .panel-actions :deep(.el-button) {
@@ -712,11 +716,11 @@ onMounted(loadAll)
   color: #f1cf72;
   font-weight: 700;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  pointer-events: auto;
 }
 
 .ai-tabs {
   display: grid;
+  min-width: 0;
 }
 
 .ai-tabs :deep(.el-tabs__header) {
@@ -771,11 +775,13 @@ onMounted(loadAll)
 .knowledge-shell {
   display: grid;
   gap: 18px;
+  min-width: 0;
 }
 
 .knowledge-hero {
   display: grid;
   gap: 16px;
+  min-width: 0;
 }
 
 .knowledge-upload-card {
@@ -788,6 +794,7 @@ onMounted(loadAll)
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 18px;
+  min-width: 0;
 }
 
 .knowledge-upload-copy,
@@ -835,6 +842,7 @@ onMounted(loadAll)
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
+  min-width: 0;
 }
 
 .knowledge-stat-card {
@@ -875,6 +883,7 @@ onMounted(loadAll)
   border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.02);
+  min-width: 0;
 }
 
 .knowledge-section-header {
@@ -883,6 +892,7 @@ onMounted(loadAll)
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 14px;
+  min-width: 0;
 }
 
 .knowledge-section-actions,
@@ -891,6 +901,8 @@ onMounted(loadAll)
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .logs-toolbar {
@@ -946,6 +958,47 @@ onMounted(loadAll)
 .publish-box {
   display: grid;
   gap: 12px;
+}
+
+.table-scroll-shell {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 192, 0, 0.42) rgba(255, 255, 255, 0.05);
+}
+
+.table-scroll-shell::-webkit-scrollbar {
+  height: 8px;
+}
+
+.table-scroll-shell::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 999px;
+}
+
+.table-scroll-shell::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255, 211, 92, 0.7), rgba(182, 126, 12, 0.72));
+}
+
+.table-scroll-shell :deep(.el-table) {
+  min-width: 100%;
+}
+
+.table-scroll-shell--knowledge :deep(.el-table),
+:deep(.wide-table--knowledge) {
+  min-width: 1160px;
+}
+
+.table-scroll-shell :deep(.wide-table--publish) {
+  min-width: 980px;
+}
+
+.table-scroll-shell :deep(.wide-table--logs) {
+  min-width: 1320px;
 }
 
 .table-footer {
@@ -1027,13 +1080,9 @@ onMounted(loadAll)
 @media (max-width: 960px) {
   .panel-actions {
     position: static;
-    top: auto;
-    z-index: auto;
-    height: auto;
     margin-bottom: 12px;
     display: flex;
     justify-content: flex-end;
-    pointer-events: auto;
   }
 
   .ai-tabs :deep(.el-tabs__header) {

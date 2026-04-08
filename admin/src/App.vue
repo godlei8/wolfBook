@@ -284,16 +284,30 @@ onMounted(() => {
   height: 100vh;
   padding: 0 24px 24px;
   overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-gutter: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  overflow-x: auto;
+  scrollbar-gutter: stable both-edges;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 192, 0, 0.4) rgba(255, 255, 255, 0.04);
+  -ms-overflow-style: auto;
 }
 
 .main-panel::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-  display: none;
+  width: 10px;
+  height: 10px;
+}
+
+.main-panel::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.main-panel::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  border: 2px solid rgba(10, 10, 10, 0.96);
+  background: linear-gradient(180deg, rgba(255, 211, 92, 0.72), rgba(182, 126, 12, 0.72));
+}
+
+.main-panel::-webkit-scrollbar-corner {
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .page-header {
@@ -335,6 +349,7 @@ onMounted(() => {
   margin-top: 12px;
   display: grid;
   gap: 16px;
+  min-width: 0;
 }
 
 .content-stack--tight {
