@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import AdminLogin from './components/AdminLogin.vue'
 import OverviewPanel from './components/OverviewPanel.vue'
@@ -14,7 +14,13 @@ const activeMenu = ref<'overview' | 'boards' | 'roles' | 'community' | 'ai'>('ov
 const authenticated = ref(Boolean(getStoredToken()))
 const summary = ref<DashboardSummary | null>(null)
 const loadingSummary = ref(false)
-const aiPanelMounted = ref(false)
+const mountedMenus = reactive({
+  overview: true,
+  boards: false,
+  roles: false,
+  community: false,
+  ai: false,
+})
 
 const pageMeta = computed(() => {
   if (activeMenu.value === 'boards') {
@@ -78,9 +84,7 @@ function logout() {
 watch(
   activeMenu,
   (menu) => {
-    if (menu === 'ai') {
-      aiPanelMounted.value = true
-    }
+    mountedMenus[menu] = true
   },
   { immediate: true },
 )
@@ -137,8 +141,8 @@ onMounted(() => {
         <p>{{ pageMeta.description }}</p>
       </header>
 
-      <template v-if="activeMenu === 'overview'">
-        <OverviewPanel :summary="summary" />
+      <section v-show="activeMenu === 'overview'" class="panel-view">
+        <OverviewPanel v-show="mountedMenus.overview" :summary="summary" />
 
         <section class="content-stack">
           <el-card class="welcome-card">
@@ -169,13 +173,22 @@ onMounted(() => {
             </div>
           </el-card>
         </section>
-      </template>
+      </section>
 
-      <section v-else class="content-stack content-stack--tight">
-        <BoardManagement v-if="activeMenu === 'boards'" @changed="loadSummary" />
-        <RoleManagement v-if="activeMenu === 'roles'" @changed="loadSummary" />
-        <CommunityManagement v-if="activeMenu === 'community'" @changed="loadSummary" />
-        <AiAssistantManagement v-if="aiPanelMounted" v-show="activeMenu === 'ai'" />
+      <section v-show="activeMenu === 'boards'" class="content-stack content-stack--tight panel-view">
+        <BoardManagement v-if="mountedMenus.boards" @changed="loadSummary" />
+      </section>
+
+      <section v-show="activeMenu === 'roles'" class="content-stack content-stack--tight panel-view">
+        <RoleManagement v-if="mountedMenus.roles" @changed="loadSummary" />
+      </section>
+
+      <section v-show="activeMenu === 'community'" class="content-stack content-stack--tight panel-view">
+        <CommunityManagement v-if="mountedMenus.community" @changed="loadSummary" />
+      </section>
+
+      <section v-show="activeMenu === 'ai'" class="content-stack content-stack--tight panel-view">
+        <AiAssistantManagement v-if="mountedMenus.ai" />
       </section>
     </main>
   </div>
@@ -354,6 +367,10 @@ onMounted(() => {
 
 .content-stack--tight {
   margin-top: 12px;
+}
+
+.panel-view {
+  min-width: 0;
 }
 
 .welcome-card {

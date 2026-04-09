@@ -101,6 +101,53 @@ public final class WolfbookDtos {
     public record LoginResponse(String token, UserView user) {
     }
 
+    public record FavoriteBoardsView(List<Integer> boardIds, List<BoardCardView> boards) {
+    }
+
+    public record NoteRecordInput(
+            @NotBlank(message = "记录 id 不能为空") String id,
+            @NotBlank(message = "记录类型不能为空") String type,
+            @NotNull(message = "轮次不能为空") Integer round,
+            @NotBlank(message = "记录内容不能为空") @Size(max = 5000, message = "记录内容不能超过 5000 字") String content,
+            String player,
+            String timestamp
+    ) {
+    }
+
+    public record NoteSessionSaveRequest(
+            @NotBlank(message = "对局 id 不能为空") String sessionId,
+            @NotBlank(message = "板子模式不能为空") String boardMode,
+            Integer boardId,
+            @NotBlank(message = "板子名称不能为空") @Size(max = 100, message = "板子名称不能超过 100") String boardName,
+            @NotNull(message = "人数不能为空") Integer playerCount,
+            String createTime,
+            String updateTime,
+            @Valid List<NoteRecordInput> records
+    ) {
+    }
+
+    public record NoteRecordView(
+            String id,
+            String type,
+            Integer round,
+            String content,
+            String player,
+            LocalDateTime timestamp
+    ) {
+    }
+
+    public record NoteSessionView(
+            String sessionId,
+            String boardMode,
+            Integer boardId,
+            String boardName,
+            Integer playerCount,
+            LocalDateTime createTime,
+            LocalDateTime updateTime,
+            List<NoteRecordView> records
+    ) {
+    }
+
     public record BoardCardView(
             Integer id,
             String name,

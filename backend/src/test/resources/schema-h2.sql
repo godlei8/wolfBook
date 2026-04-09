@@ -47,6 +47,36 @@ CREATE TABLE users (
   create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE user_favorite_boards (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  openid VARCHAR(100) NOT NULL,
+  board_id INT NOT NULL,
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uk_user_favorite_board UNIQUE (openid, board_id)
+);
+
+CREATE TABLE user_note_sessions (
+  session_id VARCHAR(64) PRIMARY KEY,
+  openid VARCHAR(100) NOT NULL,
+  board_mode VARCHAR(20) NOT NULL DEFAULT 'library',
+  board_id INT,
+  board_name VARCHAR(100) NOT NULL,
+  player_count TINYINT NOT NULL,
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE user_note_records (
+  record_id VARCHAR(64) PRIMARY KEY,
+  session_id VARCHAR(64) NOT NULL,
+  openid VARCHAR(100) NOT NULL,
+  record_type VARCHAR(20) NOT NULL,
+  day_no TINYINT DEFAULT 1,
+  content CLOB NOT NULL,
+  player VARCHAR(255),
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE posts (
   id INT PRIMARY KEY AUTO_INCREMENT,
   openid VARCHAR(100) NOT NULL,

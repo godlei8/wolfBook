@@ -12,8 +12,13 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.hamcrest.Matchers.containsString;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -129,6 +134,58 @@ class BackendApplicationTests {
             }
         }
         org.junit.jupiter.api.Assertions.assertFalse(sessionStillExists, "assistant session should be removed after reset");
+    }
+
+    @Test
+    void assistantStreamShouldReturnSseErrorInsteadOfHttp500WhenTokenIsInvalid() throws Exception {
+        String askBody = """
+                {
+                  "message": "test",
+                  "scene": "assistant_chat",
+                  "pageContext": {
+                    "page": "assistant/chat"
+                  }
+                }
+                """;
+
+        var result = mockMvc.perform(post("/api/assistant/ask/stream")
+                        .header("Authorization", "Bearer invalid")
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(askBody))
+                .andExpect(status().isOk())
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(result))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("event:error")));
+    }
+
+    @Test
+    void favoriteEndpointsShouldSupportAddAndRemoveLifecycle() throws Exception {
+        String token = loginAndGetToken();
+        String authorization = "Bearer " + token;
+
+        mockMvc.perform(get("/api/user/favorites").header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.boardIds").isArray())
+                .andExpect(jsonPath("$.data.boards").isArray());
+
+        mockMvc.perform(post("/api/user/favorites/{boardId}", 1).header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.boardIds[0]").value(1))
+                .andExpect(jsonPath("$.data.boards[0].id").value(1));
+
+        mockMvc.perform(delete("/api/user/favorites/{boardId}", 1).header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.boardIds").isArray())
+                .andExpect(jsonPath("$.data.boardIds").isEmpty())
+                .andExpect(jsonPath("$.data.boards").isArray())
+                .andExpect(jsonPath("$.data.boards").isEmpty());
     }
 
     private String loginAndGetToken() throws Exception {

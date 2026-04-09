@@ -66,6 +66,29 @@ public class BoardService {
         return new PageResponse<>(all.subList(fromIndex, toIndex), all.size(), safePage, safeSize);
     }
 
+    public List<WolfbookDtos.BoardCardView> listBoardCardsByIds(List<Integer> boardIds) {
+        if (boardIds == null || boardIds.isEmpty()) {
+            return List.of();
+        }
+        List<BoardEntity> boardEntities = boardMapper.selectBatchIds(boardIds).stream()
+                .filter(board -> board.getStatus() != null && board.getStatus() == 1)
+                .toList();
+        if (boardEntities.isEmpty()) {
+            return List.of();
+        }
+        Map<Integer, List<BoardRoleEntity>> roleMap = loadBoardRoleMap(boardEntities.stream().map(BoardEntity::getId).toList());
+        Map<Integer, RoleEntity> rolesById = loadRolesById(
+                roleMap.values().stream().flatMap(List::stream).map(BoardRoleEntity::getRoleId).collect(Collectors.toSet())
+        );
+        Map<Integer, WolfbookDtos.BoardCardView> viewMap = boardEntities.stream()
+                .map(board -> toBoardCardView(board, roleMap.getOrDefault(board.getId(), List.of()), rolesById))
+                .collect(Collectors.toMap(WolfbookDtos.BoardCardView::id, item -> item));
+        return boardIds.stream()
+                .map(viewMap::get)
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
     public WolfbookDtos.BoardDetailView getBoardDetail(Integer id) {
         BoardEntity boardEntity = getBoardEntity(id);
         List<BoardRoleEntity> roleEntities = boardRoleMapper.selectList(

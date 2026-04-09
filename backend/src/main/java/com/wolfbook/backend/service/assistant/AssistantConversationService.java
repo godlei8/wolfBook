@@ -208,6 +208,7 @@ public class AssistantConversationService {
                 entity.getId(),
                 entity.getRole(),
                 entity.getContent(),
+                "ASSISTANT".equals(entity.getRole()) ? AssistantConstants.CONTENT_MARKDOWN : AssistantConstants.CONTENT_PLAIN,
                 entity.getAnswerType(),
                 readList(entity.getCitations(), CITATION_LIST),
                 readList(entity.getRecommendedBoards(), BOARD_LIST),
@@ -219,7 +220,7 @@ public class AssistantConversationService {
     }
 
     private String titleFrom(String message) {
-        String normalized = message == null ? "新对话" : message.trim();
+        String normalized = message == null ? "" : message.trim();
         if (normalized.isEmpty()) {
             return "新对话";
         }

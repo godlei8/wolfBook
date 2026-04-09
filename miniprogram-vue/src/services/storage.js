@@ -110,12 +110,73 @@ function persistIfChanged(key, raw, normalized) {
   }
 }
 
+function extractTokenFromObject(value) {
+  if (!value || typeof value !== 'object') {
+    return ''
+  }
+  const direct =
+    value.token ||
+    value.accessToken ||
+    value.access_token ||
+    value.authorization ||
+    value.Authorization
+  if (typeof direct === 'string') {
+    return direct
+  }
+  if (value.data && typeof value.data === 'object') {
+    return extractTokenFromObject(value.data)
+  }
+  return ''
+}
+
+function normalizeAuthToken(raw) {
+  const parsed = parseMaybeJson(raw)
+  let token = ''
+
+  if (typeof parsed === 'string') {
+    token = parsed
+  } else {
+    token = extractTokenFromObject(parsed)
+  }
+
+  token = typeof token === 'string' ? token.trim() : ''
+
+  if ((token.startsWith('"') && token.endsWith('"')) || (token.startsWith("'") && token.endsWith("'"))) {
+    token = token.slice(1, -1).trim()
+  }
+
+  if (token.startsWith('Bearer ')) {
+    token = token.slice(7).trim()
+  }
+
+  return token
+}
+
 export default {
   getAuthToken() {
-    return uni.getStorageSync(AUTH_TOKEN_KEY) || ''
+    const raw = uni.getStorageSync(AUTH_TOKEN_KEY)
+    const normalized = normalizeAuthToken(raw)
+
+    if (!normalized) {
+      if (raw !== '' && raw !== null && raw !== undefined) {
+        uni.removeStorageSync(AUTH_TOKEN_KEY)
+      }
+      return ''
+    }
+
+    if (raw !== normalized) {
+      uni.setStorageSync(AUTH_TOKEN_KEY, normalized)
+    }
+
+    return normalized
   },
   setAuthToken(token) {
-    uni.setStorageSync(AUTH_TOKEN_KEY, token)
+    const normalized = normalizeAuthToken(token)
+    if (!normalized) {
+      uni.removeStorageSync(AUTH_TOKEN_KEY)
+      return
+    }
+    uni.setStorageSync(AUTH_TOKEN_KEY, normalized)
   },
   clearAuthToken() {
     uni.removeStorageSync(AUTH_TOKEN_KEY)
@@ -131,6 +192,9 @@ export default {
     const normalized = normalizeFavorites(raw)
     persistIfChanged(FAVORITES_KEY, raw, normalized)
     return normalized
+  },
+  setFavorites(list) {
+    setJson(FAVORITES_KEY, normalizeFavorites(list))
   },
   toggleFavorite(boardId) {
     const favorites = this.getFavorites()
@@ -172,6 +236,12 @@ export default {
     const next = this.getSessions().filter((item) => item.sessionId !== sessionId)
     this.setSessions(next)
     return next
+  },
+  clearFavorites() {
+    uni.removeStorageSync(FAVORITES_KEY)
+  },
+  clearSessions() {
+    uni.removeStorageSync(SESSIONS_KEY)
   },
   getAssistantDockState() {
     return getJson(ASSISTANT_DOCK_KEY, { side: 'right', top: 420 })

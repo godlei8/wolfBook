@@ -85,6 +85,23 @@ function normalizeUser(user) {
   }
 }
 
+function normalizeNoteRecord(record) {
+  if (!record) return record
+  return {
+    ...record,
+    id: record.id || record.recordId,
+    timestamp: record.timestamp || record.createTime,
+  }
+}
+
+function normalizeNoteSession(session) {
+  if (!session) return session
+  return {
+    ...session,
+    records: (session.records || []).map(normalizeNoteRecord),
+  }
+}
+
 function normalizePost(post) {
   if (!post) return post
   return {
@@ -149,6 +166,46 @@ export default {
   },
   async updateUserInfo(payload) {
     return normalizeUser(await request({ url: '/api/user/info', method: 'PUT', data: payload, header: authHeader() }))
+  },
+  async getFavoriteBoards() {
+    const data = await request({ url: '/api/user/favorites', header: authHeader() })
+    return {
+      boardIds: data.boardIds || [],
+      boards: (data.boards || []).map(normalizeBoard),
+    }
+  },
+  async addFavoriteBoard(boardId) {
+    const data = await request({ url: `/api/user/favorites/${boardId}`, method: 'POST', header: authHeader() })
+    return {
+      boardIds: data.boardIds || [],
+      boards: (data.boards || []).map(normalizeBoard),
+    }
+  },
+  async removeFavoriteBoard(boardId) {
+    const data = await request({ url: `/api/user/favorites/${boardId}`, method: 'DELETE', header: authHeader() })
+    return {
+      boardIds: data.boardIds || [],
+      boards: (data.boards || []).map(normalizeBoard),
+    }
+  },
+  async getUserSessions() {
+    return (await request({ url: '/api/user/sessions', header: authHeader() })).map(normalizeNoteSession)
+  },
+  async getUserSessionDetail(sessionId) {
+    return normalizeNoteSession(await request({ url: `/api/user/sessions/${sessionId}`, header: authHeader() }))
+  },
+  async saveUserSession(session) {
+    return normalizeNoteSession(
+      await request({
+        url: `/api/user/sessions/${session.sessionId}`,
+        method: 'PUT',
+        data: session,
+        header: authHeader(),
+      }),
+    )
+  },
+  async deleteUserSession(sessionId) {
+    return request({ url: `/api/user/sessions/${sessionId}`, method: 'DELETE', header: authHeader() })
   },
   async uploadImage(filePath) {
     const result = await uploadFile(filePath, storage.getAuthToken())

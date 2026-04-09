@@ -1,7 +1,7 @@
 <script setup>
 import { computed, reactive, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import storage from '../../services/storage'
+import userData from '../../services/user-data'
 import { formatDateTime } from '../../utils/format'
 
 const sessionId = ref('')
@@ -35,8 +35,8 @@ const voteTemplateOptions = [
 
 const recordForm = reactive(makeDefaultForm([]))
 
-function formatRound(round) {
-  const numeric = Number(round) || 1
+function formatDay(day) {
+  const numeric = Number(day) || 1
   return `第${numeric}天`
 }
 
@@ -80,36 +80,60 @@ function makeId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
 }
 
-function syncSessionView(rawSession) {
-  if (!rawSession) return
-  const playerList = Array.from({ length: rawSession.playerCount }, (_, index) => `${index + 1}号`)
-  players.value = playerList
-  Object.assign(recordForm, makeDefaultForm(playerList, latestRound(rawSession)))
-  session.value = {
-    ...rawSession,
-    records: (rawSession.records || []).map((record) => ({
-      ...record,
-      typeLabel: typeLabel(record.type),
-      roundLabel: formatRound(record.round),
-      timestampLabel: formatDateTime(record.timestamp),
-    })),
-    updateLabel: formatDateTime(rawSession.updateTime),
-  }
+function buildPlayers(playerCount) {
+  return Array.from({ length: Math.max(1, Number(playerCount) || 12) }, (_, index) => `${index + 1}号`)
 }
 
-function refreshSession() {
-  const current = storage.getSessionById(sessionId.value)
-  if (!current) {
-    session.value = null
-    uni.showToast({ title: '对局不存在', icon: 'none' })
-    return
+function resetForm(rawSession) {
+  Object.assign(recordForm, makeDefaultForm(players.value, latestRound(rawSession)))
+}
+
+function syncSessionView(rawSession) {
+  if (!rawSession) return
+  session.value = {
+    ...rawSession,
+    records: (rawSession.records || []).slice(),
   }
-  syncSessionView(current)
+  players.value = buildPlayers(rawSession.playerCount)
+  resetForm(rawSession)
+}
+
+const displayRecords = computed(() => {
+  return (session.value?.records || [])
+    .slice()
+    .sort((left, right) => new Date(left.timestamp || 0).getTime() - new Date(right.timestamp || 0).getTime())
+    .map((item) => ({
+      ...item,
+      typeLabel: typeLabel(item.type),
+      roundLabel: formatDay(item.round),
+      timestampLabel: formatDateTime(item.timestamp),
+    }))
+})
+
+const latestWolfPack = computed(() => {
+  const list = (session.value?.records || []).slice().reverse()
+  const latest = list.find((item) => item.type === 'wolfPack')
+  return latest?.content || '暂无狼坑记录'
+})
+
+async function refreshSession() {
+  if (!sessionId.value) return
+  try {
+    const current = await userData.getSessionById(sessionId.value)
+    if (!current) {
+      session.value = null
+      uni.showToast({ title: '对局不存在', icon: 'none' })
+      return
+    }
+    syncSessionView(current)
+  } catch (error) {
+    uni.showToast({ title: error?.message || '笔记加载失败', icon: 'none' })
+  }
 }
 
 function openEditor(type) {
   editorType.value = type
-  Object.assign(recordForm, makeDefaultForm(players.value, latestRound(session.value)))
+  resetForm(session.value)
   showEditor.value = true
 }
 
@@ -118,8 +142,7 @@ function closeEditor() {
 }
 
 function toggleArray(field, value) {
-  const list = recordForm[field]
-  if (!Array.isArray(list)) return
+  const list = Array.isArray(recordForm[field]) ? recordForm[field] : []
   const exists = list.includes(value)
   recordForm[field] = exists ? list.filter((item) => item !== value) : list.concat(value)
 
@@ -176,15 +199,13 @@ const votePreview = computed(() => {
   return result ? result.content : '先完成投票信息选择，系统会在这里生成预览。'
 })
 
-const latestWolfPack = computed(() => {
-  const list = session.value?.records || []
-  const latest = [...list].reverse().find((item) => item.type === 'wolfPack')
-  return latest?.content || '暂无狼坑记录'
-})
+async function persistSession(nextSession) {
+  const saved = await userData.saveSession(nextSession)
+  syncSessionView(saved)
+}
 
-function saveRecord() {
-  const current = storage.getSessionById(sessionId.value)
-  if (!current) return
+async function saveRecord() {
+  if (!session.value) return
 
   let record = null
   if (editorType.value === 'seer') {
@@ -242,20 +263,38 @@ function saveRecord() {
     }
   }
 
-  current.records = (current.records || []).concat(record)
-  current.updateTime = new Date().toISOString()
-  storage.upsertSession(current)
-  closeEditor()
-  refreshSession()
+  try {
+    await persistSession({
+      ...session.value,
+      records: (session.value.records || []).concat(record),
+      updateTime: new Date().toISOString(),
+    })
+    closeEditor()
+    uni.showToast({ title: '记录已保存', icon: 'success' })
+  } catch (error) {
+    uni.showToast({ title: error?.message || '保存失败', icon: 'none' })
+  }
 }
 
 function removeRecord(id) {
-  const current = storage.getSessionById(sessionId.value)
-  if (!current) return
-  current.records = (current.records || []).filter((item) => item.id !== id)
-  current.updateTime = new Date().toISOString()
-  storage.upsertSession(current)
-  refreshSession()
+  if (!session.value) return
+  uni.showModal({
+    title: '删除记录',
+    content: '确认删除这条记录吗？',
+    success: async (res) => {
+      if (!res.confirm || !session.value) return
+      try {
+        await persistSession({
+          ...session.value,
+          records: (session.value.records || []).filter((item) => item.id !== id),
+          updateTime: new Date().toISOString(),
+        })
+        uni.showToast({ title: '已删除', icon: 'success' })
+      } catch (error) {
+        uni.showToast({ title: error?.message || '删除失败', icon: 'none' })
+      }
+    },
+  })
 }
 
 onLoad((options) => {
@@ -263,24 +302,26 @@ onLoad((options) => {
   refreshSession()
 })
 
-onShow(refreshSession)
+onShow(() => {
+  refreshSession()
+})
 </script>
 
 <template>
   <view v-if="session" class="page-shell">
     <view class="glass-card section-card">
       <view class="hero-title" style="font-size: 46rpx;">{{ session.boardName }}</view>
-      <view class="hero-subtitle">{{ session.playerCount }} 人局 · 最近更新 {{ session.updateLabel }}</view>
+      <view class="hero-subtitle">{{ session.playerCount }} 人局 · 最近更新 {{ formatDateTime(session.updateTime) }}</view>
       <view class="hero-status-row">
-        <view class="pill pill-gold">共 {{ session.records.length }} 条记录</view>
+        <view class="pill pill-gold">共 {{ displayRecords.length }} 条记录</view>
         <view class="pill pill-white">{{ latestWolfPack }}</view>
       </view>
     </view>
 
     <view class="glass-card section-card">
       <view class="section-title">事件时间线</view>
-      <view v-if="!session.records.length" class="section-desc">还没有记录，先从底部工具栏添加第一条。</view>
-      <view v-for="item in session.records" :key="item.id" class="record-item">
+      <view v-if="!displayRecords.length" class="section-desc">还没有记录，先从底部工具栏添加第一条。</view>
+      <view v-for="item in displayRecords" :key="item.id" class="record-item">
         <view class="record-head">
           <view class="record-badges">
             <view class="pill pill-gold">{{ item.typeLabel }}</view>
@@ -289,7 +330,7 @@ onShow(refreshSession)
           <view class="section-meta">{{ item.timestampLabel }}</view>
         </view>
         <view class="record-content">{{ item.content }}</view>
-        <view class="record-player">{{ item.player }}</view>
+        <view class="record-player">{{ item.player || '未指定玩家' }}</view>
         <button class="record-remove" @tap="removeRecord(item.id)">删除</button>
       </view>
     </view>
@@ -321,7 +362,7 @@ onShow(refreshSession)
               :class="{ active: recordForm.round === day }"
               @tap="recordForm.round = day"
             >
-              {{ formatRound(day) }}
+              {{ formatDay(day) }}
             </view>
           </view>
         </view>

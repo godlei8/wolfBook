@@ -47,6 +47,36 @@ CREATE TABLE `users` (
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE `user_favorite_boards` (
+  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `openid` VARCHAR(100) NOT NULL,
+  `board_id` INT NOT NULL,
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_user_favorite_board` (`openid`, `board_id`)
+);
+
+CREATE TABLE `user_note_sessions` (
+  `session_id` VARCHAR(64) PRIMARY KEY,
+  `openid` VARCHAR(100) NOT NULL,
+  `board_mode` VARCHAR(20) NOT NULL DEFAULT 'library',
+  `board_id` INT,
+  `board_name` VARCHAR(100) NOT NULL,
+  `player_count` TINYINT NOT NULL,
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE `user_note_records` (
+  `record_id` VARCHAR(64) PRIMARY KEY,
+  `session_id` VARCHAR(64) NOT NULL,
+  `openid` VARCHAR(100) NOT NULL,
+  `record_type` VARCHAR(20) NOT NULL,
+  `day_no` TINYINT DEFAULT 1,
+  `content` TEXT NOT NULL,
+  `player` VARCHAR(255),
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE `posts` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `openid` VARCHAR(100) NOT NULL,
@@ -183,6 +213,9 @@ CREATE TABLE `assistant_query_logs` (
 
 CREATE INDEX `idx_boards_status` ON `boards` (`status`);
 CREATE INDEX `idx_roles_faction_type` ON `roles` (`faction`, `role_type`);
+CREATE INDEX `idx_user_favorite_openid` ON `user_favorite_boards` (`openid`, `create_time`);
+CREATE INDEX `idx_user_note_sessions_openid` ON `user_note_sessions` (`openid`, `update_time`);
+CREATE INDEX `idx_user_note_records_session` ON `user_note_records` (`session_id`, `create_time`);
 CREATE INDEX `idx_posts_openid_status` ON `posts` (`openid`, `status`);
 CREATE INDEX `idx_comments_post_status` ON `comments` (`post_id`, `status`);
 CREATE INDEX `idx_reports_process_status` ON `reports` (`process_status`);

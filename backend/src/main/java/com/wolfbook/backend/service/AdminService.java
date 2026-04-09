@@ -138,7 +138,7 @@ public class AdminService {
             ref.setBoardId(entity.getId());
             boardRoleMapper.insert(ref);
         }
-        assistantKnowledgeService.rebuildStructuredKnowledge();
+        assistantKnowledgeService.requestStructuredKnowledgeRebuild();
         return boardService.getBoard(entity.getId());
     }
 
@@ -146,7 +146,7 @@ public class AdminService {
         boardService.getBoard(id);
         boardRoleMapper.delete(new LambdaQueryWrapper<BoardRoleEntity>().eq(BoardRoleEntity::getBoardId, id));
         boardMapper.deleteById(id);
-        assistantKnowledgeService.rebuildStructuredKnowledge();
+        assistantKnowledgeService.requestStructuredKnowledgeRebuild();
     }
 
     public List<WolfbookDtos.AdminRoleView> listRoles() {
@@ -175,7 +175,7 @@ public class AdminService {
         } else {
             roleMapper.updateById(entity);
         }
-        assistantKnowledgeService.rebuildStructuredKnowledge();
+        assistantKnowledgeService.requestStructuredKnowledgeRebuild();
         return toAdminRoleView(entity);
     }
 
@@ -188,7 +188,7 @@ public class AdminService {
             throw new ApiException(4002, "该角色已被板子使用，无法删除");
         }
         roleMapper.deleteById(id);
-        assistantKnowledgeService.rebuildStructuredKnowledge();
+        assistantKnowledgeService.requestStructuredKnowledgeRebuild();
     }
 
     public PageResponse<WolfbookDtos.PostSummaryView> listPosts(int page, int size) {

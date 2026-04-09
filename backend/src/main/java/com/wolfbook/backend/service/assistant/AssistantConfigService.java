@@ -11,6 +11,7 @@ import com.wolfbook.backend.entity.AssistantSessionEntity;
 import com.wolfbook.backend.mapper.AssistantConfigMapper;
 import com.wolfbook.backend.mapper.AssistantSessionMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -41,13 +42,14 @@ public class AssistantConfigService {
 
     public AssistantDtos.AdminAiConfig getAdminConfig() {
         AssistantConfigEntity entity = getOrCreateConfigEntity();
+        AssistantDtos.AdminAiConfig defaults = AssistantDefaults.adminConfig(assistantProperties);
         return new AssistantDtos.AdminAiConfig(
-                readSection(entity.getBaseConfig(), AssistantDtos.BaseSection.class, AssistantDefaults.adminConfig(assistantProperties).base()),
-                readSection(entity.getPromptConfig(), AssistantDtos.PromptSection.class, AssistantDefaults.adminConfig(assistantProperties).prompt()),
-                readSection(entity.getRetrievalConfig(), AssistantDtos.RetrievalSection.class, AssistantDefaults.adminConfig(assistantProperties).retrieval()),
-                readSection(entity.getSearchConfig(), AssistantDtos.SearchSection.class, AssistantDefaults.adminConfig(assistantProperties).search()),
-                readSection(entity.getSafetyConfig(), AssistantDtos.SafetySection.class, AssistantDefaults.adminConfig(assistantProperties).safety()),
-                readSection(entity.getUiConfig(), AssistantDtos.UiSection.class, AssistantDefaults.adminConfig(assistantProperties).ui())
+                sanitizeBaseSection(readSection(entity.getBaseConfig(), AssistantDtos.BaseSection.class, defaults.base())),
+                readSection(entity.getPromptConfig(), AssistantDtos.PromptSection.class, defaults.prompt()),
+                readSection(entity.getRetrievalConfig(), AssistantDtos.RetrievalSection.class, defaults.retrieval()),
+                readSection(entity.getSearchConfig(), AssistantDtos.SearchSection.class, defaults.search()),
+                readSection(entity.getSafetyConfig(), AssistantDtos.SafetySection.class, defaults.safety()),
+                readSection(entity.getUiConfig(), AssistantDtos.UiSection.class, defaults.ui())
         );
     }
 
@@ -55,13 +57,21 @@ public class AssistantConfigService {
         if (config == null) {
             throw new ApiException(4000, "AI config can not be empty");
         }
+        AssistantDtos.AdminAiConfig normalizedConfig = new AssistantDtos.AdminAiConfig(
+                sanitizeBaseSection(config.base()),
+                config.prompt(),
+                config.retrieval(),
+                config.search(),
+                config.safety(),
+                config.ui()
+        );
         AssistantConfigEntity entity = getOrCreateConfigEntity();
-        entity.setBaseConfig(write(config.base()));
-        entity.setPromptConfig(write(config.prompt()));
-        entity.setRetrievalConfig(write(config.retrieval()));
-        entity.setSearchConfig(write(config.search()));
-        entity.setSafetyConfig(write(config.safety()));
-        entity.setUiConfig(write(config.ui()));
+        entity.setBaseConfig(write(normalizedConfig.base()));
+        entity.setPromptConfig(write(normalizedConfig.prompt()));
+        entity.setRetrievalConfig(write(normalizedConfig.retrieval()));
+        entity.setSearchConfig(write(normalizedConfig.search()));
+        entity.setSafetyConfig(write(normalizedConfig.safety()));
+        entity.setUiConfig(write(normalizedConfig.ui()));
         entity.setUpdateTime(LocalDateTime.now());
         if (entity.getId() == null) {
             entity.setCreateTime(LocalDateTime.now());
@@ -92,6 +102,7 @@ public class AssistantConfigService {
                 ),
                 new AssistantDtos.FeatureFlags(
                         config.search().webSearchEnabled(),
+                        true,
                         true
                 )
         );
@@ -145,5 +156,38 @@ public class AssistantConfigService {
         } catch (Exception exception) {
             return fallback;
         }
+    }
+
+    private AssistantDtos.BaseSection sanitizeBaseSection(AssistantDtos.BaseSection base) {
+        if (base == null) {
+            return AssistantDefaults.adminConfig(assistantProperties).base();
+        }
+        String embeddingModel = normalizeEmbeddingModel(base.embeddingModel());
+        return new AssistantDtos.BaseSection(
+                base.enabled(),
+                base.welcomeMessage(),
+                base.quickQuestions(),
+                base.chatModel(),
+                embeddingModel,
+                base.temperature(),
+                base.maxSuggestions()
+        );
+    }
+
+    private String normalizeEmbeddingModel(String configuredEmbeddingModel) {
+        String defaultLabel = assistantProperties.getDefaultEmbeddingModelLabel();
+        if (!StringUtils.hasText(configuredEmbeddingModel)) {
+            return defaultLabel;
+        }
+        String normalized = configuredEmbeddingModel.trim();
+        if (!"minimax".equalsIgnoreCase(assistantProperties.getEmbeddingProvider())
+                && ("text-embedding-3-small".equalsIgnoreCase(normalized) || "embo-01".equalsIgnoreCase(normalized))) {
+            return defaultLabel;
+        }
+        if ("minimax".equalsIgnoreCase(assistantProperties.getEmbeddingProvider())
+                && AssistantProperties.OLLAMA_DEFAULT_EMBEDDING_MODEL.equalsIgnoreCase(normalized)) {
+            return defaultLabel;
+        }
+        return normalized;
     }
 }

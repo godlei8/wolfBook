@@ -4,6 +4,7 @@ import { onShow } from '@dcloudio/uni-app'
 import AssistantDock from '../../components/assistant/AssistantDock.vue'
 import api from '../../services/api'
 import storage from '../../services/storage'
+import userData from '../../services/user-data'
 
 const DEFAULT_NICKNAME_PREFIX = '微信用户'
 
@@ -30,9 +31,7 @@ function needsProfileCompletion(profile) {
   return !profile.avatar || !profile.nickname || profile.nickname.startsWith(DEFAULT_NICKNAME_PREFIX)
 }
 
-function syncViewState() {
-  viewState.favoritesCount = storage.getFavorites().length
-  viewState.sessionsCount = storage.getSessions().length
+function syncProfileView() {
   viewState.avatarPreview = profileForm.avatar || user.value?.avatar || ''
   viewState.profileInitial = (profileForm.nickname || user.value?.nickname || '我').trim().slice(0, 1) || '我'
   viewState.profileStatusText = !user.value
@@ -42,18 +41,32 @@ function syncViewState() {
       : '资料已同步'
 }
 
+async function refreshCounts() {
+  try {
+    const [favoriteState, sessions] = await Promise.all([
+      userData.loadFavoriteBoards(),
+      userData.loadSessions(),
+    ])
+    viewState.favoritesCount = favoriteState?.boardIds?.length || 0
+    viewState.sessionsCount = sessions?.length || 0
+  } catch (error) {
+    viewState.favoritesCount = storage.getFavorites().length
+    viewState.sessionsCount = storage.getSessions().length
+  }
+}
+
 function fillProfileForm(profile) {
   profileForm.nickname = profile?.nickname || ''
   profileForm.avatar = profile?.avatar || ''
-  syncViewState()
+  syncProfileView()
 }
 
 async function refreshData() {
-  syncViewState()
   const token = storage.getAuthToken()
   if (!token) {
     user.value = null
     fillProfileForm(null)
+    await refreshCounts()
     return
   }
 
@@ -68,6 +81,8 @@ async function refreshData() {
     user.value = null
     fillProfileForm(null)
   }
+
+  await refreshCounts()
 }
 
 function requestWxLoginCode() {
@@ -102,6 +117,7 @@ async function handleLogin() {
     storage.setUserProfile(result.user)
     user.value = result.user
     fillProfileForm(result.user)
+    await refreshCounts()
     uni.hideLoading()
     uni.showToast({ title: '登录成功', icon: 'success' })
     if (needsProfileCompletion(result.user)) {
@@ -119,13 +135,13 @@ function handleChooseAvatar(event) {
   const avatarUrl = event?.detail?.avatarUrl
   if (avatarUrl) {
     profileForm.avatar = avatarUrl
-    syncViewState()
+    syncProfileView()
   }
 }
 
 function handleNicknameInput(event) {
   profileForm.nickname = event.detail?.value || ''
-  syncViewState()
+  syncProfileView()
 }
 
 async function saveWechatProfile() {
@@ -187,7 +203,7 @@ onShow(() => {
 <template>
   <view class="page-shell">
     <view class="hero-title">我的</view>
-    <view class="hero-subtitle">账号、收藏和本地对局记录都在这里。</view>
+    <view class="hero-subtitle">账号、收藏和对局笔记都在这里。</view>
 
     <view class="glass-card section-card profile-card">
       <view class="profile-header">
@@ -243,12 +259,12 @@ onShow(() => {
 
       <view class="glass-card section-card entry-card" @tap="openSessions">
         <view class="entry-copy">
-          <view class="entry-title">本地笔记</view>
+          <view class="entry-title">我的笔记</view>
           <view class="entry-desc">继续记录发言、投票和夜间信息。</view>
         </view>
         <view class="entry-side">
           <view class="entry-count">{{ viewState.sessionsCount }}</view>
-          <view class="entry-unit">条记录</view>
+          <view class="entry-unit">场对局</view>
           <view class="entry-arrow">›</view>
         </view>
       </view>
@@ -298,7 +314,7 @@ onShow(() => {
             </button>
             <view class="editor-tip-card">
               <view class="editor-tip-title">资料同步</view>
-              <view class="editor-tip-desc">保存后会更新到账号资料里，后续发帖和评论会使用这份信息。</view>
+              <view class="editor-tip-desc">保存后会更新到账户资料里，后续发帖和评论会使用这份信息。</view>
             </view>
           </view>
         </view>

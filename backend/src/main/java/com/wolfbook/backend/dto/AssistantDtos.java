@@ -26,7 +26,7 @@ public final class AssistantDtos {
     public record Appearance(String mascot, String accentColor, String dockLabel) {
     }
 
-    public record FeatureFlags(boolean webSearchEnabled, boolean historyEnabled) {
+    public record FeatureFlags(boolean webSearchEnabled, boolean historyEnabled, boolean streamEnabled) {
     }
 
     public record AssistantAskRequest(
@@ -42,11 +42,30 @@ public final class AssistantDtos {
             String sessionId,
             Long messageId,
             String answer,
+            String contentFormat,
             String answerType,
             List<AssistantCitation> citations,
             List<RecommendedBoardCard> recommendedBoards,
             List<String> suggestedQuestions,
             boolean usedWebSearch,
+            String traceId
+    ) {
+    }
+
+    public record AssistantStreamStarted(
+            String sessionId,
+            String traceId,
+            String contentFormat
+    ) {
+    }
+
+    public record AssistantStreamDelta(
+            String delta
+    ) {
+    }
+
+    public record AssistantStreamError(
+            String message,
             String traceId
     ) {
     }
@@ -85,6 +104,7 @@ public final class AssistantDtos {
             Long id,
             String role,
             String content,
+            String contentFormat,
             String answerType,
             List<AssistantCitation> citations,
             List<RecommendedBoardCard> recommendedBoards,

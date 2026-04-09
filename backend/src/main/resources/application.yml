@@ -53,11 +53,15 @@ wolfbook:
     temperature: ${ASSISTANT_TEMPERATURE:0.35}
     web-search-enabled: ${ASSISTANT_WEB_SEARCH_ENABLED:true}
     web-search-timeout-seconds: ${ASSISTANT_WEB_SEARCH_TIMEOUT_SECONDS:12}
+    embedding-provider: ${ASSISTANT_EMBEDDING_PROVIDER:ollama}
     minimax:
       api-key: ${MINIMAX_API_KEY:}
-      base-url: ${MINIMAX_BASE_URL:https://api.minimax.io}
+      base-url: ${MINIMAX_BASE_URL:https://api.minimax.chat}
       chat-model: ${MINIMAX_CHAT_MODEL:MiniMax-M2.7}
-      embedding-model: ${MINIMAX_EMBEDDING_MODEL:text-embedding-3-small}
+      embedding-model: ${MINIMAX_EMBEDDING_MODEL:embo-01}
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://127.0.0.1:11434}
+      embedding-model: ${OLLAMA_EMBEDDING_MODEL:qwen3-embedding:0.6b}
     pgvector:
       enabled: ${ASSISTANT_PGVECTOR_ENABLED:false}
       url: ${ASSISTANT_PGVECTOR_URL:}

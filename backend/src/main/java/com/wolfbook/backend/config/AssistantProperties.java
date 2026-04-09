@@ -5,6 +5,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "wolfbook.assistant")
 public class AssistantProperties {
 
+    public static final String OLLAMA_DEFAULT_EMBEDDING_MODEL = "qwen3-embedding:0.6b";
+
     private boolean enabled = true;
     private int historyWindow = 12;
     private int maxSessionsPerUser = 20;
@@ -14,7 +16,9 @@ public class AssistantProperties {
     private double temperature = 0.35;
     private boolean webSearchEnabled = true;
     private int webSearchTimeoutSeconds = 12;
+    private String embeddingProvider = "ollama";
     private final MiniMax miniMax = new MiniMax();
+    private final Ollama ollama = new Ollama();
     private final PgVector pgVector = new PgVector();
 
     public boolean isEnabled() {
@@ -89,19 +93,41 @@ public class AssistantProperties {
         this.webSearchTimeoutSeconds = webSearchTimeoutSeconds;
     }
 
+    public String getEmbeddingProvider() {
+        return embeddingProvider;
+    }
+
+    public void setEmbeddingProvider(String embeddingProvider) {
+        this.embeddingProvider = embeddingProvider;
+    }
+
     public MiniMax getMiniMax() {
         return miniMax;
+    }
+
+    public Ollama getOllama() {
+        return ollama;
     }
 
     public PgVector getPgVector() {
         return pgVector;
     }
 
+    public String getDefaultEmbeddingModelLabel() {
+        if ("ollama".equalsIgnoreCase(embeddingProvider)) {
+            return ollama.getEmbeddingModel();
+        }
+        if ("minimax".equalsIgnoreCase(embeddingProvider)) {
+            return miniMax.getEmbeddingModel();
+        }
+        return ollama.getEmbeddingModel();
+    }
+
     public static class MiniMax {
         private String apiKey;
-        private String baseUrl = "https://api.minimax.io";
+        private String baseUrl = "https://api.minimax.chat";
         private String chatModel = "MiniMax-M2.7";
-        private String embeddingModel = "text-embedding-3-small";
+        private String embeddingModel = "embo-01";
 
         public String getApiKey() {
             return apiKey;
@@ -125,6 +151,27 @@ public class AssistantProperties {
 
         public void setChatModel(String chatModel) {
             this.chatModel = chatModel;
+        }
+
+        public String getEmbeddingModel() {
+            return embeddingModel;
+        }
+
+        public void setEmbeddingModel(String embeddingModel) {
+            this.embeddingModel = embeddingModel;
+        }
+    }
+
+    public static class Ollama {
+        private String baseUrl = "http://127.0.0.1:11434";
+        private String embeddingModel = OLLAMA_DEFAULT_EMBEDDING_MODEL;
+
+        public String getBaseUrl() {
+            return baseUrl;
+        }
+
+        public void setBaseUrl(String baseUrl) {
+            this.baseUrl = baseUrl;
         }
 
         public String getEmbeddingModel() {

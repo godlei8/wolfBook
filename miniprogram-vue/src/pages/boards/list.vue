@@ -4,22 +4,47 @@ import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
 import BoardCard from '../../components/BoardCard.vue'
 import AssistantDock from '../../components/assistant/AssistantDock.vue'
 import api from '../../services/api'
-import storage from '../../services/storage'
+import userData from '../../services/user-data'
 
 const boards = ref([])
 const total = ref(0)
 const keyword = ref('')
-const playerFilter = ref('全部')
-const difficultyFilter = ref('全部')
-const tagFilter = ref('全部')
+const playerFilter = ref('all')
+const difficultyFilter = ref('all')
+const tagFilter = ref('all')
 const favoriteIds = ref([])
 
-const playerOptions = ['全部', '9', '12', '15+']
-const difficultyOptions = ['全部', '入门', '进阶', '烧脑']
-const tagOptions = ['全部', '经典', '教学', '娱乐', '高配', '第三方']
+const playerOptions = [
+  { label: '全部', value: 'all' },
+  { label: '9', value: '9' },
+  { label: '12', value: '12' },
+  { label: '15+', value: '15+' },
+]
 
-function syncFavorites() {
-  favoriteIds.value = storage.getFavorites()
+const difficultyOptions = [
+  { label: '全部', value: 'all' },
+  { label: '入门', value: '入门' },
+  { label: '进阶', value: '进阶' },
+  { label: '烧脑', value: '烧脑' },
+]
+
+const tagOptions = [
+  { label: '全部', value: 'all' },
+  { label: '经典', value: '经典' },
+  { label: '教学', value: '教学' },
+  { label: '娱乐', value: '娱乐' },
+  { label: '高配', value: '高配' },
+  { label: '第三方', value: '第三方' },
+]
+
+async function syncFavoritesSafely() {
+  try {
+    const state = await userData.loadFavoriteBoards()
+    favoriteIds.value = state.boardIds || []
+  } catch (error) {
+    favoriteIds.value = []
+    console.warn('favorite sync failed', error)
+  }
 }
 
 function isFavorite(boardId) {
@@ -38,9 +63,10 @@ async function loadBoards() {
     })
     boards.value = data.list || []
     total.value = data.total || 0
-    syncFavorites()
+    await syncFavoritesSafely()
   } catch (error) {
-    uni.showToast({ title: '板子加载失败', icon: 'none' })
+    console.error('load boards failed', error)
+    uni.showToast({ title: error?.message || '板子加载失败', icon: 'none' })
   }
 }
 
@@ -52,21 +78,43 @@ function openRoles() {
   uni.navigateTo({ url: '/pages/roles/list' })
 }
 
-function toggleFavorite(boardId) {
-  favoriteIds.value = storage.toggleFavorite(boardId)
-  uni.showToast({
-    title: favoriteIds.value.includes(boardId) ? '已加入收藏' : '已取消收藏',
-    icon: 'none',
-  })
+async function toggleFavorite(boardId) {
+  try {
+    const state = await userData.toggleFavorite(boardId)
+    favoriteIds.value = state.boardIds || []
+    uni.showToast({
+      title: favoriteIds.value.includes(boardId) ? '已加入收藏' : '已取消收藏',
+      icon: 'none',
+    })
+  } catch (error) {
+    uni.showToast({ title: error?.message || '收藏更新失败', icon: 'none' })
+  }
+}
+
+function applyPlayerFilter(item) {
+  playerFilter.value = item.value
+  loadBoards()
+}
+
+function applyDifficultyFilter(item) {
+  difficultyFilter.value = item.value
+  loadBoards()
+}
+
+function applyTagFilter(item) {
+  tagFilter.value = item.value
+  loadBoards()
 }
 
 onLoad(() => {
-  syncFavorites()
   loadBoards()
 })
 
 onShow(() => {
-  syncFavorites()
+  if (boards.value.length) {
+    syncFavoritesSafely()
+    return
+  }
   loadBoards()
 })
 
@@ -100,12 +148,12 @@ onPullDownRefresh(async () => {
       <scroll-view scroll-x class="chip-row">
         <view
           v-for="item in playerOptions"
-          :key="item"
+          :key="item.value"
           class="chip"
-          :class="{ active: playerFilter === item }"
-          @tap="playerFilter = item; loadBoards()"
+          :class="{ active: playerFilter === item.value }"
+          @tap="applyPlayerFilter(item)"
         >
-          {{ item }}
+          {{ item.label }}
         </view>
       </scroll-view>
 
@@ -113,12 +161,12 @@ onPullDownRefresh(async () => {
       <scroll-view scroll-x class="chip-row">
         <view
           v-for="item in difficultyOptions"
-          :key="item"
+          :key="item.value"
           class="chip"
-          :class="{ active: difficultyFilter === item }"
-          @tap="difficultyFilter = item; loadBoards()"
+          :class="{ active: difficultyFilter === item.value }"
+          @tap="applyDifficultyFilter(item)"
         >
-          {{ item }}
+          {{ item.label }}
         </view>
       </scroll-view>
 
@@ -126,12 +174,12 @@ onPullDownRefresh(async () => {
       <scroll-view scroll-x class="chip-row">
         <view
           v-for="item in tagOptions"
-          :key="item"
+          :key="item.value"
           class="chip"
-          :class="{ active: tagFilter === item }"
-          @tap="tagFilter = item; loadBoards()"
+          :class="{ active: tagFilter === item.value }"
+          @tap="applyTagFilter(item)"
         >
-          {{ item }}
+          {{ item.label }}
         </view>
       </scroll-view>
     </view>
@@ -156,7 +204,16 @@ onPullDownRefresh(async () => {
       @favorite-toggle="toggleFavorite"
     />
 
-    <AssistantDock scene="boards_list" :page-context="{ page: 'boards/list', keyword, playerFilter, difficultyFilter, tagFilter }" />
+    <AssistantDock
+      scene="boards_list"
+      :page-context="{
+        page: 'boards/list',
+        keyword,
+        playerFilter,
+        difficultyFilter,
+        tagFilter,
+      }"
+    />
   </view>
 </template>
 

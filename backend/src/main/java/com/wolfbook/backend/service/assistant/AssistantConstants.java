@@ -2,6 +2,9 @@ package com.wolfbook.backend.service.assistant;
 
 final class AssistantConstants {
 
+    static final String CONTENT_PLAIN = "PLAIN_TEXT";
+    static final String CONTENT_MARKDOWN = "MARKDOWN";
+
     static final String SOURCE_DOCUMENT = "DOCUMENT";
     static final String SOURCE_STRUCTURED = "STRUCTURED";
     static final String SOURCE_WEB = "WEB";

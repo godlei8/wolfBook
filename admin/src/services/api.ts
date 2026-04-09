@@ -16,10 +16,13 @@ import type {
 } from '../types'
 
 const TOKEN_KEY = 'wolfbook_admin_token'
+const DEFAULT_TIMEOUT = 15000
+const AI_UPLOAD_TIMEOUT = 120000
+const AI_LONG_TASK_TIMEOUT = 300000
 
 const http = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? 'http://localhost:8080' : '/'),
-  timeout: 15000,
+  timeout: DEFAULT_TIMEOUT,
 })
 
 http.interceptors.request.use((config) => {
@@ -126,6 +129,7 @@ export const api = {
     return unwrap<AdminAiDocument>(
       http.post('/admin/ai/documents', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: AI_UPLOAD_TIMEOUT,
       }),
     )
   },
@@ -133,7 +137,11 @@ export const api = {
     return unwrap<AdminAiDocument>(http.patch(`/admin/ai/documents/${id}`, { reviewStatus }))
   },
   async reindexAiDocument(id: number) {
-    return unwrap<AdminAiDocument>(http.post(`/admin/ai/documents/${id}/reindex`))
+    return unwrap<AdminAiDocument>(
+      http.post(`/admin/ai/documents/${id}/reindex`, undefined, {
+        timeout: AI_LONG_TASK_TIMEOUT,
+      }),
+    )
   },
   async clearAiDocuments() {
     return unwrap<number>(http.delete('/admin/ai/documents'))
@@ -142,10 +150,18 @@ export const api = {
     return unwrap<AdminAiVersion[]>(http.get('/admin/ai/publish'))
   },
   async publishAiVersion(notes: string) {
-    return unwrap<AdminAiVersion>(http.post('/admin/ai/publish', { notes }))
+    return unwrap<AdminAiVersion>(
+      http.post('/admin/ai/publish', { notes }, {
+        timeout: AI_LONG_TASK_TIMEOUT,
+      }),
+    )
   },
   async rollbackAiVersion(versionId: number) {
-    return unwrap<AdminAiVersion>(http.post('/admin/ai/publish/rollback', { versionId }))
+    return unwrap<AdminAiVersion>(
+      http.post('/admin/ai/publish/rollback', { versionId }, {
+        timeout: AI_LONG_TASK_TIMEOUT,
+      }),
+    )
   },
   async getAiLogs() {
     return unwrap<AdminAiLog[]>(http.get('/admin/ai/logs'))

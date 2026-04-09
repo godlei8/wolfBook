@@ -23,6 +23,9 @@ import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import jakarta.annotation.PreDestroy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -35,6 +38,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 @Service
@@ -42,6 +48,7 @@ public class AssistantKnowledgeService {
 
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
+    private static final Logger log = LoggerFactory.getLogger(AssistantKnowledgeService.class);
 
     private final AssistantDocumentMapper assistantDocumentMapper;
     private final AssistantPublishService assistantPublishService;
@@ -51,6 +58,13 @@ public class AssistantKnowledgeService {
     private final AssistantProperties assistantProperties;
     private final ObjectProvider<VectorStore> vectorStoreProvider;
     private final UploadProvider uploadProvider;
+    private final ExecutorService structuredKnowledgeExecutor = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "assistant-structured-knowledge");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private final AtomicBoolean structuredKnowledgeRebuildRunning = new AtomicBoolean(false);
+    private final AtomicBoolean structuredKnowledgeRebuildPending = new AtomicBoolean(false);
 
     public AssistantKnowledgeService(
             AssistantDocumentMapper assistantDocumentMapper,
@@ -82,6 +96,13 @@ public class AssistantKnowledgeService {
 
     public void rebuildStructuredKnowledge() {
         syncStructuredDocuments(assistantPublishService.getCurrentVersionId(), true);
+    }
+
+    public void requestStructuredKnowledgeRebuild() {
+        structuredKnowledgeRebuildPending.set(true);
+        if (structuredKnowledgeRebuildRunning.compareAndSet(false, true)) {
+            structuredKnowledgeExecutor.submit(this::drainStructuredKnowledgeRebuildQueue);
+        }
     }
 
     public void syncPublishedKnowledgeVersion(Integer versionId) {
@@ -235,6 +256,23 @@ public class AssistantKnowledgeService {
                 });
     }
 
+    private void drainStructuredKnowledgeRebuildQueue() {
+        try {
+            while (structuredKnowledgeRebuildPending.compareAndSet(true, false)) {
+                try {
+                    rebuildStructuredKnowledge();
+                } catch (Exception exception) {
+                    log.error("Failed to rebuild structured assistant knowledge in background", exception);
+                }
+            }
+        } finally {
+            structuredKnowledgeRebuildRunning.set(false);
+            if (structuredKnowledgeRebuildPending.get()) {
+                requestStructuredKnowledgeRebuild();
+            }
+        }
+    }
+
     public List<KnowledgeHit> searchPublishedKnowledge(String query) {
         ensureStructuredDocuments();
         Integer currentVersionId = assistantPublishService.getCurrentVersionId();
@@ -384,14 +422,14 @@ public class AssistantKnowledgeService {
         List<String> ids = new ArrayList<>();
         List<Document> documents = new ArrayList<>();
         for (int index = 0; index < chunks.size(); index++) {
-            String chunkId = "assistant-doc-" + entity.getId() + "-" + index;
+            String chunkId = buildChunkId(entity, index);
             ids.add(chunkId);
             Map<String, Object> metadata = new HashMap<>();
-            metadata.put("sourceType", entity.getSourceType());
-            metadata.put("sourceKey", entity.getSourceKey());
-            metadata.put("sourceId", entity.getSourceId());
-            metadata.put("publishedVersion", entity.getPublishVersionId());
-            metadata.put("title", entity.getName());
+            putMetadata(metadata, "sourceType", entity.getSourceType());
+            putMetadata(metadata, "sourceKey", entity.getSourceKey());
+            putMetadata(metadata, "sourceId", entity.getSourceId());
+            putMetadata(metadata, "publishedVersion", entity.getPublishVersionId());
+            putMetadata(metadata, "title", entity.getName());
             documents.add(Document.builder()
                     .id(chunkId)
                     .text(chunks.get(index))
@@ -408,12 +446,33 @@ public class AssistantKnowledgeService {
         }
         List<String> ids = new ArrayList<>();
         for (int index = 0; index < chunkCount; index++) {
-            ids.add("assistant-doc-" + entity.getId() + "-" + index);
+            ids.add(buildChunkId(entity, index));
         }
         try {
             vectorStore.delete(ids);
         } catch (Exception ignored) {
         }
+    }
+
+    private String buildChunkId(AssistantDocumentEntity entity, int chunkIndex) {
+        String raw = String.join(":",
+                "assistant-doc",
+                String.valueOf(entity.getId()),
+                String.valueOf(entity.getPublishVersionId()),
+                entity.getSourceKey() == null ? "unknown" : entity.getSourceKey(),
+                String.valueOf(chunkIndex)
+        );
+        return UUID.nameUUIDFromBytes(raw.getBytes(StandardCharsets.UTF_8)).toString();
+    }
+
+    private void putMetadata(Map<String, Object> metadata, String key, Object value) {
+        if (value == null) {
+            return;
+        }
+        if (value instanceof String text && text.isBlank()) {
+            return;
+        }
+        metadata.put(key, value);
     }
 
     private String buildBoardStructuredText(Board board) {
@@ -546,6 +605,11 @@ public class AssistantKnowledgeService {
         } catch (Exception exception) {
             throw new ApiException(5000, "Failed to write assistant metadata");
         }
+    }
+
+    @PreDestroy
+    void shutdownStructuredKnowledgeExecutor() {
+        structuredKnowledgeExecutor.shutdownNow();
     }
 
     record KnowledgeHit(

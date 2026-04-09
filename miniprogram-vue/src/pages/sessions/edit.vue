@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import api from '../../services/api'
-import storage from '../../services/storage'
+import userData from '../../services/user-data'
 
 const sessionId = ref('')
 const sessionMode = ref('library')
@@ -148,28 +148,36 @@ function buildSessionPayload() {
   }
 }
 
-function saveSession() {
+async function saveSession() {
   const base = buildSessionPayload()
-  if (!base) {
-    return
-  }
+  if (!base) return
 
-  const current = sessionId.value ? storage.getSessionById(sessionId.value) : null
-  const now = new Date().toISOString()
-  const session = {
-    sessionId: sessionId.value || makeId('session'),
-    ...base,
-    createTime: current ? current.createTime : now,
-    updateTime: now,
-    records: current ? current.records : [],
+  try {
+    const current = sessionId.value ? await userData.getSessionById(sessionId.value) : null
+    const now = new Date().toISOString()
+    const session = {
+      sessionId: sessionId.value || makeId('session'),
+      ...base,
+      createTime: current ? current.createTime : now,
+      updateTime: now,
+      records: current ? current.records || [] : [],
+    }
+    const saved = await userData.saveSession(session)
+    uni.redirectTo({ url: `/pages/sessions/detail?id=${saved.sessionId}` })
+  } catch (error) {
+    uni.showToast({ title: error?.message || '保存失败', icon: 'none' })
   }
-
-  storage.upsertSession(session)
-  uni.redirectTo({ url: `/pages/sessions/detail?id=${session.sessionId}` })
 }
 
 async function initialize(options) {
-  const editingSession = options?.id ? storage.getSessionById(options.id) : null
+  let editingSession = null
+  if (options?.id) {
+    try {
+      editingSession = await userData.getSessionById(options.id)
+    } catch (error) {
+      uni.showToast({ title: error?.message || '原笔记不存在，已切换为新建', icon: 'none' })
+    }
+  }
   await loadBoardOptions()
   if (editingSession) {
     hydrateSession(editingSession)
@@ -280,7 +288,7 @@ onLoad((options) => {
         <view class="custom-preview">
           <view class="custom-kicker">CUSTOM BOARD</view>
           <view class="custom-name">{{ customBoardPreviewName }}</view>
-          <view class="custom-meta">{{ customPlayerLabel }} · 本地记录专用</view>
+          <view class="custom-meta">{{ customPlayerLabel }} · 笔记记录专用</view>
           <view class="custom-desc">适合临时组板、线下复盘或局中快速开一局，不依赖站内板库也能继续记笔记。</view>
         </view>
 
@@ -542,13 +550,6 @@ onLoad((options) => {
 .board-role-pill--third {
   background: rgba(115, 96, 166, 0.22);
   color: #d2c2ff;
-}
-
-.player-chip-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14rpx;
-  margin-top: 14rpx;
 }
 
 .board-name-input {

@@ -17,7 +17,7 @@ final class AssistantDefaults {
                         "欢迎来到狼人杀 AI 助手，想问规则、角色，还是让我们一起挑个合适的板子？",
                         List.of("12人进阶推荐什么板子", "女巫能不能自救", "守卫和女巫会不会冲突"),
                         properties.getMiniMax().getChatModel(),
-                        properties.getMiniMax().getEmbeddingModel(),
+                        properties.getDefaultEmbeddingModelLabel(),
                         properties.getTemperature(),
                         properties.getMaxSuggestions()
                 ),

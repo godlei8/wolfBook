@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import AssistantDock from '../../components/assistant/AssistantDock.vue'
-import storage from '../../services/storage'
+import userData from '../../services/user-data'
 import { formatDateTime } from '../../utils/format'
 
 const sessions = ref([])
@@ -14,22 +14,25 @@ const recordTypeMap = {
   wolfPack: '狼坑分析',
 }
 
-function refreshSessions() {
-  sessions.value = storage
-    .getSessions()
-    .slice()
-    .sort((left, right) => new Date(right.updateTime).getTime() - new Date(left.updateTime).getTime())
-    .map((session) => {
-      const records = session.records || []
-      const latestRecord = records.length ? records[records.length - 1] : null
-      return {
-        ...session,
-        createLabel: formatDateTime(session.createTime),
-        updateLabel: formatDateTime(session.updateTime),
-        latestTypeLabel: latestRecord ? recordTypeMap[latestRecord.type] || '最新记录' : '准备开始',
-        latestPreview: latestRecord ? latestRecord.content : '还没有记录，点击进入后就可以补充发言、投票和夜间信息。',
-      }
-    })
+function buildSessionView(session) {
+  const records = session.records || []
+  const latestRecord = records.length ? records[records.length - 1] : null
+  return {
+    ...session,
+    createLabel: formatDateTime(session.createTime),
+    updateLabel: formatDateTime(session.updateTime),
+    latestTypeLabel: latestRecord ? recordTypeMap[latestRecord.type] || '最新记录' : '准备开始',
+    latestPreview: latestRecord ? latestRecord.content : '还没有记录，点击进入后就可以补充发言、投票和夜间信息。',
+  }
+}
+
+async function refreshSessions() {
+  try {
+    const list = await userData.loadSessions()
+    sessions.value = (list || []).map(buildSessionView)
+  } catch (error) {
+    uni.showToast({ title: error?.message || '笔记加载失败', icon: 'none' })
+  }
 }
 
 function createSession() {
@@ -44,21 +47,27 @@ function removeSession(id) {
   uni.showModal({
     title: '删除对局',
     content: '确认删除这条笔记吗？删除后不能恢复。',
-    success: (res) => {
-      if (res.confirm) {
-        storage.deleteSession(id)
-        refreshSessions()
+    success: async (res) => {
+      if (!res.confirm) return
+      try {
+        await userData.deleteSession(id)
+        await refreshSessions()
+        uni.showToast({ title: '已删除', icon: 'success' })
+      } catch (error) {
+        uni.showToast({ title: error?.message || '删除失败', icon: 'none' })
       }
     },
   })
 }
 
-onShow(refreshSessions)
+onShow(() => {
+  refreshSessions()
+})
 </script>
 
 <template>
   <view class="page-shell">
-    <view class="hero-title">笔记</view>
+    <view class="hero-title">我的笔记</view>
     <view class="hero-subtitle">把发言、票型和夜间信息收进一条时间线，局后复盘会更清楚。</view>
 
     <view v-if="!sessions.length" class="empty-state glass-card section-card">还没有对局笔记，点右下角加号先创建一局。</view>
