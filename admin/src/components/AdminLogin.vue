@@ -11,7 +11,7 @@ const emit = defineEmits<{
 const loading = ref(false)
 const form = reactive({
   username: 'admin',
-  password: 'wolf123',
+  password: '',
 })
 
 async function submit() {
@@ -32,16 +32,60 @@ async function submit() {
 <template>
   <div class="login-shell">
     <div class="login-hero">
-      <div class="eyebrow">WOLFBOOK ADMIN</div>
-      <h1>BLACK GOLD CONTROL</h1>
-      <p>管理板子资料、角色设定、社区内容与举报处理。</p>
+      <div class="hero-visual" aria-hidden="true">
+        <svg viewBox="0 0 520 520" class="wolf-crest" role="presentation">
+          <defs>
+            <linearGradient id="wolfGold" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#ffe287" />
+              <stop offset="45%" stop-color="#ffc000" />
+              <stop offset="100%" stop-color="#8f5d00" />
+            </linearGradient>
+            <radialGradient id="wolfGlow" cx="50%" cy="38%" r="52%">
+              <stop offset="0%" stop-color="#ffda6a" stop-opacity="0.32" />
+              <stop offset="100%" stop-color="#ffda6a" stop-opacity="0" />
+            </radialGradient>
+          </defs>
+
+          <circle cx="260" cy="220" r="160" fill="url(#wolfGlow)" />
+          <path
+            d="M150 120 220 182 248 154 274 186 370 124 332 238 376 286 314 320 286 404 260 356 232 404 204 320 142 286 186 238Z"
+            fill="rgba(255, 192, 0, 0.04)"
+            stroke="url(#wolfGold)"
+            stroke-width="10"
+            stroke-linejoin="round"
+          />
+          <path
+            d="M205 225 236 256M315 225 284 256M220 309 260 338 300 309"
+            fill="none"
+            stroke="url(#wolfGold)"
+            stroke-width="10"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+          <path
+            d="M203 188 188 142M317 188 332 142"
+            fill="none"
+            stroke="url(#wolfGold)"
+            stroke-width="8"
+            stroke-linecap="round"
+          />
+          <circle cx="224" cy="234" r="8" fill="#ffc000" />
+          <circle cx="296" cy="234" r="8" fill="#ffc000" />
+        </svg>
+      </div>
+
+      <div class="hero-copy">
+        <div class="eyebrow">WOLFBOOK ADMIN</div>
+        <h1>BLACK GOLD CONTROL</h1>
+        <p>管理板子资料、角色设定、社区内容与 AI 狼人顾问，保持整套运营控制台统一运转。</p>
+      </div>
     </div>
 
     <div class="login-panel">
       <div class="panel-head">
         <div class="panel-kicker">SIGN IN</div>
         <div class="panel-title">管理员登录</div>
-        <div class="panel-sub">默认账号已预置，可直接进入联调流程。</div>
+        <div class="panel-sub">输入当前管理员账号与密码后进入后台，不再在界面上展示默认口令。</div>
       </div>
 
       <el-form label-position="top" @submit.prevent="submit">
@@ -49,14 +93,12 @@ async function submit() {
           <el-input v-model="form.username" placeholder="请输入管理员账号" />
         </el-form-item>
         <el-form-item label="密码">
-          <el-input v-model="form.password" show-password placeholder="请输入密码" />
+          <el-input v-model="form.password" show-password placeholder="请输入登录密码" />
         </el-form-item>
         <el-button class="login-button" type="primary" :loading="loading" @click="submit">
           登录后台
         </el-button>
       </el-form>
-
-      <div class="login-tip">默认账号：`admin` / `wolf123`</div>
     </div>
   </div>
 </template>
@@ -78,15 +120,36 @@ async function submit() {
 }
 
 .login-hero {
-  padding: 48px;
+  position: relative;
+  overflow: hidden;
+  padding: 40px 48px 48px;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: space-between;
   min-height: 520px;
   background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.8)),
-    radial-gradient(circle at top right, rgba(255, 192, 0, 0.14), transparent 22%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.14), rgba(0, 0, 0, 0.84)),
+    radial-gradient(circle at top right, rgba(255, 192, 0, 0.14), transparent 24%),
     linear-gradient(180deg, #121212 0%, #050505 100%);
+}
+
+.hero-visual {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  pointer-events: none;
+}
+
+.wolf-crest {
+  width: min(100%, 430px);
+  filter:
+    drop-shadow(0 0 28px rgba(255, 192, 0, 0.14))
+    drop-shadow(0 24px 44px rgba(0, 0, 0, 0.46));
+}
+
+.hero-copy {
+  display: grid;
+  gap: 0;
 }
 
 .eyebrow,
@@ -140,12 +203,6 @@ async function submit() {
   font-weight: 700;
 }
 
-.login-tip {
-  margin-top: 18px;
-  color: #8d8d8d;
-  font-size: 13px;
-}
-
 @media (max-width: 980px) {
   .login-shell {
     grid-template-columns: 1fr;
@@ -153,10 +210,19 @@ async function submit() {
 
   .login-hero {
     min-height: 320px;
+    padding: 32px;
   }
 
   .login-hero h1 {
     font-size: 48px;
+  }
+
+  .hero-visual {
+    justify-content: flex-start;
+  }
+
+  .wolf-crest {
+    width: min(100%, 280px);
   }
 }
 </style>

@@ -169,10 +169,20 @@ public class AssistantAnswerService {
                     AssistantConstants.CONTENT_MARKDOWN
             ));
 
-            AskExecution execution = executeAsk(prepared, request);
-            for (String chunk : splitMarkdownForStream(execution.response().answer())) {
-                emit(emitter, "delta", new AssistantDtos.AssistantStreamDelta(chunk));
-            }
+            StreamExecution execution = switch (prepared.intent()) {
+                case BOARD_RECOMMENDATION -> streamBoardRecommendation(prepared, request, emitter);
+                case UNSUPPORTED -> streamUnsupported(prepared, emitter);
+                case KNOWLEDGE -> streamKnowledge(prepared, request, emitter);
+            };
+            long latencyMs = System.currentTimeMillis() - prepared.startAtMs();
+            writeLog(
+                    prepared.openid(),
+                    prepared.session().getSessionId(),
+                    request.message(),
+                    execution.response(),
+                    latencyMs,
+                    execution.failureType()
+            );
             emit(emitter, "done", execution.response());
             emitter.complete();
         } catch (Exception exception) {
@@ -186,6 +196,136 @@ public class AssistantAnswerService {
                 emitter.completeWithError(exception);
             }
         }
+    }
+
+    private StreamExecution streamBoardRecommendation(
+            PreparedAsk prepared,
+            AssistantDtos.AssistantAskRequest request,
+            SseEmitter emitter
+    ) throws IOException {
+        List<AssistantDtos.RecommendedBoardCard> boards = recommendBoards(request.message());
+        List<String> suggestedQuestions = nextQuestions(prepared.config().base().quickQuestions(), request.message());
+        String fallbackAnswer = boards.isEmpty()
+                ? """
+                ## 暂时没有完全匹配的板子
+
+                - 你可以补充 **人数**、**难度** 或 **玩法偏好**
+                - 例如：`12人 进阶 娱乐板子推荐`
+                - 如果你愿意，我也可以继续按“入门 / 进阶 / 烧脑”重新给你筛一轮
+                """
+                : fallbackBoardAnswer(boards);
+
+        StreamedAnswer streamedAnswer = streamPromptAnswer(
+                buildBoardRecommendationPrompt(request.message(), boards, prepared.config()),
+                fallbackAnswer,
+                emitter
+        );
+
+        return new StreamExecution(
+                persistAssistantResponse(
+                        prepared.session(),
+                        streamedAnswer.answer(),
+                        AssistantConstants.ANSWER_STRUCTURED,
+                        List.of(),
+                        boards,
+                        suggestedQuestions,
+                        false,
+                        prepared.traceId()
+                ),
+                streamedAnswer.failureType()
+        );
+    }
+
+    private StreamExecution streamUnsupported(PreparedAsk prepared, SseEmitter emitter) throws IOException {
+        String markdown = buildRefusalMarkdown(prepared.config().safety().unsupportedMessage());
+        List<String> suggestedQuestions = prepared.config().base().quickQuestions().stream()
+                .limit(assistantProperties.getMaxSuggestions())
+                .toList();
+        StreamedAnswer streamedAnswer = emitStaticAnswer(markdown, emitter);
+        return new StreamExecution(
+                persistAssistantResponse(
+                        prepared.session(),
+                        streamedAnswer.answer(),
+                        AssistantConstants.ANSWER_REFUSAL,
+                        List.of(),
+                        List.of(),
+                        suggestedQuestions,
+                        false,
+                        prepared.traceId()
+                ),
+                streamedAnswer.failureType()
+        );
+    }
+
+    private StreamExecution streamKnowledge(
+            PreparedAsk prepared,
+            AssistantDtos.AssistantAskRequest request,
+            SseEmitter emitter
+    ) throws IOException {
+        List<AssistantKnowledgeService.KnowledgeHit> hits = assistantKnowledgeService.searchPublishedKnowledge(request.message());
+        boolean usedWebSearch = false;
+        String answerType = AssistantConstants.ANSWER_RAG;
+        List<AssistantDtos.AssistantCitation> citations;
+        List<String> suggestedQuestions;
+        StreamedAnswer streamedAnswer;
+
+        if (!hits.isEmpty()) {
+            citations = hits.stream()
+                    .limit(assistantProperties.getTopK())
+                    .map(AssistantKnowledgeService.KnowledgeHit::toCitation)
+                    .toList();
+            suggestedQuestions = nextQuestions(prepared.config().base().quickQuestions(), request.message());
+            streamedAnswer = streamPromptAnswer(
+                    buildKnowledgePrompt(prepared, request.message(), hits),
+                    fallbackKnowledgeAnswer(hits),
+                    emitter
+            );
+        } else if (prepared.config().search().webSearchEnabled() && assistantProperties.isWebSearchEnabled()) {
+            AssistantSearchService.SearchResult searchResult = assistantSearchService.searchWeb(
+                    request.message(),
+                    prepared.config().base().chatModel(),
+                    prepared.config().base().temperature()
+            );
+            if (searchResult.answer() == null || searchResult.answer().isBlank()) {
+                citations = List.of();
+                suggestedQuestions = prepared.config().base().quickQuestions().stream()
+                        .limit(assistantProperties.getMaxSuggestions())
+                        .toList();
+                answerType = AssistantConstants.ANSWER_REFUSAL;
+                streamedAnswer = emitStaticAnswer(buildRefusalMarkdown(prepared.config().prompt().refusalPrompt()), emitter);
+            } else {
+                usedWebSearch = true;
+                answerType = AssistantConstants.ANSWER_WEB;
+                citations = searchResult.citations();
+                suggestedQuestions = searchResult.suggestedQuestions().isEmpty()
+                        ? nextQuestions(prepared.config().base().quickQuestions(), request.message())
+                        : searchResult.suggestedQuestions().stream()
+                        .limit(assistantProperties.getMaxSuggestions())
+                        .toList();
+                streamedAnswer = emitStaticAnswer(buildWebMarkdownAnswer(searchResult.answer(), citations), emitter);
+            }
+        } else {
+            citations = List.of();
+            suggestedQuestions = prepared.config().base().quickQuestions().stream()
+                    .limit(assistantProperties.getMaxSuggestions())
+                    .toList();
+            answerType = AssistantConstants.ANSWER_REFUSAL;
+            streamedAnswer = emitStaticAnswer(buildRefusalMarkdown(prepared.config().prompt().refusalPrompt()), emitter);
+        }
+
+        return new StreamExecution(
+                persistAssistantResponse(
+                        prepared.session(),
+                        streamedAnswer.answer(),
+                        answerType,
+                        citations,
+                        List.of(),
+                        suggestedQuestions,
+                        usedWebSearch,
+                        prepared.traceId()
+                ),
+                streamedAnswer.failureType()
+        );
     }
 
     private AssistantDtos.AssistantAskResponse answerBoardRecommendation(PreparedAsk prepared, AssistantDtos.AssistantAskRequest request) {
@@ -310,6 +450,40 @@ public class AssistantAnswerService {
                 List.of(),
                 suggestedQuestions,
                 false,
+                traceId
+        );
+    }
+
+    private AssistantDtos.AssistantAskResponse persistAssistantResponse(
+            AssistantSessionEntity session,
+            String answer,
+            String answerType,
+            List<AssistantDtos.AssistantCitation> citations,
+            List<AssistantDtos.RecommendedBoardCard> boards,
+            List<String> suggestedQuestions,
+            boolean usedWebSearch,
+            String traceId
+    ) {
+        AssistantMessageEntity saved = assistantConversationService.saveAssistantMessage(
+                session.getSessionId(),
+                answer,
+                answerType,
+                citations,
+                boards,
+                suggestedQuestions,
+                usedWebSearch,
+                traceId
+        );
+        return new AssistantDtos.AssistantAskResponse(
+                session.getSessionId(),
+                saved.getId(),
+                answer,
+                AssistantConstants.CONTENT_MARKDOWN,
+                answerType,
+                citations,
+                boards,
+                suggestedQuestions,
+                usedWebSearch,
                 traceId
         );
     }
@@ -499,6 +673,167 @@ public class AssistantAnswerService {
         } catch (Exception exception) {
             return fallbackKnowledgeAnswer(hits);
         }
+    }
+
+    private Prompt buildBoardRecommendationPrompt(
+            String query,
+            List<AssistantDtos.RecommendedBoardCard> boards,
+            AssistantDtos.AdminAiConfig config
+    ) {
+        if (boards.isEmpty()) {
+            return null;
+        }
+
+        StringBuilder context = new StringBuilder();
+        for (int index = 0; index < boards.size(); index++) {
+            AssistantDtos.RecommendedBoardCard board = boards.get(index);
+            context.append(index + 1)
+                    .append(". ")
+                    .append(board.name())
+                    .append(" | ")
+                    .append(board.playerCount())
+                    .append("人 | ")
+                    .append(board.difficulty())
+                    .append(" | 标签: ")
+                    .append(board.tags() == null || board.tags().isEmpty() ? "无" : String.join("、", board.tags()))
+                    .append(" | 推荐理由: ")
+                    .append(board.reason())
+                    .append('\n');
+        }
+
+        return new Prompt(
+                List.of(
+                        new SystemMessage(config.prompt().recommendationPrompt() + """
+
+                                请使用简洁 Markdown 输出，要求：
+                                1. 先输出 `## 推荐结果`
+                                2. 每个板子用 `### 板名`
+                                3. 每个板子下只保留 2-3 条要点
+                                4. 不要编造站内不存在的规则或角色
+                                5. 不要把候选板子机械地原样抄一遍
+                                """),
+                        new UserMessage("""
+                                用户问题：
+                                %s
+
+                                候选板子：
+                                %s
+                                """.formatted(query, context))
+                ),
+                MiniMaxChatOptions.builder()
+                        .model(config.base().chatModel())
+                        .temperature(config.base().temperature())
+                        .build()
+        );
+    }
+
+    private Prompt buildKnowledgePrompt(
+            PreparedAsk prepared,
+            String query,
+            List<AssistantKnowledgeService.KnowledgeHit> hits
+    ) {
+        StringBuilder context = new StringBuilder();
+        for (AssistantKnowledgeService.KnowledgeHit hit : hits) {
+            context.append("来源: ").append(hit.title()).append('\n')
+                    .append(hit.snippet()).append("\n\n");
+        }
+
+        List<String> recentMessages = assistantConversationService.recentContextMessages(prepared.openid(), prepared.session().getSessionId());
+        String history = recentMessages.isEmpty() ? "无" : String.join("\n", recentMessages);
+
+        return new Prompt(
+                List.of(
+                        new SystemMessage(prepared.config().prompt().systemPrompt() + """
+
+                                请使用简洁 Markdown 回答，并遵守：
+                                1. 优先输出 `## 结论`
+                                2. 如需拆解规则，再输出 `### 规则拆解`
+                                3. 如需给操作建议，再输出 `### 你可以怎么做`
+                                4. 只能依据给定资料，不要编造
+                                5. 句子尽量短，优先用项目符号
+                                """),
+                        new UserMessage("""
+                                当前问题：
+                                %s
+
+                                最近上下文：
+                                %s
+
+                                站内资料：
+                                %s
+                                """.formatted(query, history, context))
+                ),
+                MiniMaxChatOptions.builder()
+                        .model(prepared.config().base().chatModel())
+                        .temperature(prepared.config().base().temperature())
+                        .build()
+        );
+    }
+
+    private StreamedAnswer streamPromptAnswer(Prompt prompt, String fallbackAnswer, SseEmitter emitter) throws IOException {
+        MiniMaxChatModel chatModel = miniMaxChatModelProvider.getIfAvailable();
+        if (prompt == null || chatModel == null) {
+            return emitStaticAnswer(fallbackAnswer, emitter);
+        }
+
+        StringBuilder answer = new StringBuilder();
+        String failureType = null;
+
+        try {
+            for (ChatResponse chunkResponse : chatModel.stream(prompt).toIterable()) {
+                String chunkText = extractResponseText(chunkResponse);
+                String delta = resolveStreamDelta(chunkText, answer.toString());
+                if (delta == null || delta.isBlank()) {
+                    continue;
+                }
+                answer.append(delta);
+                emit(emitter, "delta", new AssistantDtos.AssistantStreamDelta(delta));
+            }
+        } catch (Exception exception) {
+            failureType = exception.getClass().getSimpleName();
+            if (answer.length() == 0) {
+                return emitStaticAnswer(fallbackAnswer, emitter, failureType);
+            }
+            String degradedTail = "\n\n> 当前回答在生成过程中中断，以下是已生成内容。";
+            answer.append(degradedTail);
+            emit(emitter, "delta", new AssistantDtos.AssistantStreamDelta(degradedTail));
+        }
+
+        if (answer.length() == 0) {
+            return emitStaticAnswer(fallbackAnswer, emitter, failureType);
+        }
+
+        return new StreamedAnswer(normalizeMarkdown(answer.toString()), failureType);
+    }
+
+    private StreamedAnswer emitStaticAnswer(String markdown, SseEmitter emitter) throws IOException {
+        return emitStaticAnswer(markdown, emitter, null);
+    }
+
+    private StreamedAnswer emitStaticAnswer(String markdown, SseEmitter emitter, String failureType) throws IOException {
+        String normalized = normalizeMarkdown(markdown);
+        for (String chunk : splitMarkdownForStream(normalized)) {
+            emit(emitter, "delta", new AssistantDtos.AssistantStreamDelta(chunk));
+        }
+        return new StreamedAnswer(normalized, failureType);
+    }
+
+    private String extractResponseText(ChatResponse response) {
+        if (response == null || response.getResult() == null || response.getResult().getOutput() == null) {
+            return "";
+        }
+        String text = response.getResult().getOutput().getText();
+        return text == null ? "" : text;
+    }
+
+    private String resolveStreamDelta(String chunkText, String currentAnswer) {
+        if (chunkText == null || chunkText.isBlank()) {
+            return "";
+        }
+        if (currentAnswer != null && !currentAnswer.isEmpty() && chunkText.startsWith(currentAnswer)) {
+            return chunkText.substring(currentAnswer.length());
+        }
+        return chunkText;
     }
 
     private String fallbackBoardAnswer(List<AssistantDtos.RecommendedBoardCard> boards) {
@@ -701,6 +1036,18 @@ public class AssistantAnswerService {
     private record AskExecution(
             AssistantDtos.AssistantAskResponse response,
             long latencyMs,
+            String failureType
+    ) {
+    }
+
+    private record StreamExecution(
+            AssistantDtos.AssistantAskResponse response,
+            String failureType
+    ) {
+    }
+
+    private record StreamedAnswer(
+            String answer,
             String failureType
     ) {
     }

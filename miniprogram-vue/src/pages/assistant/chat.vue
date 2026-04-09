@@ -58,6 +58,8 @@ function normalizeMessage(message) {
     })
   }
 
+  visibleCitations = visibleCitations.filter((citation) => citation?.sourceType === 'WEB')
+
   return {
     ...message,
     contentFormat,
@@ -387,7 +389,6 @@ onLoad((options) => {
                     <view v-if="citation.url" class="citation-action">复制链接</view>
                   </view>
                   <view class="citation-title">{{ citation.title }}</view>
-                  <view class="citation-snippet">{{ citation.snippet }}</view>
                 </view>
               </view>
             </view>

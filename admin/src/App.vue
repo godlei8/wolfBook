@@ -159,7 +159,7 @@ onMounted(() => {
               <div class="welcome-panel">
                 <div class="welcome-item">
                   <span>管理员账号</span>
-                  <strong>admin / wolf123</strong>
+                  <strong>已初始化，请使用独立密码登录</strong>
                 </div>
                 <div class="welcome-item">
                   <span>主视觉</span>

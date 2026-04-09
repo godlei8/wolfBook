@@ -163,6 +163,36 @@ class BackendApplicationTests {
     }
 
     @Test
+    void assistantStreamShouldEmitStartedDeltaAndDoneForAuthorizedRequest() throws Exception {
+        String token = loginAndGetToken();
+        String askBody = """
+                {
+                  "message": "12人进阶推荐什么板子",
+                  "scene": "assistant_chat",
+                  "pageContext": {
+                    "page": "assistant/chat"
+                  }
+                }
+                """;
+
+        var result = mockMvc.perform(post("/api/assistant/ask/stream")
+                        .header("Authorization", "Bearer " + token)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(askBody))
+                .andExpect(status().isOk())
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        result.getAsyncResult(5000);
+        mockMvc.perform(asyncDispatch(result))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("event:started")))
+                .andExpect(content().string(containsString("event:delta")))
+                .andExpect(content().string(containsString("event:done")));
+    }
+
+    @Test
     void favoriteEndpointsShouldSupportAddAndRemoveLifecycle() throws Exception {
         String token = loginAndGetToken();
         String authorization = "Bearer " + token;
