@@ -2,6 +2,7 @@ package com.wolfbook.backend.config;
 
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -12,7 +13,7 @@ public class AssistantSchemaInitializer implements ApplicationRunner {
 
     private final JdbcTemplate jdbcTemplate;
 
-    public AssistantSchemaInitializer(JdbcTemplate jdbcTemplate) {
+    public AssistantSchemaInitializer(@Qualifier("appJdbcTemplate") JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
     }
 

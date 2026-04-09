@@ -12,3 +12,6 @@ miniprogram-vue/dist/
 SecretKey.csv
 .codex/
 .vscode/
+awesome-design-md-main/
+deploy/.env.prod
+deploy/certs/

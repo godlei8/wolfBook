@@ -1,6 +1,7 @@
 package com.wolfbook.backend.support;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wolfbook.backend.common.ApiException;
 import com.wolfbook.backend.config.WechatProperties;
 import org.springframework.context.annotation.Profile;
@@ -16,10 +17,12 @@ import java.net.URI;
 public class WechatAuthProvider implements AuthProvider {
 
     private final WechatProperties wechatProperties;
+    private final ObjectMapper objectMapper;
     private final RestClient restClient;
 
-    public WechatAuthProvider(WechatProperties wechatProperties) {
+    public WechatAuthProvider(WechatProperties wechatProperties, ObjectMapper objectMapper) {
         this.wechatProperties = wechatProperties;
+        this.objectMapper = objectMapper;
         this.restClient = RestClient.builder().build();
     }
 
@@ -43,10 +46,16 @@ public class WechatAuthProvider implements AuthProvider {
 
         WechatCode2SessionResponse response;
         try {
-            response = restClient.get()
+            String body = restClient.get()
                     .uri(uri)
                     .retrieve()
-                    .body(WechatCode2SessionResponse.class);
+                    .body(String.class);
+            if (!StringUtils.hasText(body)) {
+                throw new ApiException(5001, "微信登录服务暂不可用");
+            }
+            response = objectMapper.readValue(body, WechatCode2SessionResponse.class);
+        } catch (ApiException exception) {
+            throw exception;
         } catch (Exception exception) {
             throw new ApiException(5001, "微信登录服务请求失败，请稍后重试");
         }

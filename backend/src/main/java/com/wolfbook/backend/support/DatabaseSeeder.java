@@ -5,6 +5,8 @@ import com.wolfbook.backend.entity.*;
 import com.wolfbook.backend.mapper.*;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +27,7 @@ public class DatabaseSeeder {
     private final ReportMapper reportMapper;
     private final AdminUserMapper adminUserMapper;
     private final DomainConverter converter;
+    private final Environment environment;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     public DatabaseSeeder(
@@ -37,7 +40,8 @@ public class DatabaseSeeder {
             LikeMapper likeMapper,
             ReportMapper reportMapper,
             AdminUserMapper adminUserMapper,
-            DomainConverter converter
+            DomainConverter converter,
+            Environment environment
     ) {
         this.userMapper = userMapper;
         this.roleMapper = roleMapper;
@@ -49,6 +53,7 @@ public class DatabaseSeeder {
         this.reportMapper = reportMapper;
         this.adminUserMapper = adminUserMapper;
         this.converter = converter;
+        this.environment = environment;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -133,11 +138,19 @@ public class DatabaseSeeder {
         AdminUserEntity admin = new AdminUserEntity();
         admin.setId(1);
         admin.setUsername("admin");
-        admin.setPassword(passwordEncoder.encode("wolf123"));
+        admin.setPassword(passwordEncoder.encode(resolveAdminInitPassword()));
         admin.setDisplayName("星盘管理员");
         admin.setStatus(1);
         admin.setCreateTime(LocalDateTime.now().minusDays(30));
         adminUserMapper.insert(admin);
+    }
+
+    private String resolveAdminInitPassword() {
+        String initPassword = environment.getProperty("ADMIN_INIT_PASSWORD", "");
+        if (environment.acceptsProfiles(Profiles.of("prod")) && initPassword.isBlank()) {
+            throw new IllegalStateException("ADMIN_INIT_PASSWORD must be provided when bootstrapping production admin user");
+        }
+        return initPassword.isBlank() ? "wolf123" : initPassword;
     }
 
     private void saveUser(String openid, String nickname, String avatar, LocalDateTime createTime) {

@@ -1,0 +1,57 @@
+server:
+  port: 8110
+
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  sql:
+    init:
+      mode: never
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+wolfbook:
+  cors:
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:https://wolfbook.godlei8.top}
+  wechat:
+    mini-program:
+      app-id: ${WECHAT_MINI_APP_ID}
+      app-secret: ${WECHAT_MINI_APP_SECRET}
+      code2-session-url: ${WECHAT_CODE2SESSION_URL:https://api.weixin.qq.com/sns/jscode2session}
+  upload:
+    provider: cos
+    cos:
+      secret-id: ${COS_SECRET_ID}
+      secret-key: ${COS_SECRET_KEY}
+      bucket: ${COS_BUCKET}
+      region: ${COS_REGION}
+      public-base-url: ${COS_PUBLIC_BASE_URL:https://cos.godlei8.top}
+      prefix: ${COS_PREFIX:wolfbook}
+  assistant:
+    enabled: ${ASSISTANT_ENABLED:true}
+    history-window: ${ASSISTANT_HISTORY_WINDOW:12}
+    max-sessions-per-user: ${ASSISTANT_MAX_SESSIONS:20}
+    max-suggestions: ${ASSISTANT_MAX_SUGGESTIONS:3}
+    similarity-threshold: ${ASSISTANT_SIMILARITY_THRESHOLD:0.45}
+    top-k: ${ASSISTANT_TOP_K:4}
+    temperature: ${ASSISTANT_TEMPERATURE:0.35}
+    web-search-enabled: ${ASSISTANT_WEB_SEARCH_ENABLED:true}
+    web-search-timeout-seconds: ${ASSISTANT_WEB_SEARCH_TIMEOUT_SECONDS:12}
+    minimax:
+      api-key: ${MINIMAX_API_KEY}
+      base-url: ${MINIMAX_BASE_URL:https://api.minimax.io}
+      chat-model: ${MINIMAX_CHAT_MODEL:MiniMax-M2.7}
+      embedding-model: ${MINIMAX_EMBEDDING_MODEL:text-embedding-3-small}
+    pgvector:
+      enabled: ${ASSISTANT_PGVECTOR_ENABLED:true}
+      url: ${ASSISTANT_PGVECTOR_URL}
+      username: ${ASSISTANT_PGVECTOR_USERNAME}
+      password: ${ASSISTANT_PGVECTOR_PASSWORD}
+      table-name: ${ASSISTANT_PGVECTOR_TABLE:assistant_vector_store}
