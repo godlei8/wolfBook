@@ -67,8 +67,9 @@ const emptyRole = (): Role => ({
 const form = reactive<Role>(emptyRole())
 
 const availableRoleTypes = computed(() => roleTypeOptionsMap[form.faction] || [])
-const campPreview = computed(() => buildCamp(form.faction, form.roleType))
-
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080').replace(/\/+$/, '')
+const portraitPreviewUrl = computed(() => resolveMediaUrl(form.portrait))
+const illustrationPreviewUrl = computed(() => resolveMediaUrl(form.fullIllustration))
 const filteredRoles = computed(() => {
   const normalizedKeyword = keyword.value.trim().toLowerCase()
   return roles.value.filter((role) => {
@@ -123,6 +124,20 @@ function normalizeRole(role?: Role): Role {
 function resetForm(role?: Role) {
   Object.assign(form, normalizeRole(role))
   ensureRoleType()
+}
+
+function resolveMediaUrl(url?: string | null) {
+  const value = (url || '').trim()
+  if (!value) {
+    return ''
+  }
+  if (/^(https?:)?\/\//i.test(value)) {
+    return value.startsWith('//') ? `http:${value}` : value
+  }
+  if (value.startsWith('/')) {
+    return `${apiBaseUrl}${value}`
+  }
+  return value
 }
 
 function resetFilters() {
@@ -275,32 +290,6 @@ onMounted(load)
   </el-card>
 
   <el-dialog v-model="dialogVisible" width="880px" :title="form.id ? '编辑角色' : '新建角色'">
-    <div class="preview-card">
-      <div class="preview-meta">Role Preview</div>
-      <div class="preview-title">{{ form.name || '未命名角色' }}</div>
-      <div class="preview-pills">
-        <el-tag effect="dark" type="warning">{{ form.faction }}</el-tag>
-        <el-tag effect="plain">{{ form.roleType }}</el-tag>
-        <el-tag effect="plain">{{ campPreview }}</el-tag>
-      </div>
-      <div class="role-media-grid">
-        <div class="media-preview-card">
-          <div class="media-preview-label">Portrait</div>
-          <div class="media-preview-frame media-preview-frame--portrait" :class="{ 'is-empty': !form.portrait }">
-            <img v-if="form.portrait" :src="form.portrait" alt="角色头像预览" />
-            <span v-else>上传后在这里预览头像</span>
-          </div>
-        </div>
-        <div class="media-preview-card">
-          <div class="media-preview-label">Illustration</div>
-          <div class="media-preview-frame media-preview-frame--illustration" :class="{ 'is-empty': !form.fullIllustration }">
-            <img v-if="form.fullIllustration" :src="form.fullIllustration" alt="角色立绘预览" />
-            <span v-else>上传后在这里预览立绘</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <el-form label-position="top">
       <div class="form-grid form-grid-role">
         <el-form-item label="名称">
@@ -320,11 +309,6 @@ onMounted(load)
           </el-select>
         </el-form-item>
       </div>
-
-      <el-form-item label="组合标签">
-        <div class="camp-preview">{{ campPreview }}</div>
-      </el-form-item>
-
       <el-form-item label="技能说明">
         <el-input v-model="form.skill" type="textarea" :rows="3" />
       </el-form-item>
@@ -334,30 +318,57 @@ onMounted(load)
 
       <div class="form-grid">
         <el-form-item label="头像">
-          <div class="upload-stack">
-            <el-input v-model="form.portrait" />
-            <el-upload :show-file-list="false" :http-request="uploadPortrait">
-              <el-button>上传</el-button>
-            </el-upload>
+          <div class="media-field">
+            <div class="upload-stack">
+              <el-input v-model="form.portrait" placeholder="粘贴头像地址或直接上传" />
+              <el-upload :show-file-list="false" :http-request="uploadPortrait">
+                <el-button>上传</el-button>
+              </el-upload>
+            </div>
+            <div class="inline-preview-card inline-preview-card--portrait">
+              <el-image
+                v-if="portraitPreviewUrl"
+                :key="portraitPreviewUrl"
+                class="inline-image-preview inline-image-preview--portrait"
+                :src="portraitPreviewUrl"
+                fit="cover"
+                :preview-src-list="[portraitPreviewUrl]"
+                preview-teleported
+              >
+                <template #error>
+                  <div class="inline-preview-empty">头像回显失败</div>
+                </template>
+              </el-image>
+              <div v-else class="inline-preview-empty">上传后显示头像缩略图</div>
+            </div>
           </div>
         </el-form-item>
         <el-form-item label="全身立绘">
-          <div class="upload-stack">
-            <el-input v-model="form.fullIllustration" />
-            <el-upload :show-file-list="false" :http-request="uploadIllustration">
-              <el-button>上传</el-button>
-            </el-upload>
+          <div class="media-field">
+            <div class="upload-stack">
+              <el-input v-model="form.fullIllustration" placeholder="粘贴立绘地址或直接上传" />
+              <el-upload :show-file-list="false" :http-request="uploadIllustration">
+                <el-button>上传</el-button>
+              </el-upload>
+            </div>
+            <div class="inline-preview-card inline-preview-card--illustration">
+              <el-image
+                v-if="illustrationPreviewUrl"
+                :key="illustrationPreviewUrl"
+                class="inline-image-preview inline-image-preview--illustration"
+                :src="illustrationPreviewUrl"
+                fit="cover"
+                :preview-src-list="[illustrationPreviewUrl]"
+                preview-teleported
+              >
+                <template #error>
+                  <div class="inline-preview-empty">立绘回显失败</div>
+                </template>
+              </el-image>
+              <div v-else class="inline-preview-empty">上传后显示立绘缩略图</div>
+            </div>
           </div>
         </el-form-item>
-      </div>
-
-      <div v-if="form.portrait || form.fullIllustration" class="role-upload-preview-grid">
-        <div v-if="form.portrait" class="inline-image-preview inline-image-preview--portrait">
-          <img :src="form.portrait" alt="角色头像预览" />
-        </div>
-        <div v-if="form.fullIllustration" class="inline-image-preview inline-image-preview--illustration">
-          <img :src="form.fullIllustration" alt="角色立绘预览" />
-        </div>
       </div>
 
       <div class="array-section">
@@ -510,96 +521,6 @@ onMounted(load)
   margin-left: auto;
 }
 
-.preview-card {
-  margin-bottom: 24px;
-  padding: 20px;
-  border: 1px solid rgba(255, 192, 0, 0.18);
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgba(255, 192, 0, 0.1), rgba(255, 255, 255, 0.02));
-}
-
-.preview-meta {
-  color: #ffc000;
-  font-size: 12px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
-.preview-title {
-  margin-top: 10px;
-  font-size: 28px;
-  font-weight: 700;
-}
-
-.preview-pills {
-  margin-top: 14px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.role-media-grid {
-  margin-top: 18px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.media-preview-card {
-  display: grid;
-  gap: 10px;
-}
-
-.media-preview-label {
-  color: #f5d069;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-
-.media-preview-frame {
-  position: relative;
-  overflow: hidden;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 192, 0, 0.16);
-  background: linear-gradient(180deg, rgba(28, 28, 28, 0.94), rgba(12, 12, 12, 0.94));
-}
-
-.media-preview-frame::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 32%, rgba(0, 0, 0, 0.16));
-}
-
-.media-preview-frame--portrait {
-  aspect-ratio: 1 / 1;
-}
-
-.media-preview-frame--illustration {
-  aspect-ratio: 3 / 4;
-}
-
-.media-preview-frame img,
-.inline-image-preview img {
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: cover;
-}
-
-.media-preview-frame.is-empty {
-  display: grid;
-  place-items: center;
-  min-height: 160px;
-  padding: 16px;
-  color: #8d8d8d;
-  text-align: center;
-  line-height: 1.6;
-}
-
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -608,18 +529,6 @@ onMounted(load)
 
 .form-grid-role {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.camp-preview {
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  padding: 0 14px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 192, 0, 0.18);
-  background: rgba(255, 192, 0, 0.08);
-  color: #f5d069;
-  font-weight: 600;
 }
 
 .array-section {
@@ -643,18 +552,31 @@ onMounted(load)
   margin-bottom: 12px;
 }
 
-.role-upload-preview-grid {
-  margin-top: 16px;
+.media-field {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 220px));
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 124px;
+  gap: 12px;
+  align-items: start;
 }
 
-.inline-image-preview {
+.inline-preview-card {
+  width: 124px;
+}
+
+.inline-image-preview,
+.inline-preview-empty {
+  width: 124px;
   overflow: hidden;
   border-radius: 14px;
   border: 1px solid rgba(255, 192, 0, 0.14);
   background: rgba(255, 255, 255, 0.02);
+}
+
+.inline-image-preview :deep(img) {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 
 .inline-image-preview--portrait {
@@ -663,6 +585,20 @@ onMounted(load)
 
 .inline-image-preview--illustration {
   aspect-ratio: 3 / 4;
+}
+
+.inline-preview-empty {
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  color: #8d8d8d;
+  text-align: center;
+  line-height: 1.5;
+  min-height: 124px;
+}
+
+.inline-preview-card--illustration .inline-preview-empty {
+  min-height: 165px;
 }
 
 .upload-stack {
@@ -690,8 +626,6 @@ onMounted(load)
     display: grid;
   }
 
-  .role-media-grid,
-  .role-upload-preview-grid,
   .form-grid,
   .form-grid-role,
   .faq-row {
@@ -717,6 +651,17 @@ onMounted(load)
 
   .upload-stack {
     flex-direction: column;
+  }
+
+  .media-field {
+    grid-template-columns: 1fr;
+  }
+
+  .inline-preview-card,
+  .inline-image-preview,
+  .inline-preview-empty {
+    width: 100%;
+    max-width: 180px;
   }
 }
 </style>

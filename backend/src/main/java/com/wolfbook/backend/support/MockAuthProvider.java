@@ -1,8 +1,10 @@
 package com.wolfbook.backend.support;
 
 import org.springframework.stereotype.Component;
+import org.springframework.context.annotation.Profile;
 
 @Component
+@Profile("test")
 public class MockAuthProvider implements AuthProvider {
 
     @Override

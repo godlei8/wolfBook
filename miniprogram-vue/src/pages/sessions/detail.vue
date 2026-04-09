@@ -10,6 +10,22 @@ const players = ref([])
 const showEditor = ref(false)
 const editorType = ref('seer')
 
+const dayOptions = [1, 2, 3, 4, 5]
+
+const recordTypeMap = {
+  seer: '查验记录',
+  vote: '投票记录',
+  speech: '发言记录',
+  wolfPack: '狼坑分析',
+}
+
+const editorTitleMap = {
+  seer: '记录查验',
+  vote: '记录投票',
+  speech: '记录发言',
+  wolfPack: '记录狼坑',
+}
+
 const voteTemplateOptions = [
   { value: 'normal', label: '普通投票' },
   { value: 'tie', label: '平票' },
@@ -19,11 +35,20 @@ const voteTemplateOptions = [
 
 const recordForm = reactive(makeDefaultForm([]))
 
-function makeDefaultForm(playerList) {
+function formatRound(round) {
+  const numeric = Number(round) || 1
+  return `第${numeric}天`
+}
+
+function typeLabel(type) {
+  return recordTypeMap[type] || '局内记录'
+}
+
+function makeDefaultForm(playerList, defaultRound = 1) {
   const first = playerList[0] || '1号'
   const second = playerList[1] || first
   return {
-    round: 1,
+    round: defaultRound,
     player: first,
     content: '',
     voteTemplate: 'normal',
@@ -39,6 +64,14 @@ function makeDefaultForm(playerList) {
   }
 }
 
+function latestRound(rawSession) {
+  const rounds = (rawSession?.records || [])
+    .map((item) => Number(item.round) || 1)
+    .filter((item) => item > 0)
+  const current = rounds.length ? Math.max(...rounds) : 1
+  return Math.min(current, dayOptions[dayOptions.length - 1])
+}
+
 function joinPlayers(playerList) {
   return (playerList || []).filter(Boolean).join('、')
 }
@@ -51,11 +84,13 @@ function syncSessionView(rawSession) {
   if (!rawSession) return
   const playerList = Array.from({ length: rawSession.playerCount }, (_, index) => `${index + 1}号`)
   players.value = playerList
-  Object.assign(recordForm, makeDefaultForm(playerList))
+  Object.assign(recordForm, makeDefaultForm(playerList, latestRound(rawSession)))
   session.value = {
     ...rawSession,
     records: (rawSession.records || []).map((record) => ({
       ...record,
+      typeLabel: typeLabel(record.type),
+      roundLabel: formatRound(record.round),
       timestampLabel: formatDateTime(record.timestamp),
     })),
     updateLabel: formatDateTime(rawSession.updateTime),
@@ -74,7 +109,7 @@ function refreshSession() {
 
 function openEditor(type) {
   editorType.value = type
-  Object.assign(recordForm, makeDefaultForm(players.value))
+  Object.assign(recordForm, makeDefaultForm(players.value, latestRound(session.value)))
   showEditor.value = true
 }
 
@@ -86,11 +121,8 @@ function toggleArray(field, value) {
   const list = recordForm[field]
   if (!Array.isArray(list)) return
   const exists = list.includes(value)
-  if (exists) {
-    recordForm[field] = list.filter((item) => item !== value)
-  } else {
-    recordForm[field] = list.concat(value)
-  }
+  recordForm[field] = exists ? list.filter((item) => item !== value) : list.concat(value)
+
   if (field === 'sheriffFollowers' && recordForm.sheriffFollowers.includes(recordForm.sheriffPlayer)) {
     recordForm.sheriffFollowers = recordForm.sheriffFollowers.filter((item) => item !== recordForm.sheriffPlayer)
   }
@@ -141,13 +173,13 @@ function buildVoteRecord() {
 const votePreview = computed(() => {
   if (editorType.value !== 'vote') return ''
   const result = buildVoteRecord()
-  return result ? result.content : '请先完成投票信息选择'
+  return result ? result.content : '先完成投票信息选择，系统会在这里生成预览。'
 })
 
 const latestWolfPack = computed(() => {
   const list = session.value?.records || []
   const latest = [...list].reverse().find((item) => item.type === 'wolfPack')
-  return latest?.content || '暂无狼坑'
+  return latest?.content || '暂无狼坑记录'
 })
 
 function saveRecord() {
@@ -239,16 +271,22 @@ onShow(refreshSession)
     <view class="glass-card section-card">
       <view class="hero-title" style="font-size: 46rpx;">{{ session.boardName }}</view>
       <view class="hero-subtitle">{{ session.playerCount }} 人局 · 最近更新 {{ session.updateLabel }}</view>
-      <view class="wolf-pack">当前狼坑：{{ latestWolfPack }}</view>
+      <view class="hero-status-row">
+        <view class="pill pill-gold">共 {{ session.records.length }} 条记录</view>
+        <view class="pill pill-white">{{ latestWolfPack }}</view>
+      </view>
     </view>
 
     <view class="glass-card section-card">
-      <view class="section-title">事件流</view>
+      <view class="section-title">事件时间线</view>
       <view v-if="!session.records.length" class="section-desc">还没有记录，先从底部工具栏添加第一条。</view>
       <view v-for="item in session.records" :key="item.id" class="record-item">
         <view class="record-head">
-          <view class="pill pill-gold">{{ item.type }}</view>
-          <view class="section-meta">R{{ item.round }} · {{ item.timestampLabel }}</view>
+          <view class="record-badges">
+            <view class="pill pill-gold">{{ item.typeLabel }}</view>
+            <view class="pill pill-white">{{ item.roundLabel }}</view>
+          </view>
+          <view class="section-meta">{{ item.timestampLabel }}</view>
         </view>
         <view class="record-content">{{ item.content }}</view>
         <view class="record-player">{{ item.player }}</view>
@@ -257,7 +295,7 @@ onShow(refreshSession)
     </view>
 
     <view class="tool-grid glass-card">
-      <view class="tool-item" @tap="openEditor('seer')">预言家</view>
+      <view class="tool-item" @tap="openEditor('seer')">查验</view>
       <view class="tool-item" @tap="openEditor('vote')">投票</view>
       <view class="tool-item" @tap="openEditor('speech')">发言</view>
       <view class="tool-item" @tap="openEditor('wolfPack')">狼坑</view>
@@ -265,166 +303,208 @@ onShow(refreshSession)
 
     <view v-if="showEditor" class="editor-mask" @tap="closeEditor">
       <view class="editor-panel glass-card" @tap.stop>
-        <view class="section-title">
-          {{
-            editorType === 'seer'
-              ? '记录查验'
-              : editorType === 'vote'
-                ? '记录投票'
-                : editorType === 'speech'
-                  ? '记录发言'
-                  : '记录狼坑'
-          }}
+        <view class="editor-header">
+          <view>
+            <view class="section-title">{{ editorTitleMap[editorType] }}</view>
+            <view class="section-desc editor-desc">把这一阶段的关键信息记下来，复盘会更清晰。</view>
+          </view>
+          <view class="editor-close" @tap="closeEditor">关闭</view>
         </view>
 
-        <view class="section-meta" style="margin-top: 18rpx;">轮次</view>
-        <input v-model="recordForm.round" type="number" class="field-input" />
+        <view class="editor-block">
+          <view class="section-meta">第几天</view>
+          <view class="day-chip-row">
+            <view
+              v-for="day in dayOptions"
+              :key="day"
+              class="chip chip--day"
+              :class="{ active: recordForm.round === day }"
+              @tap="recordForm.round = day"
+            >
+              {{ formatRound(day) }}
+            </view>
+          </view>
+        </view>
 
         <template v-if="editorType === 'seer' || editorType === 'speech'">
-          <view class="section-meta" style="margin-top: 18rpx;">玩家</view>
-          <scroll-view scroll-x class="chip-row">
-            <view
-              v-for="player in players"
-              :key="player"
-              class="chip"
-              :class="{ active: recordForm.player === player }"
-              @tap="recordForm.player = player"
-            >
-              {{ player }}
-            </view>
-          </scroll-view>
+          <view class="editor-block">
+            <view class="section-meta">玩家</view>
+            <scroll-view scroll-x class="chip-row compact-row">
+              <view
+                v-for="player in players"
+                :key="player"
+                class="chip"
+                :class="{ active: recordForm.player === player }"
+                @tap="recordForm.player = player"
+              >
+                {{ player }}
+              </view>
+            </scroll-view>
+          </view>
 
-          <view class="section-meta" style="margin-top: 18rpx;">内容</view>
-          <textarea v-model="recordForm.content" class="field-textarea" placeholder="输入本轮记录内容" />
+          <view class="editor-block">
+            <view class="section-meta">内容</view>
+            <textarea
+              v-model="recordForm.content"
+              class="field-textarea tactical-textarea"
+              placeholder="输入这一天的记录内容"
+              auto-height
+            />
+          </view>
         </template>
 
         <template v-if="editorType === 'wolfPack'">
-          <view class="section-meta" style="margin-top: 18rpx;">狼坑候选</view>
-          <view class="player-grid">
-            <view
-              v-for="player in players"
-              :key="player"
-              class="chip"
-              :class="{ active: recordForm.wolfPack.includes(player) }"
-              @tap="toggleArray('wolfPack', player)"
-            >
-              {{ player }}
+          <view class="editor-block">
+            <view class="section-meta">狼坑候选</view>
+            <view class="player-grid">
+              <view
+                v-for="player in players"
+                :key="player"
+                class="chip"
+                :class="{ active: recordForm.wolfPack.includes(player) }"
+                @tap="toggleArray('wolfPack', player)"
+              >
+                {{ player }}
+              </view>
             </view>
           </view>
         </template>
 
         <template v-if="editorType === 'vote'">
-          <view class="section-meta" style="margin-top: 18rpx;">模板</view>
-          <scroll-view scroll-x class="chip-row">
-            <view
-              v-for="item in voteTemplateOptions"
-              :key="item.value"
-              class="chip"
-              :class="{ active: recordForm.voteTemplate === item.value }"
-              @tap="recordForm.voteTemplate = item.value"
-            >
-              {{ item.label }}
-            </view>
-          </scroll-view>
-
-          <template v-if="recordForm.voteTemplate === 'normal'">
-            <view class="section-meta" style="margin-top: 18rpx;">投票人</view>
-            <view class="player-grid">
+          <view class="editor-block">
+            <view class="section-meta">模板</view>
+            <scroll-view scroll-x class="chip-row compact-row">
               <view
-                v-for="player in players"
-                :key="player"
+                v-for="item in voteTemplateOptions"
+                :key="item.value"
                 class="chip"
-                :class="{ active: recordForm.normalVoters.includes(player) }"
-                @tap="toggleArray('normalVoters', player)"
+                :class="{ active: recordForm.voteTemplate === item.value }"
+                @tap="recordForm.voteTemplate = item.value"
               >
-                {{ player }}
-              </view>
-            </view>
-            <view class="section-meta" style="margin-top: 18rpx;">被投票人</view>
-            <scroll-view scroll-x class="chip-row">
-              <view
-                v-for="player in players"
-                :key="player"
-                class="chip"
-                :class="{ active: recordForm.normalTarget === player }"
-                @tap="recordForm.normalTarget = player"
-              >
-                {{ player }}
+                {{ item.label }}
               </view>
             </scroll-view>
+          </view>
+
+          <template v-if="recordForm.voteTemplate === 'normal'">
+            <view class="editor-block">
+              <view class="section-meta">投票人</view>
+              <view class="player-grid">
+                <view
+                  v-for="player in players"
+                  :key="player"
+                  class="chip"
+                  :class="{ active: recordForm.normalVoters.includes(player) }"
+                  @tap="toggleArray('normalVoters', player)"
+                >
+                  {{ player }}
+                </view>
+              </view>
+            </view>
+            <view class="editor-block">
+              <view class="section-meta">被投票人</view>
+              <scroll-view scroll-x class="chip-row compact-row">
+                <view
+                  v-for="player in players"
+                  :key="player"
+                  class="chip"
+                  :class="{ active: recordForm.normalTarget === player }"
+                  @tap="recordForm.normalTarget = player"
+                >
+                  {{ player }}
+                </view>
+              </scroll-view>
+            </view>
           </template>
 
           <template v-if="recordForm.voteTemplate === 'tie'">
-            <view class="section-meta" style="margin-top: 18rpx;">平票对象</view>
-            <view class="player-grid">
-              <view
-                v-for="player in players"
-                :key="player"
-                class="chip"
-                :class="{ active: recordForm.tieTargets.includes(player) }"
-                @tap="toggleArray('tieTargets', player)"
-              >
-                {{ player }}
+            <view class="editor-block">
+              <view class="section-meta">平票对象</view>
+              <view class="player-grid">
+                <view
+                  v-for="player in players"
+                  :key="player"
+                  class="chip"
+                  :class="{ active: recordForm.tieTargets.includes(player) }"
+                  @tap="toggleArray('tieTargets', player)"
+                >
+                  {{ player }}
+                </view>
               </view>
             </view>
           </template>
 
           <template v-if="recordForm.voteTemplate === 'abstain'">
-            <view class="section-meta" style="margin-top: 18rpx;">弃票玩家</view>
-            <view class="player-grid">
-              <view
-                v-for="player in players"
-                :key="player"
-                class="chip"
-                :class="{ active: recordForm.abstainPlayers.includes(player) }"
-                @tap="toggleArray('abstainPlayers', player)"
-              >
-                {{ player }}
+            <view class="editor-block">
+              <view class="section-meta">弃票玩家</view>
+              <view class="player-grid">
+                <view
+                  v-for="player in players"
+                  :key="player"
+                  class="chip"
+                  :class="{ active: recordForm.abstainPlayers.includes(player) }"
+                  @tap="toggleArray('abstainPlayers', player)"
+                >
+                  {{ player }}
+                </view>
               </view>
             </view>
           </template>
 
           <template v-if="recordForm.voteTemplate === 'sheriff'">
-            <view class="section-meta" style="margin-top: 18rpx;">警长</view>
-            <scroll-view scroll-x class="chip-row">
-              <view
-                v-for="player in players"
-                :key="player"
-                class="chip"
-                :class="{ active: recordForm.sheriffPlayer === player }"
-                @tap="setSheriffPlayer(player)"
-              >
-                {{ player }}
-              </view>
-            </scroll-view>
-            <view class="section-meta" style="margin-top: 18rpx;">归票目标</view>
-            <scroll-view scroll-x class="chip-row">
-              <view
-                v-for="player in players"
-                :key="player"
-                class="chip"
-                :class="{ active: recordForm.sheriffTarget === player }"
-                @tap="recordForm.sheriffTarget = player"
-              >
-                {{ player }}
-              </view>
-            </scroll-view>
-            <view class="section-meta" style="margin-top: 18rpx;">跟票玩家</view>
-            <view class="player-grid">
-              <view
-                v-for="player in players"
-                :key="player"
-                class="chip"
-                :class="{ active: recordForm.sheriffFollowers.includes(player) }"
-                @tap="toggleArray('sheriffFollowers', player)"
-              >
-                {{ player }}
+            <view class="editor-block">
+              <view class="section-meta">警长</view>
+              <scroll-view scroll-x class="chip-row compact-row">
+                <view
+                  v-for="player in players"
+                  :key="player"
+                  class="chip"
+                  :class="{ active: recordForm.sheriffPlayer === player }"
+                  @tap="setSheriffPlayer(player)"
+                >
+                  {{ player }}
+                </view>
+              </scroll-view>
+            </view>
+            <view class="editor-block">
+              <view class="section-meta">归票目标</view>
+              <scroll-view scroll-x class="chip-row compact-row">
+                <view
+                  v-for="player in players"
+                  :key="player"
+                  class="chip"
+                  :class="{ active: recordForm.sheriffTarget === player }"
+                  @tap="recordForm.sheriffTarget = player"
+                >
+                  {{ player }}
+                </view>
+              </scroll-view>
+            </view>
+            <view class="editor-block">
+              <view class="section-meta">跟票玩家</view>
+              <view class="player-grid">
+                <view
+                  v-for="player in players"
+                  :key="player"
+                  class="chip"
+                  :class="{ active: recordForm.sheriffFollowers.includes(player) }"
+                  @tap="toggleArray('sheriffFollowers', player)"
+                >
+                  {{ player }}
+                </view>
               </view>
             </view>
           </template>
 
-          <view class="section-meta" style="margin-top: 18rpx;">备注</view>
-          <textarea v-model="recordForm.voteRemark" class="field-textarea" placeholder="可选，记录归票理由或场上细节" />
+          <view class="editor-block">
+            <view class="section-meta">备注</view>
+            <textarea
+              v-model="recordForm.voteRemark"
+              class="field-textarea tactical-textarea tactical-textarea--compact"
+              placeholder="可选，记录归票理由或场上细节"
+              auto-height
+            />
+          </view>
           <view class="vote-preview">{{ votePreview }}</view>
         </template>
 
@@ -435,24 +515,32 @@ onShow(refreshSession)
 </template>
 
 <style scoped lang="scss">
-.wolf-pack {
+.hero-status-row {
   margin-top: 18rpx;
-  color: #ffc000;
-  font-size: 24rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
 }
 
 .record-item {
   margin-top: 18rpx;
-  padding: 18rpx 20rpx;
-  border-radius: 16rpx;
+  padding: 22rpx 22rpx 20rpx;
+  border-radius: 18rpx;
   background: rgba(255, 255, 255, 0.04);
+  border: 1rpx solid rgba(255, 255, 255, 0.04);
 }
 
 .record-head {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 16rpx;
+}
+
+.record-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
 }
 
 .record-content {
@@ -507,7 +595,7 @@ onShow(refreshSession)
 .editor-mask {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.62);
   display: flex;
   align-items: flex-end;
   z-index: 30;
@@ -515,10 +603,50 @@ onShow(refreshSession)
 
 .editor-panel {
   width: 100%;
-  max-height: 80vh;
-  padding: 28rpx;
-  border-radius: 24rpx 24rpx 0 0;
+  max-height: 82vh;
+  padding: 28rpx 24rpx calc(env(safe-area-inset-bottom) + 26rpx);
+  border-radius: 28rpx 28rpx 0 0;
   overflow-y: auto;
+}
+
+.editor-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18rpx;
+}
+
+.editor-desc {
+  margin-top: 8rpx;
+}
+
+.editor-close {
+  flex: 0 0 auto;
+  padding: 10rpx 18rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.06);
+  color: #d8d8d8;
+  font-size: 22rpx;
+}
+
+.editor-block {
+  margin-top: 18rpx;
+}
+
+.day-chip-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12rpx;
+  margin-top: 12rpx;
+}
+
+.chip--day {
+  justify-content: center;
+  min-height: 72rpx;
+}
+
+.compact-row {
+  margin-top: 12rpx;
 }
 
 .player-grid {
@@ -526,6 +654,14 @@ onShow(refreshSession)
   flex-wrap: wrap;
   gap: 12rpx;
   margin-top: 12rpx;
+}
+
+.tactical-textarea {
+  min-height: 200rpx;
+}
+
+.tactical-textarea--compact {
+  min-height: 140rpx;
 }
 
 .vote-preview {
@@ -539,6 +675,6 @@ onShow(refreshSession)
 }
 
 .submit-btn {
-  margin-top: 22rpx;
+  margin-top: 24rpx;
 }
 </style>

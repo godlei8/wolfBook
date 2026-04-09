@@ -137,7 +137,7 @@ export default {
   async createReport(payload) {
     return request({ url: '/api/reports', method: 'POST', data: payload, header: authHeader() })
   },
-  async login(code = 'mock-code') {
+  async login(code) {
     const result = await request({ url: '/api/login', method: 'POST', data: { code } })
     return {
       ...result,

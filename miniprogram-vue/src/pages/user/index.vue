@@ -5,6 +5,8 @@ import AssistantDock from '../../components/assistant/AssistantDock.vue'
 import api from '../../services/api'
 import storage from '../../services/storage'
 
+const DEFAULT_NICKNAME_PREFIX = '微信用户'
+
 const user = ref(null)
 const profileEditorVisible = ref(false)
 const loginLoading = ref(false)
@@ -23,9 +25,9 @@ const profileForm = reactive({
   avatar: '',
 })
 
-function looksLikeMockProfile(profile) {
+function needsProfileCompletion(profile) {
   if (!profile) return true
-  return !profile.avatar || profile.avatar.includes('picsum.photos') || /^夜行者/i.test(profile.nickname || '')
+  return !profile.avatar || !profile.nickname || profile.nickname.startsWith(DEFAULT_NICKNAME_PREFIX)
 }
 
 function syncViewState() {
@@ -35,7 +37,7 @@ function syncViewState() {
   viewState.profileInitial = (profileForm.nickname || user.value?.nickname || '我').trim().slice(0, 1) || '我'
   viewState.profileStatusText = !user.value
     ? '未登录，仅浏览本地内容'
-    : looksLikeMockProfile(user.value)
+    : needsProfileCompletion(user.value)
       ? '建议完善头像与昵称'
       : '资料已同步'
 }
@@ -72,10 +74,21 @@ function requestWxLoginCode() {
   return new Promise((resolve, reject) => {
     uni.login({
       provider: 'weixin',
-      success: (res) => resolve(res.code || 'mock-code'),
+      success: (res) => {
+        if (res.code) {
+          resolve(res.code)
+          return
+        }
+        reject(new Error('未获取到微信登录凭证'))
+      },
       fail: reject,
     })
   })
+}
+
+function showRequestError(error, fallback) {
+  const title = (error?.message || fallback || '操作失败').slice(0, 30)
+  uni.showToast({ title, icon: 'none' })
 }
 
 async function handleLogin() {
@@ -91,12 +104,12 @@ async function handleLogin() {
     fillProfileForm(result.user)
     uni.hideLoading()
     uni.showToast({ title: '登录成功', icon: 'success' })
-    if (looksLikeMockProfile(result.user)) {
+    if (needsProfileCompletion(result.user)) {
       profileEditorVisible.value = true
     }
   } catch (error) {
     uni.hideLoading()
-    uni.showToast({ title: '登录失败', icon: 'none' })
+    showRequestError(error, '微信登录失败')
   } finally {
     loginLoading.value = false
   }
@@ -143,7 +156,7 @@ async function saveWechatProfile() {
     profileEditorVisible.value = false
     uni.showToast({ title: '资料已更新', icon: 'success' })
   } catch (error) {
-    uni.showToast({ title: '资料更新失败', icon: 'none' })
+    showRequestError(error, '资料更新失败')
   } finally {
     profileSaving.value = false
   }
@@ -256,40 +269,61 @@ onShow(() => {
         <view class="editor-handle" />
 
         <view class="editor-header">
-          <view>
+          <view class="editor-header-copy">
+            <view class="editor-kicker">WECHAT PROFILE</view>
             <view class="section-title">完善微信资料</view>
-            <view class="section-meta">选择微信头像并确认昵称，资料会同步保存到后端。</view>
+            <view class="section-meta">同步头像和昵称后，社区展示与互动身份会更完整。</view>
           </view>
           <view class="editor-close" @tap="profileEditorVisible = false">关闭</view>
         </view>
 
-        <view class="editor-avatar-row">
-          <image
-            v-if="viewState.avatarPreview"
-            class="editor-avatar"
-            :src="viewState.avatarPreview"
-            mode="aspectFill"
-          />
-          <view v-else class="editor-avatar profile-placeholder">{{ viewState.profileInitial }}</view>
+        <view class="editor-hero">
+          <view class="editor-avatar-card">
+            <image
+              v-if="viewState.avatarPreview"
+              class="editor-avatar"
+              :src="viewState.avatarPreview"
+              mode="aspectFill"
+            />
+            <view v-else class="editor-avatar profile-placeholder">{{ viewState.profileInitial }}</view>
+            <view class="editor-avatar-meta">
+              <view class="editor-avatar-label">当前头像</view>
+              <view class="editor-avatar-hint">建议使用清晰的微信头像，社区展示会直接同步。</view>
+            </view>
+          </view>
 
-          <button class="action-button action-button--ghost avatar-button" open-type="chooseAvatar" @chooseavatar="handleChooseAvatar">
-            选择微信头像
-          </button>
+          <view class="editor-avatar-actions">
+            <button class="action-button action-button--ghost avatar-button" open-type="chooseAvatar" @chooseavatar="handleChooseAvatar">
+              选择微信头像
+            </button>
+            <view class="editor-tip-card">
+              <view class="editor-tip-title">资料同步</view>
+              <view class="editor-tip-desc">保存后会更新到账号资料里，后续发帖和评论会使用这份信息。</view>
+            </view>
+          </view>
         </view>
 
         <view class="editor-field">
-          <view class="editor-label">微信昵称</view>
-          <input
-            :value="profileForm.nickname"
-            type="nickname"
-            class="field-input editor-input"
-            placeholder="请输入或选择微信昵称"
-            @input="handleNicknameInput"
-          />
+          <view class="editor-label-row">
+            <view class="editor-label">微信昵称</view>
+            <view class="editor-label-hint">{{ profileForm.nickname.trim().length }}/20</view>
+          </view>
+          <view class="editor-input-shell">
+            <input
+              :value="profileForm.nickname"
+              type="nickname"
+              maxlength="20"
+              class="field-input editor-input"
+              placeholder="请输入或选择微信昵称"
+              placeholder-style="color: rgba(255, 255, 255, 0.26); font-size: 30rpx;"
+              @input="handleNicknameInput"
+            />
+          </view>
+          <view class="editor-field-tip">建议填写你常用的微信昵称，保存后会同步到社区展示资料。</view>
         </view>
 
         <view class="editor-actions">
-          <button class="action-button action-button--ghost half-button" @tap="profileEditorVisible = false">取消</button>
+          <button class="action-button action-button--ghost half-button" @tap="profileEditorVisible = false">稍后再说</button>
           <button class="action-button action-button--primary half-button" :loading="profileSaving" @tap="saveWechatProfile">
             保存资料
           </button>
@@ -528,37 +562,133 @@ onShow(() => {
   gap: 20rpx;
 }
 
+.editor-header-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.editor-kicker {
+  color: #ffc000;
+  font-size: 20rpx;
+  font-weight: 700;
+  letter-spacing: 4rpx;
+}
+
 .editor-close {
+  padding: 10rpx 18rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.04);
   color: #9c9c9c;
   font-size: 24rpx;
   flex-shrink: 0;
 }
 
-.editor-avatar-row {
-  display: flex;
-  align-items: center;
-  gap: 20rpx;
+.editor-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 18rpx;
   margin-top: 28rpx;
 }
 
-.avatar-button {
+.editor-avatar-card,
+.editor-tip-card {
+  padding: 22rpx;
+  border-radius: 22rpx;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 192, 0, 0.08);
+}
+
+.editor-avatar-card {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+}
+
+.editor-avatar-meta {
+  min-width: 0;
   flex: 1;
+}
+
+.editor-avatar-label,
+.editor-tip-title {
+  color: #ffffff;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.editor-avatar-hint,
+.editor-tip-desc {
+  margin-top: 8rpx;
+  color: #9c9c9c;
+  font-size: 22rpx;
+  line-height: 1.6;
+}
+
+.editor-avatar-actions {
+  display: grid;
+  gap: 14rpx;
+}
+
+.avatar-button {
+  width: 100%;
   margin-top: 0;
 }
 
 .editor-field {
-  margin-top: 28rpx;
+  margin-top: 24rpx;
+  padding: 20rpx 22rpx 18rpx;
+  border-radius: 22rpx;
+  background: rgba(255, 255, 255, 0.028);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.editor-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-bottom: 14rpx;
 }
 
 .editor-label {
   color: #ffffff;
   font-size: 24rpx;
-  margin-bottom: 12rpx;
+  font-weight: 700;
+  letter-spacing: 1rpx;
+}
+
+.editor-label-hint {
+  padding: 6rpx 14rpx;
+  border-radius: 999rpx;
+  color: #b5b5b5;
+  font-size: 20rpx;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.editor-input-shell {
+  border-radius: 18rpx;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.032) 0%, rgba(255, 255, 255, 0.02) 100%);
+  border: 1px solid rgba(255, 192, 0, 0.08);
+  box-shadow: inset 0 1rpx 0 rgba(255, 255, 255, 0.04);
 }
 
 .editor-input {
-  height: 88rpx;
-  line-height: 88rpx;
+  height: 82rpx;
+  line-height: 82rpx;
+  padding: 0 22rpx;
+  margin-top: 0;
+  color: #ffffff;
+  font-size: 30rpx;
+  border: none;
+  background: transparent;
+}
+
+.editor-field-tip {
+  margin-top: 12rpx;
+  color: #8f8f8f;
+  font-size: 22rpx;
+  line-height: 1.55;
 }
 
 .editor-actions {
@@ -570,5 +700,15 @@ onShow(() => {
 
 .half-button {
   width: 100%;
+}
+
+@media (max-width: 640rpx) {
+  .editor-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .editor-avatar-card {
+    align-items: flex-start;
+  }
 }
 </style>

@@ -9,6 +9,7 @@ import com.wolfbook.backend.support.AuthProvider;
 import com.wolfbook.backend.support.DomainConverter;
 import com.wolfbook.backend.support.TokenService;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 
@@ -33,14 +34,19 @@ public class UserService {
         if (user == null) {
             user = new UserEntity();
             user.setOpenid(authUser.openid());
-            user.setNickname(authUser.nickname());
-            user.setAvatar(authUser.avatar());
+            user.setNickname(resolveInitialNickname(authUser));
+            user.setAvatar(resolveAvatar(authUser, null));
             user.setStatus(1);
             user.setCreateTime(LocalDateTime.now());
             userMapper.insert(user);
         } else {
-            user.setNickname(authUser.nickname());
-            user.setAvatar(authUser.avatar());
+            if (StringUtils.hasText(authUser.nickname()) && !authUser.nickname().equals(user.getNickname())) {
+                user.setNickname(authUser.nickname());
+            }
+            String avatar = resolveAvatar(authUser, user.getAvatar());
+            if (!equalsNullable(avatar, user.getAvatar())) {
+                user.setAvatar(avatar);
+            }
             userMapper.updateById(user);
         }
         return new WolfbookDtos.LoginResponse(tokenService.issueUserToken(user.getOpenid()), toView(converter.toUserProfile(user)));
@@ -72,5 +78,22 @@ public class UserService {
             throw new ApiException(4004, "用户不存在");
         }
         return entity;
+    }
+
+    private String resolveInitialNickname(AuthProvider.AuthUser authUser) {
+        if (StringUtils.hasText(authUser.nickname())) {
+            return authUser.nickname();
+        }
+        String openid = authUser.openid();
+        String suffix = openid == null ? "" : openid.substring(Math.max(0, openid.length() - 6)).toUpperCase();
+        return "微信用户" + suffix;
+    }
+
+    private String resolveAvatar(AuthProvider.AuthUser authUser, String currentAvatar) {
+        return StringUtils.hasText(authUser.avatar()) ? authUser.avatar() : (currentAvatar == null ? "" : currentAvatar);
+    }
+
+    private boolean equalsNullable(String left, String right) {
+        return left == null ? right == null : left.equals(right);
     }
 }

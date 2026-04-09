@@ -28,6 +28,11 @@ springdoc:
     path: /swagger-ui.html
 
 wolfbook:
+  wechat:
+    mini-program:
+      app-id: ${WECHAT_MINI_APP_ID:}
+      app-secret: ${WECHAT_MINI_APP_SECRET:}
+      code2-session-url: ${WECHAT_CODE2SESSION_URL:https://api.weixin.qq.com/sns/jscode2session}
   upload:
     provider: ${UPLOAD_PROVIDER:cos}
     dir: ./uploads
@@ -36,7 +41,7 @@ wolfbook:
       secret-key: ${COS_SECRET_KEY:}
       bucket: ${COS_BUCKET:godlei-1311686380}
       region: ${COS_REGION:ap-chengdu}
-      public-base-url: ${COS_PUBLIC_BASE_URL:https://cos.godlei8.top}
+      public-base-url: ${COS_PUBLIC_BASE_URL:http://cos.godlei8.top}
       prefix: ${COS_PREFIX:wolfbook}
   assistant:
     enabled: ${ASSISTANT_ENABLED:true}
