@@ -1,6 +1,7 @@
 import { BASE_URL } from './config'
 import { request, uploadFile } from './request'
 import storage from './storage'
+import { normalizeSession as normalizeNoteSessionV2, normalizeRecord as normalizeNoteRecordV2 } from '../utils/session/normalizer'
 
 function authHeader() {
   const token = storage.getAuthToken()
@@ -71,6 +72,7 @@ function normalizeRole(role) {
 }
 
 function normalizeComment(comment) {
+  if (!comment) return comment
   return {
     ...comment,
     avatar: withBaseUrl(comment.avatar),
@@ -86,29 +88,76 @@ function normalizeUser(user) {
 }
 
 function normalizeNoteRecord(record) {
-  if (!record) return record
-  return {
-    ...record,
-    id: record.id || record.recordId,
-    timestamp: record.timestamp || record.createTime,
-  }
+  return normalizeNoteRecordV2(record)
 }
 
 function normalizeNoteSession(session) {
-  if (!session) return session
-  return {
+  return normalizeNoteSessionV2({
     ...session,
-    records: (session.records || []).map(normalizeNoteRecord),
-  }
+    records: (session?.records || []).map(normalizeNoteRecord),
+  })
+}
+
+function safeCommunityText(value) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function buildCommunityExcerpt(value, maxLength = 120) {
+  const normalized = safeCommunityText(value).replace(/\s+/g, ' ')
+  if (!normalized) return ''
+  return normalized.length > maxLength ? normalized.slice(0, maxLength) : normalized
+}
+
+function isPlaceholderPostTitle(title) {
+  const normalized = safeCommunityText(title)
+  return !normalized || normalized.toLowerCase() === 'untitled post'
 }
 
 function normalizePost(post) {
   if (!post) return post
+  const content = safeCommunityText(post.content)
+  const summary = buildCommunityExcerpt(post.summary, 120) || buildCommunityExcerpt(content, 120)
+  const title = isPlaceholderPostTitle(post.title)
+    ? buildCommunityExcerpt(summary || content, 40) || '未命名帖子'
+    : safeCommunityText(post.title)
   return {
     ...post,
+    title,
+    summary,
+    content,
     avatar: withBaseUrl(post.avatar),
     images: (post.images || []).map(withBaseUrl),
+    board: post.board
+      ? {
+          ...post.board,
+          coverImage: withBaseUrl(post.board.coverImage),
+        }
+      : null,
     comments: (post.comments || []).map(normalizeComment),
+    relatedPosts: (post.relatedPosts || []).map((item) => normalizePost({ ...item, comments: [] })),
+  }
+}
+
+function normalizeCommunityFeed(data) {
+  if (!data) {
+    return {
+      posts: { list: [], total: 0, page: 1, size: 10 },
+      hotBoards: [],
+      suggestedTags: [],
+    }
+  }
+  const posts = data.posts || { list: [], total: 0, page: 1, size: 10 }
+  return {
+    ...data,
+    posts: {
+      ...posts,
+      list: (posts.list || []).map((item) => normalizePost({ ...item, comments: [] })),
+    },
+    hotBoards: (data.hotBoards || []).map((item) => ({
+      ...item,
+      coverImage: withBaseUrl(item.coverImage),
+    })),
+    suggestedTags: data.suggestedTags || [],
   }
 }
 
@@ -129,12 +178,42 @@ export default {
   async getRoleDetail(id) {
     return normalizeRole(await request({ url: `/api/roles/${id}`, header: authHeader() }))
   },
-  async getPosts(page = 1, size = 20) {
-    const data = await request({ url: '/api/posts', data: { page, size }, header: authHeader() })
-    return {
-      ...data,
-      list: (data.list || []).map(normalizePost),
+  async getPosts(page = 1, size = 20, options = {}) {
+    const params = {
+      page,
+      size,
+      tab: options.tab || 'recommend',
+      type: options.type || '',
+      q: options.q || '',
+      sort: options.sort || 'hot',
     }
+    if (options.boardId) {
+      params.boardId = options.boardId
+    }
+    const data = await request({
+      url: '/api/posts',
+      data: params,
+      header: authHeader(),
+    })
+    return normalizeCommunityFeed(data)
+  },
+  async searchPosts(q, options = {}) {
+    const params = {
+      q,
+      type: options.type || '',
+      sort: options.sort || 'hot',
+      page: options.page || 1,
+      size: options.size || 10,
+    }
+    if (options.boardId) {
+      params.boardId = options.boardId
+    }
+    const data = await request({
+      url: '/api/posts/search',
+      data: params,
+      header: authHeader(),
+    })
+    return normalizeCommunityFeed(data)
   },
   async getPostDetail(id) {
     return normalizePost(await request({ url: `/api/posts/${id}`, header: authHeader() }))
@@ -142,11 +221,23 @@ export default {
   async createPost(payload) {
     return request({ url: '/api/posts', method: 'POST', data: payload, header: authHeader() })
   },
+  async deletePost(id) {
+    return request({ url: `/api/posts/${id}`, method: 'DELETE', header: authHeader() })
+  },
   async togglePostLike(id) {
     return request({ url: `/api/posts/${id}/like`, method: 'POST', header: authHeader() })
   },
+  async favoritePost(id) {
+    return request({ url: `/api/posts/${id}/favorite`, method: 'POST', header: authHeader() })
+  },
+  async unfavoritePost(id) {
+    return request({ url: `/api/posts/${id}/favorite`, method: 'DELETE', header: authHeader() })
+  },
   async createComment(payload) {
     return request({ url: '/api/comments', method: 'POST', data: payload, header: authHeader() })
+  },
+  async deleteComment(id) {
+    return request({ url: `/api/comments/${id}`, method: 'DELETE', header: authHeader() })
   },
   async toggleCommentLike(id) {
     return request({ url: `/api/comments/${id}/like`, method: 'POST', header: authHeader() })

@@ -90,6 +90,12 @@ export const api = {
   async updatePostStatus(id: number, status: string) {
     return unwrap<void>(http.patch(`/admin/posts/${id}/status`, { status }))
   },
+  async updatePostFeatured(id: number, enabled: boolean) {
+    return unwrap<void>(http.patch(`/admin/posts/${id}/featured`, { enabled }))
+  },
+  async updatePostPinned(id: number, enabled: boolean) {
+    return unwrap<void>(http.patch(`/admin/posts/${id}/pinned`, { enabled }))
+  },
   async deletePost(id: number) {
     return unwrap<void>(http.delete(`/admin/posts/${id}`))
   },

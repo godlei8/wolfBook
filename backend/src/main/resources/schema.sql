@@ -55,13 +55,29 @@ CREATE TABLE `user_favorite_boards` (
   UNIQUE KEY `uk_user_favorite_board` (`openid`, `board_id`)
 );
 
+CREATE TABLE `user_favorite_posts` (
+  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `openid` VARCHAR(100) NOT NULL,
+  `post_id` INT NOT NULL,
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_user_favorite_post` (`openid`, `post_id`)
+);
+
 CREATE TABLE `user_note_sessions` (
   `session_id` VARCHAR(64) PRIMARY KEY,
+  `version` INT DEFAULT 2,
   `openid` VARCHAR(100) NOT NULL,
   `board_mode` VARCHAR(20) NOT NULL DEFAULT 'library',
   `board_id` INT,
   `board_name` VARCHAR(100) NOT NULL,
   `player_count` TINYINT NOT NULL,
+  `status` VARCHAR(20) NOT NULL DEFAULT 'active',
+  `current_day` TINYINT DEFAULT 1,
+  `current_phase` VARCHAR(30) DEFAULT 'day_speech',
+  `result_camp` VARCHAR(20) DEFAULT '',
+  `sheriff_seat` TINYINT,
+  `players_json` JSON,
+  `summary_json` JSON,
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -71,20 +87,43 @@ CREATE TABLE `user_note_records` (
   `session_id` VARCHAR(64) NOT NULL,
   `openid` VARCHAR(100) NOT NULL,
   `record_type` VARCHAR(20) NOT NULL,
+  `scene` VARCHAR(20) DEFAULT '',
   `day_no` TINYINT DEFAULT 1,
+  `phase` VARCHAR(30) DEFAULT '',
+  `actor_seats_json` JSON,
+  `target_seats_json` JSON,
   `content` TEXT NOT NULL,
   `player` VARCHAR(255),
-  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP
+  `payload_json` JSON,
+  `tags_json` JSON,
+  `editable` TINYINT DEFAULT 1,
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 CREATE TABLE `posts` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `openid` VARCHAR(100) NOT NULL,
+  `post_type` VARCHAR(32) NOT NULL DEFAULT 'general',
+  `title` VARCHAR(80) NOT NULL,
+  `summary` VARCHAR(255),
   `content` TEXT NOT NULL,
   `images` JSON,
+  `board_id` INT,
+  `board_name` VARCHAR(100),
+  `role_tags` JSON,
+  `tag_list` JSON,
+  `session_id` VARCHAR(64),
+  `quality_score` INT DEFAULT 0,
+  `hot_score` DOUBLE DEFAULT 0,
+  `view_count` INT DEFAULT 0,
   `like_count` INT DEFAULT 0,
   `comment_count` INT DEFAULT 0,
-  `status` TINYINT DEFAULT 1,
+  `favorite_count` INT DEFAULT 0,
+  `status` VARCHAR(20) NOT NULL DEFAULT 'PUBLISHED',
+  `featured` TINYINT DEFAULT 0,
+  `pinned` TINYINT DEFAULT 0,
+  `reject_reason` VARCHAR(255),
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -93,10 +132,13 @@ CREATE TABLE `comments` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `post_id` INT NOT NULL,
   `openid` VARCHAR(100) NOT NULL,
-  `content` VARCHAR(200) NOT NULL,
+  `parent_comment_id` INT,
+  `reply_to_openid` VARCHAR(100),
+  `content` VARCHAR(600) NOT NULL,
   `like_count` INT DEFAULT 0,
-  `status` TINYINT DEFAULT 1,
-  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP
+  `status` VARCHAR(20) NOT NULL DEFAULT 'VISIBLE',
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 CREATE TABLE `likes` (
@@ -214,10 +256,14 @@ CREATE TABLE `assistant_query_logs` (
 CREATE INDEX `idx_boards_status` ON `boards` (`status`);
 CREATE INDEX `idx_roles_faction_type` ON `roles` (`faction`, `role_type`);
 CREATE INDEX `idx_user_favorite_openid` ON `user_favorite_boards` (`openid`, `create_time`);
+CREATE INDEX `idx_user_favorite_posts_openid` ON `user_favorite_posts` (`openid`, `create_time`);
 CREATE INDEX `idx_user_note_sessions_openid` ON `user_note_sessions` (`openid`, `update_time`);
 CREATE INDEX `idx_user_note_records_session` ON `user_note_records` (`session_id`, `create_time`);
 CREATE INDEX `idx_posts_openid_status` ON `posts` (`openid`, `status`);
-CREATE INDEX `idx_comments_post_status` ON `comments` (`post_id`, `status`);
+CREATE INDEX `idx_posts_status_feed` ON `posts` (`status`, `pinned`, `featured`, `create_time`);
+CREATE INDEX `idx_posts_board_feed` ON `posts` (`board_id`, `status`, `create_time`);
+CREATE INDEX `idx_posts_type_feed` ON `posts` (`post_type`, `status`, `create_time`);
+CREATE INDEX `idx_comments_post_status` ON `comments` (`post_id`, `status`, `create_time`);
 CREATE INDEX `idx_reports_process_status` ON `reports` (`process_status`);
 CREATE INDEX `idx_assistant_documents_publish` ON `assistant_documents` (`publish_version_id`, `review_status`);
 CREATE INDEX `idx_assistant_sessions_openid` ON `assistant_sessions` (`openid`, `update_time`);

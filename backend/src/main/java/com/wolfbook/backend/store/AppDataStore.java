@@ -135,14 +135,44 @@ public class AppDataStore {
     }
 
     private void seedCommunity() {
-        Post post1 = new Post(nextPostId(), "wx_moon", "昨晚的狼美人骑士局太精彩了，最后一轮悍跳成功把局势全部带偏。", List.of("https://picsum.photos/seed/post1a/600/600", "https://picsum.photos/seed/post1b/600/600", "https://picsum.photos/seed/post1c/600/600"), 12, 2, 1, LocalDateTime.now().minusHours(3), LocalDateTime.now().minusHours(3));
-        Post post2 = new Post(nextPostId(), "wx_star", "预女猎白依然是最好用的教学板子，信息闭环清晰，很适合复盘。", List.of("https://picsum.photos/seed/post2a/900/600"), 8, 1, 1, LocalDateTime.now().minusHours(8), LocalDateTime.now().minusHours(8));
+        Post post1 = seedPost(
+                "wx_moon",
+                "review",
+                "狼美人骑士这局为什么能带偏全场？",
+                "昨晚的狼美人骑士局太精彩了，最后一轮悍跳成功把局势全部带偏。",
+                List.of("https://picsum.photos/seed/post1a/600/600", "https://picsum.photos/seed/post1b/600/600", "https://picsum.photos/seed/post1c/600/600"),
+                1,
+                "狼美人骑士",
+                List.of("复盘", "悍跳"),
+                12,
+                2,
+                1,
+                0,
+                LocalDateTime.now().minusHours(3),
+                LocalDateTime.now().minusHours(3)
+        );
+        Post post2 = seedPost(
+                "wx_star",
+                "board_discussion",
+                "预女猎白为什么适合教学局",
+                "预女猎白依然是最好用的教学板子，信息闭环清晰，很适合复盘。",
+                List.of("https://picsum.photos/seed/post2a/900/600"),
+                2,
+                "预女猎白",
+                List.of("教学", "站边"),
+                8,
+                1,
+                1,
+                0,
+                LocalDateTime.now().minusHours(8),
+                LocalDateTime.now().minusHours(8)
+        );
         posts.put(post1.id(), post1);
         posts.put(post2.id(), post2);
 
-        Comment comment1 = new Comment(nextCommentId(), post1.id(), "wx_judge", "这局最妙的是警徽流，基本提前把守卫视角暴露出来了。", 6, 1, LocalDateTime.now().minusHours(2));
-        Comment comment2 = new Comment(nextCommentId(), post1.id(), "wx_star", "狼美人压状态那段确实很漂亮。", 3, 1, LocalDateTime.now().minusHours(1));
-        Comment comment3 = new Comment(nextCommentId(), post2.id(), "wx_moon", "教学局也很适合新手练站边。", 1, 1, LocalDateTime.now().minusHours(6));
+        Comment comment1 = seedComment(post1.id(), "wx_judge", "这局最妙的是警徽流，基本提前把守卫视角暴露出来了。", 6, LocalDateTime.now().minusHours(2));
+        Comment comment2 = seedComment(post1.id(), "wx_star", "狼美人压状态那段确实很漂亮。", 3, LocalDateTime.now().minusHours(1));
+        Comment comment3 = seedComment(post2.id(), "wx_moon", "教学局也很适合新手练站边。", 1, LocalDateTime.now().minusHours(6));
         comments.put(comment1.id(), comment1);
         comments.put(comment2.id(), comment2);
         comments.put(comment3.id(), comment3);
@@ -179,5 +209,64 @@ public class AppDataStore {
 
     private List<FaqItem> faq(String question, String answer) {
         return new ArrayList<>(List.of(new FaqItem(question, answer)));
+    }
+
+    private Post seedPost(
+            String openid,
+            String postType,
+            String title,
+            String content,
+            List<String> images,
+            Integer boardId,
+            String boardName,
+            List<String> tagList,
+            Integer viewCount,
+            Integer likeCount,
+            Integer commentCount,
+            Integer favoriteCount,
+            LocalDateTime createTime,
+            LocalDateTime updateTime
+    ) {
+        return new Post(
+                nextPostId(),
+                openid,
+                postType,
+                title,
+                content.length() > 80 ? content.substring(0, 80) : content,
+                content,
+                images,
+                boardId,
+                boardName,
+                List.of(),
+                tagList,
+                null,
+                72,
+                (likeCount * 1.0d) + (commentCount * 2.0d) + (favoriteCount * 2.5d),
+                viewCount,
+                likeCount,
+                commentCount,
+                favoriteCount,
+                "PUBLISHED",
+                false,
+                false,
+                null,
+                createTime,
+                updateTime
+        );
+    }
+
+    private Comment seedComment(Integer postId, String openid, String content, Integer likeCount, LocalDateTime createTime) {
+        return new Comment(
+                nextCommentId(),
+                postId,
+                openid,
+                null,
+                null,
+                content,
+                likeCount,
+                "VISIBLE",
+                createTime,
+                createTime
+        );
     }
 }

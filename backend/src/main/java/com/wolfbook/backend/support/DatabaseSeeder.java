@@ -210,11 +210,26 @@ public class DatabaseSeeder {
         PostEntity post = new PostEntity();
         post.setId(id);
         post.setOpenid(openid);
+        post.setPostType("general");
+        post.setTitle(buildSeedTitle(content));
+        post.setSummary(buildSeedSummary(content));
         post.setContent(content);
         post.setImages(converter.writeStringList(images));
+        post.setBoardId(null);
+        post.setBoardName(null);
+        post.setRoleTags(converter.writeStringList(List.of()));
+        post.setTagList(converter.writeStringList(List.of("seed")));
+        post.setSessionId(null);
+        post.setQualityScore(60);
+        post.setHotScore((likeCount * 1.0d) + (commentCount * 2.0d));
+        post.setViewCount(Math.max(12, likeCount * 6 + commentCount * 8));
         post.setLikeCount(likeCount);
         post.setCommentCount(commentCount);
-        post.setStatus(status);
+        post.setFavoriteCount(0);
+        post.setStatus(status == 1 ? "PUBLISHED" : "OFFLINE");
+        post.setFeatured(false);
+        post.setPinned(false);
+        post.setRejectReason(null);
         post.setCreateTime(createTime);
         post.setUpdateTime(updateTime);
         postMapper.insert(post);
@@ -225,10 +240,13 @@ public class DatabaseSeeder {
         comment.setId(id);
         comment.setPostId(postId);
         comment.setOpenid(openid);
+        comment.setParentCommentId(null);
+        comment.setReplyToOpenid(null);
         comment.setContent(content);
         comment.setLikeCount(likeCount);
-        comment.setStatus(status);
+        comment.setStatus(status == 1 ? "VISIBLE" : "HIDDEN");
         comment.setCreateTime(createTime);
+        comment.setUpdateTime(createTime);
         commentMapper.insert(comment);
     }
 
@@ -268,5 +286,15 @@ public class DatabaseSeeder {
                 .findFirst()
                 .or(() -> specialRules.stream().filter(item -> item != null && !item.isBlank()).findFirst())
                 .orElse(winCondition);
+    }
+
+    private String buildSeedTitle(String content) {
+        String normalized = content == null ? "WolfBook Community" : content.trim();
+        return normalized.length() > 32 ? normalized.substring(0, 32) : normalized;
+    }
+
+    private String buildSeedSummary(String content) {
+        String normalized = content == null ? "" : content.trim();
+        return normalized.length() > 80 ? normalized.substring(0, 80) : normalized;
     }
 }

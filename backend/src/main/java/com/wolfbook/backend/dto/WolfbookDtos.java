@@ -1,5 +1,6 @@
 package com.wolfbook.backend.dto;
 
+import com.wolfbook.backend.common.PageResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -8,62 +9,73 @@ import jakarta.validation.constraints.Size;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 public final class WolfbookDtos {
 
     private WolfbookDtos() {
     }
 
-    public record LoginRequest(@NotBlank(message = "code 不能为空") String code) {
+    public record LoginRequest(@NotBlank(message = "code is required") String code) {
     }
 
     public record UpdateUserRequest(
-            @NotBlank(message = "昵称不能为空") @Size(max = 50, message = "昵称长度不能超过 50") String nickname,
-            @NotBlank(message = "头像不能为空") String avatar
+            @NotBlank(message = "nickname is required") @Size(max = 50, message = "nickname is too long") String nickname,
+            @NotBlank(message = "avatar is required") String avatar
     ) {
     }
 
     public record CreatePostRequest(
-            @NotBlank(message = "帖子内容不能为空") @Size(max = 500, message = "帖子内容不能超过 500 字") String content,
-            List<String> images
+            @NotBlank(message = "postType is required") String postType,
+            @NotBlank(message = "title is required") @Size(max = 60, message = "title is too long") String title,
+            @NotBlank(message = "content is required") @Size(max = 5000, message = "content is too long") String content,
+            @Size(max = 200, message = "summary is too long") String summary,
+            List<String> images,
+            Integer boardId,
+            @Size(max = 100, message = "boardName is too long") String boardName,
+            List<String> roleTags,
+            List<String> tagList,
+            String sessionId
     ) {
     }
 
     public record CreateCommentRequest(
-            @NotNull(message = "postId 不能为空") Integer postId,
-            @NotBlank(message = "评论不能为空") @Size(max = 200, message = "评论不能超过 200 字") String content
+            @NotNull(message = "postId is required") Integer postId,
+            Integer parentCommentId,
+            String replyToOpenid,
+            @NotBlank(message = "content is required") @Size(max = 600, message = "content is too long") String content
     ) {
     }
 
     public record ReportRequest(
-            @NotBlank(message = "targetType 不能为空") String targetType,
-            @NotNull(message = "targetId 不能为空") Integer targetId,
-            @NotBlank(message = "reason 不能为空") @Size(max = 200, message = "举报原因不能超过 200 字") String reason
+            @NotBlank(message = "targetType is required") String targetType,
+            @NotNull(message = "targetId is required") Integer targetId,
+            @NotBlank(message = "reason is required") @Size(max = 200, message = "reason is too long") String reason
     ) {
     }
 
     public record AdminLoginRequest(
-            @NotBlank(message = "用户名不能为空") String username,
-            @NotBlank(message = "密码不能为空") String password
+            @NotBlank(message = "username is required") String username,
+            @NotBlank(message = "password is required") String password
     ) {
     }
 
     public record BoardRoleInput(
-            @NotNull(message = "角色不能为空") Integer roleId,
-            @NotNull(message = "数量不能为空") Integer count
+            @NotNull(message = "roleId is required") Integer roleId,
+            @NotNull(message = "count is required") Integer count
     ) {
     }
 
     public record FaqInput(
-            @NotBlank(message = "问题不能为空") String question,
-            @NotBlank(message = "答案不能为空") String answer
+            @NotBlank(message = "question is required") String question,
+            @NotBlank(message = "answer is required") String answer
     ) {
     }
 
     public record AdminBoardRequest(
-            @NotBlank(message = "板子名称不能为空") @Size(max = 100, message = "板子名称不能超过 100") String name,
-            @NotNull(message = "人数不能为空") Integer playerCount,
-            @NotBlank(message = "难度不能为空") String difficulty,
+            @NotBlank(message = "name is required") @Size(max = 100, message = "name is too long") String name,
+            @NotNull(message = "playerCount is required") Integer playerCount,
+            @NotBlank(message = "difficulty is required") String difficulty,
             List<String> tags,
             String coverImage,
             String cardDescription,
@@ -72,16 +84,16 @@ public final class WolfbookDtos {
             List<String> specialRules,
             List<String> tips,
             @Valid List<FaqInput> faqs,
-            @Valid @NotEmpty(message = "至少配置一个角色") List<BoardRoleInput> roles
+            @Valid @NotEmpty(message = "roles are required") List<BoardRoleInput> roles
     ) {
     }
 
     public record AdminRoleRequest(
-            @NotBlank(message = "角色名称不能为空") @Size(max = 50, message = "角色名称不能超过 50") String name,
+            @NotBlank(message = "name is required") @Size(max = 50, message = "name is too long") String name,
             String alias,
-            @NotBlank(message = "阵营不能为空") String faction,
-            @NotBlank(message = "角色类型不能为空") String roleType,
-            @NotBlank(message = "技能描述不能为空") String skill,
+            @NotBlank(message = "faction is required") String faction,
+            @NotBlank(message = "roleType is required") String roleType,
+            @NotBlank(message = "skill is required") String skill,
             String background,
             @Valid List<FaqInput> faqs,
             String portrait,
@@ -89,10 +101,13 @@ public final class WolfbookDtos {
     ) {
     }
 
-    public record AdminStatusRequest(@NotBlank(message = "status 不能为空") String status) {
+    public record AdminStatusRequest(@NotBlank(message = "status is required") String status) {
     }
 
-    public record ReportProcessRequest(@NotBlank(message = "处理状态不能为空") String processStatus) {
+    public record ToggleFlagRequest(@NotNull(message = "enabled is required") Boolean enabled) {
+    }
+
+    public record ReportProcessRequest(@NotBlank(message = "processStatus is required") String processStatus) {
     }
 
     public record UserView(String openid, String nickname, String avatar, Integer status, LocalDateTime createTime) {
@@ -104,46 +119,146 @@ public final class WolfbookDtos {
     public record FavoriteBoardsView(List<Integer> boardIds, List<BoardCardView> boards) {
     }
 
+    public record NotePlayerInput(
+            Integer seatNo,
+            String nickname,
+            Boolean alive,
+            Boolean isSheriff,
+            String claimedRole,
+            String realRole,
+            String factionHint,
+            Integer suspicionLevel,
+            List<String> tags,
+            Integer deathDay,
+            String deathPhase,
+            String deathReason,
+            Boolean isFocus,
+            String note,
+            String createTime,
+            String updateTime
+    ) {
+    }
+
+    public record NoteSessionSummaryInput(
+            Integer aliveCount,
+            Integer deadCount,
+            Integer todayOutSeat,
+            List<Integer> latestWolfPackSeats,
+            String latestWolfPackText,
+            Integer keyEventCount,
+            String latestRecordType,
+            String latestRecordPreview
+    ) {
+    }
+
     public record NoteRecordInput(
-            @NotBlank(message = "记录 id 不能为空") String id,
-            @NotBlank(message = "记录类型不能为空") String type,
-            @NotNull(message = "轮次不能为空") Integer round,
-            @NotBlank(message = "记录内容不能为空") @Size(max = 5000, message = "记录内容不能超过 5000 字") String content,
+            @NotBlank(message = "record id is required") String id,
+            @NotBlank(message = "record type is required") String type,
+            String scene,
+            Integer day,
+            Integer round,
+            String phase,
+            List<Integer> actorSeats,
+            List<Integer> targetSeats,
             String player,
-            String timestamp
+            @Size(max = 5000, message = "content is too long") String content,
+            Map<String, Object> payload,
+            List<String> tags,
+            Boolean editable,
+            String timestamp,
+            String createTime,
+            String updateTime
     ) {
     }
 
     public record NoteSessionSaveRequest(
-            @NotBlank(message = "对局 id 不能为空") String sessionId,
-            @NotBlank(message = "板子模式不能为空") String boardMode,
+            @NotBlank(message = "sessionId is required") String sessionId,
+            Integer version,
+            @NotBlank(message = "boardMode is required") String boardMode,
             Integer boardId,
-            @NotBlank(message = "板子名称不能为空") @Size(max = 100, message = "板子名称不能超过 100") String boardName,
-            @NotNull(message = "人数不能为空") Integer playerCount,
+            @NotBlank(message = "boardName is required") @Size(max = 100, message = "boardName is too long") String boardName,
+            @NotNull(message = "playerCount is required") Integer playerCount,
+            String status,
+            Integer currentDay,
+            String currentPhase,
+            String resultCamp,
+            Integer sheriffSeat,
+            @Valid List<NotePlayerInput> players,
+            NoteSessionSummaryInput summary,
             String createTime,
             String updateTime,
             @Valid List<NoteRecordInput> records
     ) {
     }
 
+    public record NotePlayerView(
+            Integer seatNo,
+            String nickname,
+            Boolean alive,
+            Boolean isSheriff,
+            String claimedRole,
+            String realRole,
+            String factionHint,
+            Integer suspicionLevel,
+            List<String> tags,
+            Integer deathDay,
+            String deathPhase,
+            String deathReason,
+            Boolean isFocus,
+            String note,
+            String createTime,
+            String updateTime
+    ) {
+    }
+
+    public record NoteSessionSummaryView(
+            Integer aliveCount,
+            Integer deadCount,
+            Integer todayOutSeat,
+            List<Integer> latestWolfPackSeats,
+            String latestWolfPackText,
+            Integer keyEventCount,
+            String latestRecordType,
+            String latestRecordPreview
+    ) {
+    }
+
     public record NoteRecordView(
             String id,
             String type,
+            String scene,
+            Integer day,
             Integer round,
+            String phase,
+            List<Integer> actorSeats,
+            List<Integer> targetSeats,
             String content,
             String player,
-            LocalDateTime timestamp
+            Map<String, Object> payload,
+            List<String> tags,
+            Boolean editable,
+            String timestamp,
+            String createTime,
+            String updateTime
     ) {
     }
 
     public record NoteSessionView(
             String sessionId,
+            Integer version,
             String boardMode,
             Integer boardId,
             String boardName,
             Integer playerCount,
-            LocalDateTime createTime,
-            LocalDateTime updateTime,
+            String status,
+            Integer currentDay,
+            String currentPhase,
+            String resultCamp,
+            Integer sheriffSeat,
+            List<NotePlayerView> players,
+            NoteSessionSummaryView summary,
+            String createTime,
+            String updateTime,
             List<NoteRecordView> records
     ) {
     }
@@ -236,13 +351,38 @@ public final class WolfbookDtos {
             String openid,
             String nickname,
             String avatar,
+            String postType,
+            String title,
+            String summary,
             String content,
             List<String> images,
+            Integer boardId,
+            String boardName,
+            List<String> roleTags,
+            List<String> tagList,
+            String sessionId,
+            Integer qualityScore,
+            Double hotScore,
+            Integer viewCount,
             Integer likeCount,
             Integer commentCount,
-            Integer status,
+            Integer favoriteCount,
+            String status,
+            boolean featured,
+            boolean pinned,
             boolean liked,
-            LocalDateTime createTime
+            boolean favorited,
+            boolean owned,
+            LocalDateTime createTime,
+            LocalDateTime updateTime
+    ) {
+    }
+
+    public record PostBoardView(
+            Integer boardId,
+            String boardName,
+            String coverImage,
+            Integer playerCount
     ) {
     }
 
@@ -252,11 +392,17 @@ public final class WolfbookDtos {
             String openid,
             String nickname,
             String avatar,
+            Integer parentCommentId,
+            String replyToOpenid,
+            String replyToNickname,
             String content,
             Integer likeCount,
             boolean liked,
-            Integer status,
-            LocalDateTime createTime
+            boolean owned,
+            boolean postAuthor,
+            String status,
+            LocalDateTime createTime,
+            LocalDateTime updateTime
     ) {
     }
 
@@ -265,18 +411,57 @@ public final class WolfbookDtos {
             String openid,
             String nickname,
             String avatar,
+            String postType,
+            String title,
+            String summary,
             String content,
             List<String> images,
+            Integer boardId,
+            String boardName,
+            List<String> roleTags,
+            List<String> tagList,
+            String sessionId,
+            Integer qualityScore,
+            Double hotScore,
+            Integer viewCount,
             Integer likeCount,
             Integer commentCount,
-            Integer status,
+            Integer favoriteCount,
+            String status,
+            boolean featured,
+            boolean pinned,
             boolean liked,
+            boolean favorited,
+            boolean owned,
             LocalDateTime createTime,
-            List<CommentView> comments
+            LocalDateTime updateTime,
+            PostBoardView board,
+            List<CommentView> comments,
+            List<PostSummaryView> relatedPosts
     ) {
     }
 
     public record ToggleLikeResponse(boolean liked, int likeCount) {
+    }
+
+    public record ToggleFavoriteResponse(boolean favorited, int favoriteCount) {
+    }
+
+    public record HotBoardTopicView(
+            Integer boardId,
+            String boardName,
+            String coverImage,
+            Integer playerCount,
+            Integer postCount,
+            Double hotScore
+    ) {
+    }
+
+    public record CommunityFeedView(
+            PageResponse<PostSummaryView> posts,
+            List<HotBoardTopicView> hotBoards,
+            List<String> suggestedTags
+    ) {
     }
 
     public record UploadResponse(String url) {

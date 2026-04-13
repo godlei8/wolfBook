@@ -13,10 +13,13 @@ public class CommentEntity {
     private Integer id;
     private Integer postId;
     private String openid;
+    private Integer parentCommentId;
+    private String replyToOpenid;
     private String content;
     private Integer likeCount;
-    private Integer status;
+    private String status;
     private LocalDateTime createTime;
+    private LocalDateTime updateTime;
 
     public Integer getId() {
         return id;
@@ -42,6 +45,22 @@ public class CommentEntity {
         this.openid = openid;
     }
 
+    public Integer getParentCommentId() {
+        return parentCommentId;
+    }
+
+    public void setParentCommentId(Integer parentCommentId) {
+        this.parentCommentId = parentCommentId;
+    }
+
+    public String getReplyToOpenid() {
+        return replyToOpenid;
+    }
+
+    public void setReplyToOpenid(String replyToOpenid) {
+        this.replyToOpenid = replyToOpenid;
+    }
+
     public String getContent() {
         return content;
     }
@@ -58,11 +77,11 @@ public class CommentEntity {
         this.likeCount = likeCount;
     }
 
-    public Integer getStatus() {
+    public String getStatus() {
         return status;
     }
 
-    public void setStatus(Integer status) {
+    public void setStatus(String status) {
         this.status = status;
     }
 
@@ -72,5 +91,13 @@ public class CommentEntity {
 
     public void setCreateTime(LocalDateTime createTime) {
         this.createTime = createTime;
+    }
+
+    public LocalDateTime getUpdateTime() {
+        return updateTime;
+    }
+
+    public void setUpdateTime(LocalDateTime updateTime) {
+        this.updateTime = updateTime;
     }
 }

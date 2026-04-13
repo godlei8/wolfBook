@@ -99,6 +99,20 @@ public class AdminController {
         return ApiResponse.success();
     }
 
+    @PatchMapping("/posts/{id}/featured")
+    public ApiResponse<Void> updatePostFeatured(@RequestHeader("Authorization") String authorization, @PathVariable Integer id, @RequestBody @Valid WolfbookDtos.ToggleFlagRequest request) {
+        adminService.requireAdmin(authorization);
+        adminService.updatePostFeatured(id, Boolean.TRUE.equals(request.enabled()));
+        return ApiResponse.success();
+    }
+
+    @PatchMapping("/posts/{id}/pinned")
+    public ApiResponse<Void> updatePostPinned(@RequestHeader("Authorization") String authorization, @PathVariable Integer id, @RequestBody @Valid WolfbookDtos.ToggleFlagRequest request) {
+        adminService.requireAdmin(authorization);
+        adminService.updatePostPinned(id, Boolean.TRUE.equals(request.enabled()));
+        return ApiResponse.success();
+    }
+
     @DeleteMapping("/posts/{id}")
     public ApiResponse<Void> deletePost(@RequestHeader("Authorization") String authorization, @PathVariable Integer id) {
         adminService.requireAdmin(authorization);

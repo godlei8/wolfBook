@@ -55,13 +55,29 @@ CREATE TABLE user_favorite_boards (
   CONSTRAINT uk_user_favorite_board UNIQUE (openid, board_id)
 );
 
+CREATE TABLE user_favorite_posts (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  openid VARCHAR(100) NOT NULL,
+  post_id INT NOT NULL,
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uk_user_favorite_post UNIQUE (openid, post_id)
+);
+
 CREATE TABLE user_note_sessions (
   session_id VARCHAR(64) PRIMARY KEY,
+  version INT DEFAULT 2,
   openid VARCHAR(100) NOT NULL,
   board_mode VARCHAR(20) NOT NULL DEFAULT 'library',
   board_id INT,
   board_name VARCHAR(100) NOT NULL,
   player_count TINYINT NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'active',
+  current_day TINYINT DEFAULT 1,
+  current_phase VARCHAR(30) DEFAULT 'day_speech',
+  result_camp VARCHAR(20) DEFAULT '',
+  sheriff_seat TINYINT,
+  players_json CLOB,
+  summary_json CLOB,
   create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -71,20 +87,43 @@ CREATE TABLE user_note_records (
   session_id VARCHAR(64) NOT NULL,
   openid VARCHAR(100) NOT NULL,
   record_type VARCHAR(20) NOT NULL,
+  scene VARCHAR(20) DEFAULT '',
   day_no TINYINT DEFAULT 1,
+  phase VARCHAR(30) DEFAULT '',
+  actor_seats_json CLOB,
+  target_seats_json CLOB,
   content CLOB NOT NULL,
   player VARCHAR(255),
-  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  payload_json CLOB,
+  tags_json CLOB,
+  editable TINYINT DEFAULT 1,
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE posts (
   id INT PRIMARY KEY AUTO_INCREMENT,
   openid VARCHAR(100) NOT NULL,
+  post_type VARCHAR(32) NOT NULL DEFAULT 'general',
+  title VARCHAR(80) NOT NULL,
+  summary VARCHAR(255),
   content CLOB NOT NULL,
   images CLOB,
+  board_id INT,
+  board_name VARCHAR(100),
+  role_tags CLOB,
+  tag_list CLOB,
+  session_id VARCHAR(64),
+  quality_score INT DEFAULT 0,
+  hot_score DOUBLE DEFAULT 0,
+  view_count INT DEFAULT 0,
   like_count INT DEFAULT 0,
   comment_count INT DEFAULT 0,
-  status TINYINT DEFAULT 1,
+  favorite_count INT DEFAULT 0,
+  status VARCHAR(20) NOT NULL DEFAULT 'PUBLISHED',
+  featured TINYINT DEFAULT 0,
+  pinned TINYINT DEFAULT 0,
+  reject_reason VARCHAR(255),
   create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -93,10 +132,13 @@ CREATE TABLE comments (
   id INT PRIMARY KEY AUTO_INCREMENT,
   post_id INT NOT NULL,
   openid VARCHAR(100) NOT NULL,
-  content VARCHAR(200) NOT NULL,
+  parent_comment_id INT,
+  reply_to_openid VARCHAR(100),
+  content VARCHAR(600) NOT NULL,
   like_count INT DEFAULT 0,
-  status TINYINT DEFAULT 1,
-  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  status VARCHAR(20) NOT NULL DEFAULT 'VISIBLE',
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE likes (

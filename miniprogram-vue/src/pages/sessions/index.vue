@@ -4,25 +4,38 @@ import { onShow } from '@dcloudio/uni-app'
 import AssistantDock from '../../components/assistant/AssistantDock.vue'
 import userData from '../../services/user-data'
 import { formatDateTime } from '../../utils/format'
+import { getPhaseLabel, getRecordTypeLabel, getStatusLabel } from '../../utils/session/constants'
+import { localizeRecordContent } from '../../utils/session/display'
 
 const sessions = ref([])
-
-const recordTypeMap = {
-  seer: '查验记录',
-  vote: '投票记录',
-  speech: '发言记录',
-  wolfPack: '狼坑分析',
-}
 
 function buildSessionView(session) {
   const records = session.records || []
   const latestRecord = records.length ? records[records.length - 1] : null
+  const latestPreview = session.summary?.latestRecordPreview
+    ? localizeRecordContent({
+        type: session.summary?.latestRecordType,
+        content: session.summary.latestRecordPreview,
+        payload: latestRecord?.payload || {},
+        actorSeats: latestRecord?.actorSeats || [],
+        targetSeats: latestRecord?.targetSeats || [],
+      })
+    : localizeRecordContent(latestRecord)
+
   return {
     ...session,
     createLabel: formatDateTime(session.createTime),
     updateLabel: formatDateTime(session.updateTime),
-    latestTypeLabel: latestRecord ? recordTypeMap[latestRecord.type] || '最新记录' : '准备开始',
-    latestPreview: latestRecord ? latestRecord.content : '还没有记录，点击进入后就可以补充发言、投票和夜间信息。',
+    latestTypeLabel: session.summary?.latestRecordType
+      ? getRecordTypeLabel(session.summary.latestRecordType)
+      : latestRecord
+        ? getRecordTypeLabel(latestRecord.type)
+        : '准备开始',
+    latestPreview: latestPreview || '还没有记录，点击进入后就可以补充发言、投票和夜间信息。',
+    statusLabel: getStatusLabel(session.status),
+    phaseLabel: getPhaseLabel(session.currentPhase),
+    aliveCount: session.summary?.aliveCount ?? session.playerCount,
+    deadCount: session.summary?.deadCount ?? 0,
   }
 }
 
@@ -74,18 +87,23 @@ onShow(() => {
 
     <view v-for="item in sessions" :key="item.sessionId" class="glass-card section-card session-card" @tap="openSession(item.sessionId)">
       <view class="session-top">
-        <view class="pill pill-gold">{{ item.playerCount }} 人局</view>
-        <view class="pill pill-white">{{ (item.records || []).length }} 条</view>
+        <view class="pill pill-gold">{{ item.statusLabel }}</view>
+        <view class="pill pill-white">{{ item.currentDay }} 天 · {{ item.phaseLabel }}</view>
       </view>
       <view class="session-name">{{ item.boardName || '未命名对局' }}</view>
       <view class="session-meta">最近更新 {{ item.updateLabel }}</view>
+      <view class="session-chips">
+        <view class="pill pill-white">{{ item.playerCount }} 人局</view>
+        <view class="pill pill-white">存活 {{ item.aliveCount }}</view>
+        <view class="pill pill-white">出局 {{ item.deadCount }}</view>
+      </view>
       <view class="session-preview">
         <view class="session-preview-label">{{ item.latestTypeLabel }}</view>
         <view class="session-preview-text">{{ item.latestPreview }}</view>
       </view>
       <view class="session-footer">
         <view class="section-meta">创建于 {{ item.createLabel }}</view>
-        <button class="session-remove" @tap.stop="removeSession(item.sessionId)">删除</button>
+        <button class="button-danger session-remove" @tap.stop="removeSession(item.sessionId)">删除</button>
       </view>
     </view>
 
@@ -118,6 +136,13 @@ onShow(() => {
   font-size: 24rpx;
 }
 
+.session-chips {
+  margin-top: 16rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
 .session-preview {
   margin-top: 18rpx;
   padding: 18rpx 20rpx;
@@ -146,13 +171,7 @@ onShow(() => {
   height: 64rpx;
   line-height: 64rpx;
   padding: 0 24rpx;
-  border-radius: 12rpx;
-  background: rgba(255, 255, 255, 0.06);
-  color: #ffffff;
+  border-radius: 14rpx;
   font-size: 24rpx;
-}
-
-.session-remove::after {
-  border: none;
 }
 </style>

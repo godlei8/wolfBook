@@ -196,11 +196,15 @@ public class AdminService {
     }
 
     public void updatePostStatus(Integer id, String status) {
-        PostEntity post = getPostEntity(id);
-        int numeric = "PUBLISHED".equalsIgnoreCase(status) || "ONLINE".equalsIgnoreCase(status) || "1".equals(status) ? 1 : 0;
-        post.setStatus(numeric);
-        post.setUpdateTime(LocalDateTime.now());
-        postMapper.updateById(post);
+        communityService.updatePostStatus(id, status);
+    }
+
+    public void updatePostFeatured(Integer id, boolean enabled) {
+        communityService.updatePostFeatured(id, enabled);
+    }
+
+    public void updatePostPinned(Integer id, boolean enabled) {
+        communityService.updatePostPinned(id, enabled);
     }
 
     public void deletePost(Integer id) {

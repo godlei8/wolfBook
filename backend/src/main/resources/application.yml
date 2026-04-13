@@ -10,6 +10,13 @@ spring:
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:aa642353}
     driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+      timeout: ${REDIS_TIMEOUT:2s}
   servlet:
     multipart:
       max-file-size: 10MB
@@ -68,3 +75,20 @@ wolfbook:
       username: ${ASSISTANT_PGVECTOR_USERNAME:}
       password: ${ASSISTANT_PGVECTOR_PASSWORD:}
       table-name: ${ASSISTANT_PGVECTOR_TABLE:assistant_vector_store}
+  community:
+    feed-hot-candidate-limit: ${COMMUNITY_FEED_HOT_CANDIDATE_LIMIT:80}
+    related-post-limit: ${COMMUNITY_RELATED_POST_LIMIT:4}
+    hot:
+      view-weight: ${COMMUNITY_VIEW_WEIGHT:0.2}
+      like-weight: ${COMMUNITY_LIKE_WEIGHT:1.0}
+      comment-weight: ${COMMUNITY_COMMENT_WEIGHT:2.0}
+      favorite-weight: ${COMMUNITY_FAVORITE_WEIGHT:2.5}
+      featured-bonus: ${COMMUNITY_FEATURED_BONUS:18.0}
+      pinned-bonus: ${COMMUNITY_PINNED_BONUS:28.0}
+      quality-weight: ${COMMUNITY_QUALITY_WEIGHT:0.1}
+      age-decay-per-hour: ${COMMUNITY_AGE_DECAY_PER_HOUR:0.08}
+    meilisearch:
+      enabled: ${COMMUNITY_MEILI_ENABLED:true}
+      base-url: ${COMMUNITY_MEILI_BASE_URL:http://127.0.0.1:7700}
+      api-key: ${COMMUNITY_MEILI_API_KEY:}
+      index-name: ${COMMUNITY_MEILI_INDEX:community_posts}

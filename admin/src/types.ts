@@ -79,13 +79,30 @@ export interface PostSummary {
   openid: string
   nickname: string
   avatar: string
+  postType: string
+  title: string
+  summary: string
   content: string
   images: string[]
+  boardId: number | null
+  boardName: string | null
+  roleTags: string[]
+  tagList: string[]
+  sessionId: string | null
+  qualityScore: number
+  hotScore: number
+  viewCount: number
   likeCount: number
   commentCount: number
-  status: number
+  favoriteCount: number
+  status: string
+  featured: boolean
+  pinned: boolean
   liked: boolean
+  favorited: boolean
+  owned: boolean
   createTime: string
+  updateTime: string
 }
 
 export interface CommentView {
@@ -94,11 +111,17 @@ export interface CommentView {
   openid: string
   nickname: string
   avatar: string
+  parentCommentId: number | null
+  replyToOpenid: string | null
+  replyToNickname: string | null
   content: string
   likeCount: number
   liked: boolean
-  status: number
+  owned: boolean
+  postAuthor: boolean
+  status: string
   createTime: string
+  updateTime: string
 }
 
 export interface ReportItem {

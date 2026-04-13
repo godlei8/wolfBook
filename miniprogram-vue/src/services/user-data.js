@@ -1,5 +1,6 @@
 import api from './api'
 import storage from './storage'
+import { normalizeSession, normalizeSessions } from '../utils/session/normalizer'
 
 let favoriteCache = null
 let sessionCache = null
@@ -38,14 +39,14 @@ function mergeIds(remoteIds = [], localIds = []) {
 }
 
 function sortSessions(list = []) {
-  return list
+  return normalizeSessions(list)
     .slice()
     .sort((left, right) => new Date(right.updateTime || right.createTime || 0).getTime() - new Date(left.updateTime || left.createTime || 0).getTime())
 }
 
 function mergeSessions(remoteSessions = [], localSessions = []) {
-  const merged = new Map(remoteSessions.map((item) => [item.sessionId, item]))
-  localSessions.forEach((localItem) => {
+  const merged = new Map(normalizeSessions(remoteSessions).map((item) => [item.sessionId, item]))
+  normalizeSessions(localSessions).forEach((localItem) => {
     const remoteItem = merged.get(localItem.sessionId)
     if (!remoteItem) {
       merged.set(localItem.sessionId, localItem)
@@ -145,9 +146,9 @@ export default {
   async getSessionById(sessionId) {
     syncCacheScope()
     if (!hasAuthToken()) {
-      return storage.getSessionById(sessionId)
+      return normalizeSession(storage.getSessionById(sessionId))
     }
-    const session = await api.getUserSessionDetail(sessionId)
+    const session = normalizeSession(await api.getUserSessionDetail(sessionId))
     if (sessionCache) {
       const next = sessionCache.slice()
       const index = next.findIndex((item) => item.sessionId === session.sessionId)
@@ -162,10 +163,11 @@ export default {
   },
   async saveSession(session) {
     syncCacheScope()
+    const normalized = normalizeSession(session)
     if (!hasAuthToken()) {
-      return storage.upsertSession(session)
+      return storage.upsertSession(normalized)
     }
-    const saved = await api.saveUserSession(session)
+    const saved = normalizeSession(await api.saveUserSession(normalized))
     const source = sessionCache ? sessionCache.slice() : []
     const index = source.findIndex((item) => item.sessionId === saved.sessionId)
     if (index >= 0) {

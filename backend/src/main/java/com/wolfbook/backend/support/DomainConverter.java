@@ -79,11 +79,26 @@ public class DomainConverter {
         return new Post(
                 entity.getId(),
                 entity.getOpenid(),
+                entity.getPostType(),
+                entity.getTitle(),
+                entity.getSummary(),
                 entity.getContent(),
                 readStringList(entity.getImages()),
+                entity.getBoardId(),
+                entity.getBoardName(),
+                readStringList(entity.getRoleTags()),
+                readStringList(entity.getTagList()),
+                entity.getSessionId(),
+                entity.getQualityScore(),
+                entity.getHotScore(),
+                entity.getViewCount(),
                 entity.getLikeCount(),
                 entity.getCommentCount(),
+                entity.getFavoriteCount(),
                 entity.getStatus(),
+                entity.getFeatured(),
+                entity.getPinned(),
+                entity.getRejectReason(),
                 entity.getCreateTime(),
                 entity.getUpdateTime()
         );
@@ -94,10 +109,13 @@ public class DomainConverter {
                 entity.getId(),
                 entity.getPostId(),
                 entity.getOpenid(),
+                entity.getParentCommentId(),
+                entity.getReplyToOpenid(),
                 entity.getContent(),
                 entity.getLikeCount(),
                 entity.getStatus(),
-                entity.getCreateTime()
+                entity.getCreateTime(),
+                entity.getUpdateTime()
         );
     }
 

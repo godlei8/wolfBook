@@ -306,8 +306,8 @@ onLoad((options) => {
             <view class="assistant-header-desc">规则、角色、板子和站内知识，都可以在这里快速问。</view>
           </view>
           <view class="assistant-header-actions">
-            <view class="header-action" @tap="startNewSession">新建</view>
-            <view class="header-action header-action--ghost" @tap="resetCurrentSession">重置</view>
+            <button class="button-primary header-action" @tap="startNewSession">新建</button>
+            <button class="button-ghost header-action" @tap="resetCurrentSession">重置</button>
           </view>
         </view>
         <view class="assistant-header-meta">
@@ -424,7 +424,7 @@ onLoad((options) => {
 
         <view class="composer-footer">
           <view class="composer-hint">{{ composerHint }}</view>
-          <button class="composer-submit" :disabled="!canSend" :loading="sending" @tap="sendQuestion()">
+          <button class="button-primary composer-submit" :disabled="!canSend" :loading="sending" @tap="sendQuestion()">
             发送
           </button>
         </view>
@@ -511,22 +511,17 @@ onLoad((options) => {
 }
 
 .header-action {
+  margin: 0;
   min-width: 100rpx;
   height: 64rpx;
+  line-height: 64rpx;
   padding: 0 22rpx;
   border-radius: 999rpx;
-  background: rgba(255, 192, 0, 0.16);
-  color: #ffc000;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 22rpx;
   font-weight: 700;
-}
-
-.header-action--ghost {
-  background: rgba(255, 255, 255, 0.06);
-  color: #ece4cf;
 }
 
 .assistant-header-meta {
@@ -841,22 +836,8 @@ onLoad((options) => {
   height: 82rpx;
   line-height: 82rpx;
   border-radius: 16rpx;
-  background: linear-gradient(135deg, #ffd24f, #f3b91f);
-  color: #171105;
   font-size: 30rpx;
-  font-weight: 800;
-  box-shadow: 0 14rpx 28rpx rgba(255, 192, 0, 0.2);
   flex-shrink: 0;
-}
-
-.composer-submit::after {
-  border: none;
-}
-
-.composer-submit[disabled] {
-  background: rgba(255, 255, 255, 0.1);
-  color: #8f8f8f;
-  box-shadow: none;
 }
 
 .scroll-anchor {

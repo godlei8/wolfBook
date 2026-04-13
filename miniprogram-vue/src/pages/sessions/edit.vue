@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import api from '../../services/api'
 import userData from '../../services/user-data'
+import { createSessionModel } from '../../utils/session/normalizer'
 
 const sessionId = ref('')
 const sessionMode = ref('library')
@@ -155,13 +156,20 @@ async function saveSession() {
   try {
     const current = sessionId.value ? await userData.getSessionById(sessionId.value) : null
     const now = new Date().toISOString()
-    const session = {
+    const session = createSessionModel({
       sessionId: sessionId.value || makeId('session'),
       ...base,
+      status: current?.status || 'active',
+      currentDay: current?.currentDay || 1,
+      currentPhase: current?.currentPhase || 'day_speech',
+      resultCamp: current?.resultCamp || '',
+      sheriffSeat: current?.sheriffSeat || null,
+      players: current?.players,
+      summary: current?.summary,
       createTime: current ? current.createTime : now,
       updateTime: now,
       records: current ? current.records || [] : [],
-    }
+    })
     const saved = await userData.saveSession(session)
     uni.redirectTo({ url: `/pages/sessions/detail?id=${saved.sessionId}` })
   } catch (error) {
@@ -554,6 +562,7 @@ onLoad((options) => {
 
 .board-name-input {
   min-height: 84rpx;
+  line-height: 84rpx;
   font-size: 26rpx;
 }
 
@@ -564,6 +573,7 @@ onLoad((options) => {
 
 .player-count-input {
   min-height: 84rpx;
+  line-height: 84rpx;
   padding-right: 92rpx;
   font-size: 28rpx;
 }

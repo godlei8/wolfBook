@@ -1,3 +1,5 @@
+import { normalizeSession as normalizeSessionV2, normalizeSessions as normalizeSessionsV2 } from '../utils/session/normalizer'
+
 const AUTH_TOKEN_KEY = 'auth_token'
 const USER_PROFILE_KEY = 'user_profile'
 const FAVORITES_KEY = 'favorite_boards'
@@ -59,47 +61,12 @@ function normalizeFavorites(value) {
     .filter((item) => Number.isFinite(item) && item > 0)
 }
 
-function normalizeRecord(record, index) {
-  if (!record || typeof record !== 'object') {
-    return null
-  }
-  return {
-    id: String(record.id || `rec_${Date.now()}_${index}`),
-    type: record.type || 'speech',
-    round: Number(record.round) || 1,
-    content: typeof record.content === 'string' ? record.content : '',
-    player: typeof record.player === 'string' ? record.player : '',
-    timestamp: record.timestamp || new Date().toISOString(),
-  }
-}
-
 function normalizeSession(session, index) {
-  if (!session || typeof session !== 'object') {
-    return null
-  }
-  const boardId = Number(session.boardId)
-  const hasBoardId = Number.isFinite(boardId) && boardId > 0
-  const records = toArray(session.records)
-    .map(normalizeRecord)
-    .filter(Boolean)
-
-  return {
-    sessionId: String(session.sessionId || session.id || `session_${Date.now()}_${index}`),
-    boardMode: session.boardMode === 'library' || (hasBoardId && session.boardMode !== 'custom') ? 'library' : 'custom',
-    boardId: hasBoardId ? boardId : null,
-    boardName: typeof session.boardName === 'string' ? session.boardName : '',
-    playerCount: Number(session.playerCount) || 12,
-    createTime: session.createTime || session.updateTime || new Date().toISOString(),
-    updateTime: session.updateTime || session.createTime || new Date().toISOString(),
-    records,
-  }
+  return normalizeSessionV2(session, index)
 }
 
 function normalizeSessions(value) {
-  return toArray(value)
-    .map(normalizeSession)
-    .filter(Boolean)
-    .sort((left, right) => new Date(right.updateTime).getTime() - new Date(left.updateTime).getTime())
+  return normalizeSessionsV2(toArray(value))
 }
 
 function persistIfChanged(key, raw, normalized) {

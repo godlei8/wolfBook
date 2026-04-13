@@ -88,19 +88,97 @@ page {
   color: #f2f2f2;
 }
 
-.button-primary {
+button {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   height: 88rpx;
   line-height: 88rpx;
-  border-radius: 12rpx;
+  border-radius: 18rpx;
   padding: 0 28rpx;
-  background: #ffc000;
-  color: #000000;
+  border: none;
   font-size: 28rpx;
   font-weight: 700;
+  text-align: center;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f6efe1;
+}
+
+button::after {
+  border: none;
+}
+
+button[disabled] {
+  background: rgba(255, 255, 255, 0.08);
+  color: #8f8f8f;
+  box-shadow: none;
+  border-color: transparent;
+}
+
+.button-primary {
+  background: #f7c948;
+  color: #171105;
+  font-weight: 800;
+  box-shadow: none;
 }
 
 .button-primary::after {
   border: none;
+}
+
+.button-ghost {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1rpx solid rgba(255, 255, 255, 0.14);
+  color: #f4ead7;
+}
+
+.button-danger {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1rpx solid rgba(255, 143, 124, 0.24);
+  color: #ffad9d;
+}
+
+.button-segment {
+  display: inline-flex;
+  width: auto;
+  flex: 0 0 auto;
+  min-width: 0;
+  height: 56rpx;
+  line-height: 56rpx;
+  padding: 0 18rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1rpx solid rgba(255, 255, 255, 0.08);
+  color: #f4ead7;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.button-segment.active {
+  background: #f7c948;
+  border-color: transparent;
+  color: #171105;
+}
+
+.button-card-toggle {
+  min-height: 88rpx;
+  height: auto;
+  line-height: 1.2;
+  padding: 0 14rpx;
+  border-radius: 18rpx;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1rpx solid rgba(255, 255, 255, 0.08);
+  color: #f4ead7;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.button-card-toggle.active {
+  background: #f7c948;
+  border-color: transparent;
+  color: #171105;
 }
 
 .empty-state {
@@ -120,9 +198,37 @@ page {
   box-sizing: border-box;
 }
 
-.field-textarea {
+input.field-input {
+  display: block;
+  width: 100%;
+  min-height: 88rpx;
+  padding: 0 22rpx;
+  font-size: 28rpx;
+  line-height: 88rpx;
+}
+
+textarea.field-textarea {
+  display: block;
   min-height: 180rpx;
   width: 100%;
+  padding: 20rpx 22rpx;
+  font-size: 28rpx;
+  line-height: 1.7;
+}
+
+input.search-input {
+  display: block;
+  width: 100%;
+  padding-top: 0;
+  padding-bottom: 0;
+  font-size: 28rpx;
+  box-sizing: border-box;
+}
+
+textarea.assistant-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .chip-row {

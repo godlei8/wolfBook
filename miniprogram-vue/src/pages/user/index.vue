@@ -228,7 +228,7 @@ onShow(() => {
           </view>
         </view>
 
-        <button class="action-button action-button--ghost profile-action" @tap="openProfileEditor">
+        <button class="button-ghost profile-action" @tap="openProfileEditor">
           更新微信头像和昵称
         </button>
       </template>
@@ -238,7 +238,7 @@ onShow(() => {
           <view class="login-title">未登录</view>
           <view class="login-desc">登录后可发帖、评论、点赞，并同步你的微信资料。</view>
         </view>
-        <button class="action-button action-button--primary profile-action" :loading="loginLoading" @tap="handleLogin">
+        <button class="button-primary profile-action" :loading="loginLoading" @tap="handleLogin">
           微信登录
         </button>
       </template>
@@ -309,7 +309,7 @@ onShow(() => {
           </view>
 
           <view class="editor-avatar-actions">
-            <button class="action-button action-button--ghost avatar-button" open-type="chooseAvatar" @chooseavatar="handleChooseAvatar">
+            <button class="button-ghost avatar-button" open-type="chooseAvatar" @chooseavatar="handleChooseAvatar">
               选择微信头像
             </button>
             <view class="editor-tip-card">
@@ -339,8 +339,8 @@ onShow(() => {
         </view>
 
         <view class="editor-actions">
-          <button class="action-button action-button--ghost half-button" @tap="profileEditorVisible = false">稍后再说</button>
-          <button class="action-button action-button--primary half-button" :loading="profileSaving" @tap="saveWechatProfile">
+          <button class="button-ghost half-button" @tap="profileEditorVisible = false">稍后再说</button>
+          <button class="button-primary half-button" :loading="profileSaving" @tap="saveWechatProfile">
             保存资料
           </button>
         </view>
@@ -443,6 +443,7 @@ onShow(() => {
 
 .profile-action {
   margin-top: 20rpx;
+  width: 100%;
 }
 
 .login-panel {
@@ -523,28 +524,14 @@ onShow(() => {
   line-height: 1;
 }
 
-.action-button {
+.profile-action,
+.avatar-button,
+.half-button {
   height: 72rpx;
   line-height: 72rpx;
   padding: 0 24rpx;
-  border-radius: 14rpx;
+  border-radius: 16rpx;
   font-size: 24rpx;
-  font-weight: 700;
-}
-
-.action-button::after {
-  border: none;
-}
-
-.action-button--primary {
-  background: #ffc000;
-  color: #000000;
-}
-
-.action-button--ghost {
-  background: rgba(255, 255, 255, 0.03);
-  color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 .editor-mask {
