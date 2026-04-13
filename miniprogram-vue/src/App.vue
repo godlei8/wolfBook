@@ -157,9 +157,9 @@ button[disabled] {
 }
 
 .button-segment.active {
-  background: #f7c948;
-  border-color: transparent;
-  color: #171105;
+  background: linear-gradient(180deg, rgba(108, 84, 24, 0.94) 0%, rgba(64, 49, 15, 0.98) 100%);
+  border-color: rgba(242, 194, 84, 0.08);
+  color: #f0c35b;
 }
 
 .button-card-toggle {
@@ -250,8 +250,8 @@ textarea.assistant-input {
 }
 
 .chip.active {
-  background: rgba(255, 192, 0, 0.16);
-  color: #ffc000;
+  background: linear-gradient(180deg, rgba(108, 84, 24, 0.94) 0%, rgba(64, 49, 15, 0.98) 100%);
+  color: #f0c35b;
 }
 
 .floating-plus {

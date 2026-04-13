@@ -364,9 +364,9 @@ onLoad((options) => {
 }
 
 .mode-chip.active {
-  background: linear-gradient(180deg, rgba(255, 192, 0, 0.18), rgba(255, 192, 0, 0.1));
-  color: #ffc000;
-  box-shadow: inset 0 0 0 2rpx rgba(255, 192, 0, 0.08);
+  background: linear-gradient(180deg, rgba(108, 84, 24, 0.94) 0%, rgba(64, 49, 15, 0.98) 100%);
+  color: #f0c35b;
+  box-shadow: inset 0 0 0 2rpx rgba(242, 194, 84, 0.04);
 }
 
 .section-space {

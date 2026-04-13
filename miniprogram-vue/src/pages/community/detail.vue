@@ -205,10 +205,19 @@ onLoad((options) => {
       </view>
 
       <view class="detail-actions">
-        <button class="button-primary action-pill" @tap="toggleLike">{{ post.likeCount }} 赞</button>
-        <button class="button-ghost action-pill" @tap="toggleFavorite">{{ post.favoriteCount }} 收藏</button>
-        <button class="button-ghost action-pill" @tap="reportPost">举报</button>
-        <button v-if="post.owned" class="button-danger action-pill" @tap="confirmDeletePost">删除</button>
+        <button class="action-pill" :class="{ 'action-pill--active': post.liked }" @tap="toggleLike">
+          <text class="action-icon action-icon--like">♥</text>
+          <text>{{ post.likeCount }} 赞</text>
+        </button>
+        <button class="action-pill" :class="{ 'action-pill--active': post.favorited }" @tap="toggleFavorite">
+          <text class="action-icon action-icon--favorite">★</text>
+          <text>{{ post.favoriteCount }} 收藏</text>
+        </button>
+        <button class="action-pill action-pill--report" @tap="reportPost">
+          <text class="action-icon action-icon--report">!</text>
+          <text>举报</text>
+        </button>
+        <button v-if="post.owned" class="action-pill action-pill--danger" @tap="confirmDeletePost">删除</button>
       </view>
 
       <view class="stat-row">
@@ -332,8 +341,8 @@ onLoad((options) => {
 }
 
 .tag-solid {
-  background: rgba(248, 211, 117, 0.16);
-  color: #f8d375;
+  background: linear-gradient(180deg, rgba(108, 84, 24, 0.94) 0%, rgba(64, 49, 15, 0.98) 100%);
+  color: #f0c35b;
 }
 
 .tag-outline {
@@ -412,16 +421,58 @@ onLoad((options) => {
 
 .detail-actions {
   margin-top: 24rpx;
+  display: flex;
+  gap: 26rpx;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .action-pill {
   margin: 0;
-  min-width: 148rpx;
-  height: 72rpx;
-  line-height: 72rpx;
-  padding: 0 24rpx;
-  border-radius: 16rpx;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: #d7cab8;
   font-size: 24rpx;
+  gap: 10rpx;
+  flex-shrink: 0;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.action-pill::after {
+  border: none;
+}
+
+.action-pill--active {
+  color: #f0c35b;
+}
+
+.action-pill--report {
+  color: #e7d8c8;
+}
+
+.action-pill--danger {
+  color: #ff9b8f;
+}
+
+.action-icon {
+  font-size: 28rpx;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.action-icon--like,
+.action-icon--favorite {
+  color: currentColor;
+}
+
+.action-icon--report {
+  color: #ff6f68;
 }
 
 .stat-row {

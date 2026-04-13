@@ -531,8 +531,8 @@ onLoad(async (options) => {
 }
 
 .tag-solid {
-  background: rgba(248, 211, 117, 0.16);
-  color: #f8d375;
+  background: linear-gradient(180deg, rgba(108, 84, 24, 0.94) 0%, rgba(64, 49, 15, 0.98) 100%);
+  color: #f0c35b;
 }
 
 .tag-outline {
