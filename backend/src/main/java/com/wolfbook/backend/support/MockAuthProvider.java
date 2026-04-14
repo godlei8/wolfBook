@@ -9,6 +9,10 @@ public class MockAuthProvider implements AuthProvider {
 
     @Override
     public AuthUser exchangeCode(String code) {
+        return buildMockAuthUser(code);
+    }
+
+    public static AuthUser buildMockAuthUser(String code) {
         String normalized = code == null || code.isBlank() ? "mock-user" : code.trim();
         String suffix = Integer.toHexString(normalized.hashCode()).replace('-', '0');
         return new AuthUser(

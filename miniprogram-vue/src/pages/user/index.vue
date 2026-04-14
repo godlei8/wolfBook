@@ -120,6 +120,15 @@ async function handleLogin() {
     await refreshCounts()
     uni.hideLoading()
     uni.showToast({ title: '登录成功', icon: 'success' })
+    const pendingJudgeInvite = storage.getPendingJudgeInvite()
+    if (pendingJudgeInvite?.roomId) {
+      setTimeout(() => {
+        uni.navigateTo({
+          url: `/pages/judge/room?roomId=${pendingJudgeInvite.roomId}&boardName=${encodeURIComponent(pendingJudgeInvite.boardName || '')}`,
+        })
+      }, 260)
+      return
+    }
     if (needsProfileCompletion(result.user)) {
       profileEditorVisible.value = true
     }

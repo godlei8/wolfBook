@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wolfbook.backend.common.ApiException;
 import com.wolfbook.backend.config.WechatProperties;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -19,10 +21,12 @@ public class WechatAuthProvider implements AuthProvider {
     private final WechatProperties wechatProperties;
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
+    private final Environment environment;
 
-    public WechatAuthProvider(WechatProperties wechatProperties, ObjectMapper objectMapper) {
+    public WechatAuthProvider(WechatProperties wechatProperties, ObjectMapper objectMapper, Environment environment) {
         this.wechatProperties = wechatProperties;
         this.objectMapper = objectMapper;
+        this.environment = environment;
         this.restClient = RestClient.builder().build();
     }
 
@@ -33,7 +37,10 @@ public class WechatAuthProvider implements AuthProvider {
         }
         WechatProperties.MiniProgramProperties miniProgram = wechatProperties.getMiniProgram();
         if (!StringUtils.hasText(miniProgram.getAppId()) || !StringUtils.hasText(miniProgram.getAppSecret())) {
-            throw new ApiException(5001, "微信登录未配置 appId 或 appSecret");
+            if (environment.acceptsProfiles(Profiles.of("prod"))) {
+                throw new ApiException(5001, "微信登录未配置 appId 或 appSecret");
+            }
+            return MockAuthProvider.buildMockAuthUser(code);
         }
 
         URI uri = UriComponentsBuilder.fromHttpUrl(miniProgram.getCode2SessionUrl())
