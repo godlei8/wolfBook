@@ -23,6 +23,7 @@ public class BoardEntity {
     private String faqs;
     private String winCondition;
     private String ruleType;
+    private String judgeSupportLevel;
     private Integer status;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
@@ -129,6 +130,14 @@ public class BoardEntity {
 
     public void setRuleType(String ruleType) {
         this.ruleType = ruleType;
+    }
+
+    public String getJudgeSupportLevel() {
+        return judgeSupportLevel;
+    }
+
+    public void setJudgeSupportLevel(String judgeSupportLevel) {
+        this.judgeSupportLevel = judgeSupportLevel;
     }
 
     public Integer getStatus() {

@@ -54,6 +54,7 @@ public class DomainConverter {
                 readFaqList(entity.getFaqs()),
                 entity.getWinCondition(),
                 entity.getRuleType(),
+                entity.getJudgeSupportLevel(),
                 entity.getStatus(),
                 roleEntities == null ? List.of() : roleEntities.stream()
                         .map(item -> new BoardRoleRef(item.getRoleId(), item.getCount()))

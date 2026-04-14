@@ -5,6 +5,7 @@ const USER_PROFILE_KEY = 'user_profile'
 const FAVORITES_KEY = 'favorite_boards'
 const SESSIONS_KEY = 'werewolf_sessions'
 const ASSISTANT_DOCK_KEY = 'assistant_dock_state'
+const JUDGE_INVITE_KEY = 'judge_invite_room'
 
 function parseMaybeJson(value) {
   if (typeof value !== 'string') {
@@ -216,11 +217,42 @@ export default {
   setAssistantDockState(value) {
     setJson(ASSISTANT_DOCK_KEY, value)
   },
+  getPendingJudgeInvite() {
+    const raw = getJson(JUDGE_INVITE_KEY, null)
+    if (!raw || typeof raw !== 'object') {
+      return null
+    }
+    const roomId = typeof raw.roomId === 'string' ? raw.roomId.trim() : ''
+    const boardName = typeof raw.boardName === 'string' ? raw.boardName.trim() : ''
+    if (!roomId) {
+      return null
+    }
+    return {
+      roomId,
+      boardName,
+    }
+  },
+  setPendingJudgeInvite(value) {
+    const roomId = typeof value?.roomId === 'string' ? value.roomId.trim() : ''
+    const boardName = typeof value?.boardName === 'string' ? value.boardName.trim() : ''
+    if (!roomId) {
+      uni.removeStorageSync(JUDGE_INVITE_KEY)
+      return
+    }
+    setJson(JUDGE_INVITE_KEY, {
+      roomId,
+      boardName,
+    })
+  },
+  clearPendingJudgeInvite() {
+    uni.removeStorageSync(JUDGE_INVITE_KEY)
+  },
   clearAllLocalData() {
     uni.removeStorageSync(AUTH_TOKEN_KEY)
     uni.removeStorageSync(USER_PROFILE_KEY)
     uni.removeStorageSync(FAVORITES_KEY)
     uni.removeStorageSync(SESSIONS_KEY)
     uni.removeStorageSync(ASSISTANT_DOCK_KEY)
+    uni.removeStorageSync(JUDGE_INVITE_KEY)
   },
 }

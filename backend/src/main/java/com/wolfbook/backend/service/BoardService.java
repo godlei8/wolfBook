@@ -114,7 +114,8 @@ public class BoardService {
                 converter.readFaqList(boardEntity.getFaqs()).stream().map(this::toFaqInput).toList(),
                 boardEntity.getWinCondition(),
                 boardEntity.getRuleType(),
-                roles
+                roles,
+                normalizeJudgeSupportLevel(boardEntity.getJudgeSupportLevel())
         );
     }
 
@@ -238,7 +239,8 @@ public class BoardService {
                 buildLineupSummary(roleViews),
                 roleViews,
                 featuredRoles,
-                buildCardSummary(board)
+                buildCardSummary(board),
+                normalizeJudgeSupportLevel(board.getJudgeSupportLevel())
         );
     }
 
@@ -325,6 +327,13 @@ public class BoardService {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private String normalizeJudgeSupportLevel(String judgeSupportLevel) {
+        if ("full".equalsIgnoreCase(judgeSupportLevel) || "partial".equalsIgnoreCase(judgeSupportLevel)) {
+            return judgeSupportLevel.toLowerCase(Locale.ROOT);
+        }
+        return "manual_only";
     }
 
     private String buildCardSummary(BoardEntity board) {

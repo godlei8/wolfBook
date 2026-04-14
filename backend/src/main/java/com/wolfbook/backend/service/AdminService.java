@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
 @Service
@@ -124,6 +125,7 @@ public class AdminService {
         entity.setWinCondition(request.winCondition() == null || request.winCondition().isBlank() ? "屠边" : request.winCondition());
         entity.setRuleType(request.ruleType() == null || request.ruleType().isBlank() ? "标准板" : request.ruleType());
         entity.setStatus(id == null ? 1 : entity.getStatus());
+        entity.setJudgeSupportLevel(normalizeJudgeSupportLevel(request.judgeSupportLevel(), entity.getJudgeSupportLevel()));
         entity.setCreateTime(id == null ? LocalDateTime.now() : entity.getCreateTime());
         entity.setUpdateTime(LocalDateTime.now());
 
@@ -266,6 +268,14 @@ public class AdminService {
 
     private String normalizeText(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String normalizeJudgeSupportLevel(String requested, String current) {
+        String candidate = requested == null || requested.isBlank() ? current : requested.trim();
+        if ("full".equalsIgnoreCase(candidate) || "partial".equalsIgnoreCase(candidate)) {
+            return candidate.toLowerCase(Locale.ROOT);
+        }
+        return "manual_only";
     }
 
     private List<FaqItem> defaultFaqs(List<WolfbookDtos.FaqInput> faqs) {
