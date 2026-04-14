@@ -179,6 +179,7 @@ async function saveSession() {
 
 async function initialize(options) {
   let editingSession = null
+  const preferredBoardId = Number(options?.boardId || 0)
   if (options?.id) {
     try {
       editingSession = await userData.getSessionById(options.id)
@@ -189,6 +190,18 @@ async function initialize(options) {
   await loadBoardOptions()
   if (editingSession) {
     hydrateSession(editingSession)
+    return
+  }
+
+  if (preferredBoardId) {
+    const index = boards.value.findIndex((item) => item.id === preferredBoardId)
+    if (index >= 0) {
+      sessionMode.value = 'library'
+      selectedBoardIndex.value = index
+      selectedBoardId.value = preferredBoardId
+      customBoardName.value = boards.value[index].name
+      customPlayerCount.value = boards.value[index].playerCount
+    }
   }
 }
 

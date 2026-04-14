@@ -228,8 +228,30 @@ export interface AdminAiLog {
   hitSources: string[]
   usedWebSearch: boolean
   latencyMs: number
+  firstTokenMs: number
+  embeddingMs: number
+  retrievalMs: number
+  modelMs: number
+  webSearchMs: number
+  cacheHit: boolean
+  fallbackMode: string | null
+  streamMode: string | null
   success: boolean
   failureType: string | null
   traceId: string
   createTime: string
+}
+
+export interface AdminAiPerformanceView {
+  queryCount24h: number
+  avgFirstTokenMs: number
+  avgTotalLatencyMs: number
+  avgRetrievalMs: number
+  avgModelMs: number
+  p95LatencyMs: number
+  ragHitRate: number
+  structuredHitRate: number
+  webSearchRate: number
+  cacheHitRate: number
+  failureRate: number
 }

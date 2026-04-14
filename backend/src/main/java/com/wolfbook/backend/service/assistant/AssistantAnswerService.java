@@ -27,6 +27,7 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -47,6 +48,7 @@ public class AssistantAnswerService {
     private final AssistantConversationService assistantConversationService;
     private final AssistantKnowledgeService assistantKnowledgeService;
     private final AssistantSearchService assistantSearchService;
+    private final AssistantCacheService assistantCacheService;
     private final AssistantQueryLogMapper assistantQueryLogMapper;
     private final BoardService boardService;
     private final AssistantProperties assistantProperties;
@@ -60,6 +62,7 @@ public class AssistantAnswerService {
             AssistantConversationService assistantConversationService,
             AssistantKnowledgeService assistantKnowledgeService,
             AssistantSearchService assistantSearchService,
+            AssistantCacheService assistantCacheService,
             AssistantQueryLogMapper assistantQueryLogMapper,
             BoardService boardService,
             AssistantProperties assistantProperties,
@@ -71,6 +74,7 @@ public class AssistantAnswerService {
         this.assistantConversationService = assistantConversationService;
         this.assistantKnowledgeService = assistantKnowledgeService;
         this.assistantSearchService = assistantSearchService;
+        this.assistantCacheService = assistantCacheService;
         this.assistantQueryLogMapper = assistantQueryLogMapper;
         this.boardService = boardService;
         this.assistantProperties = assistantProperties;
@@ -134,20 +138,36 @@ public class AssistantAnswerService {
         assistantConversationService.saveUserMessage(session.getSessionId(), request.message());
 
         QueryIntent intent = classifyIntent(request.message(), config.safety().blockedKeywords());
-        return new PreparedAsk(openid, session, config, traceId, intent, System.currentTimeMillis());
+        return new PreparedAsk(
+                openid,
+                session,
+                config,
+                traceId,
+                intent,
+                assistantCacheService.buildConfigVersion(config),
+                System.currentTimeMillis()
+        );
     }
 
     private AskExecution executeAsk(PreparedAsk prepared, AssistantDtos.AssistantAskRequest request) {
         String failureType = null;
+        ExecutionMetrics metrics = ExecutionMetrics.sync(prepared.startAtMs());
         AssistantDtos.AssistantAskResponse response;
         try {
-            response = switch (prepared.intent()) {
-                case BOARD_RECOMMENDATION -> answerBoardRecommendation(prepared, request);
-                case UNSUPPORTED -> refusal(prepared.session(), prepared.config(), prepared.traceId(), prepared.config().safety().unsupportedMessage());
-                case KNOWLEDGE -> answerKnowledge(prepared, request);
-            };
+            AssistantCacheService.CachedAnswer cachedAnswer = findCachedAnswer(prepared, request, metrics);
+            if (cachedAnswer != null) {
+                response = persistCachedAnswer(prepared, cachedAnswer);
+            } else {
+                response = switch (prepared.intent()) {
+                    case BOARD_RECOMMENDATION -> answerBoardRecommendation(prepared, request, metrics);
+                    case UNSUPPORTED -> refusal(prepared.session(), prepared.config(), prepared.traceId(), prepared.config().safety().unsupportedMessage());
+                    case KNOWLEDGE -> answerKnowledge(prepared, request, metrics);
+                };
+                cacheAnswerIfEligible(prepared, request, response);
+            }
         } catch (Exception exception) {
             failureType = exception.getClass().getSimpleName();
+            metrics.setFallbackModeIfBlank("ERROR_REFUSAL");
             response = refusal(
                     prepared.session(),
                     prepared.config(),
@@ -157,11 +177,13 @@ public class AssistantAnswerService {
         }
 
         long latencyMs = System.currentTimeMillis() - prepared.startAtMs();
-        writeLog(prepared.openid(), prepared.session().getSessionId(), request.message(), response, latencyMs, failureType);
+        metrics.ensureFirstToken(latencyMs);
+        writeLog(prepared.openid(), prepared.session().getSessionId(), request.message(), response, latencyMs, failureType, metrics);
         return new AskExecution(response, latencyMs, failureType);
     }
 
     private void streamAsk(PreparedAsk prepared, AssistantDtos.AssistantAskRequest request, SseEmitter emitter) {
+        ExecutionMetrics metrics = ExecutionMetrics.stream(prepared.startAtMs());
         try {
             emit(emitter, "started", new AssistantDtos.AssistantStreamStarted(
                     prepared.session().getSessionId(),
@@ -169,19 +191,29 @@ public class AssistantAnswerService {
                     AssistantConstants.CONTENT_MARKDOWN
             ));
 
-            StreamExecution execution = switch (prepared.intent()) {
-                case BOARD_RECOMMENDATION -> streamBoardRecommendation(prepared, request, emitter);
-                case UNSUPPORTED -> streamUnsupported(prepared, emitter);
-                case KNOWLEDGE -> streamKnowledge(prepared, request, emitter);
-            };
+            StreamExecution execution;
+            AssistantCacheService.CachedAnswer cachedAnswer = findCachedAnswer(prepared, request, metrics);
+            if (cachedAnswer != null) {
+                emitStaticAnswer(cachedAnswer.answer(), emitter, metrics);
+                execution = new StreamExecution(persistCachedAnswer(prepared, cachedAnswer), null);
+            } else {
+                execution = switch (prepared.intent()) {
+                    case BOARD_RECOMMENDATION -> streamBoardRecommendation(prepared, request, emitter, metrics);
+                    case UNSUPPORTED -> streamUnsupported(prepared, emitter, metrics);
+                    case KNOWLEDGE -> streamKnowledge(prepared, request, emitter, metrics);
+                };
+                cacheAnswerIfEligible(prepared, request, execution.response());
+            }
             long latencyMs = System.currentTimeMillis() - prepared.startAtMs();
+            metrics.ensureFirstToken(latencyMs);
             writeLog(
                     prepared.openid(),
                     prepared.session().getSessionId(),
                     request.message(),
                     execution.response(),
                     latencyMs,
-                    execution.failureType()
+                    execution.failureType(),
+                    metrics
             );
             emit(emitter, "done", execution.response());
             emitter.complete();
@@ -201,7 +233,8 @@ public class AssistantAnswerService {
     private StreamExecution streamBoardRecommendation(
             PreparedAsk prepared,
             AssistantDtos.AssistantAskRequest request,
-            SseEmitter emitter
+            SseEmitter emitter,
+            ExecutionMetrics metrics
     ) throws IOException {
         List<AssistantDtos.RecommendedBoardCard> boards = recommendBoards(request.message());
         List<String> suggestedQuestions = nextQuestions(prepared.config().base().quickQuestions(), request.message());
@@ -218,7 +251,8 @@ public class AssistantAnswerService {
         StreamedAnswer streamedAnswer = streamPromptAnswer(
                 buildBoardRecommendationPrompt(request.message(), boards, prepared.config()),
                 fallbackAnswer,
-                emitter
+                emitter,
+                metrics
         );
 
         return new StreamExecution(
@@ -236,12 +270,13 @@ public class AssistantAnswerService {
         );
     }
 
-    private StreamExecution streamUnsupported(PreparedAsk prepared, SseEmitter emitter) throws IOException {
+    private StreamExecution streamUnsupported(PreparedAsk prepared, SseEmitter emitter, ExecutionMetrics metrics) throws IOException {
         String markdown = buildRefusalMarkdown(prepared.config().safety().unsupportedMessage());
         List<String> suggestedQuestions = prepared.config().base().quickQuestions().stream()
                 .limit(assistantProperties.getMaxSuggestions())
                 .toList();
-        StreamedAnswer streamedAnswer = emitStaticAnswer(markdown, emitter);
+        metrics.setFallbackModeIfBlank("UNSUPPORTED");
+        StreamedAnswer streamedAnswer = emitStaticAnswer(markdown, emitter, metrics);
         return new StreamExecution(
                 persistAssistantResponse(
                         prepared.session(),
@@ -260,14 +295,19 @@ public class AssistantAnswerService {
     private StreamExecution streamKnowledge(
             PreparedAsk prepared,
             AssistantDtos.AssistantAskRequest request,
-            SseEmitter emitter
+            SseEmitter emitter,
+            ExecutionMetrics metrics
     ) throws IOException {
-        List<AssistantKnowledgeService.KnowledgeHit> hits = assistantKnowledgeService.searchPublishedKnowledge(request.message());
+        AssistantKnowledgeService.KnowledgeSearchResult searchResult = assistantKnowledgeService.searchPublishedKnowledgeResult(request.message());
+        List<AssistantKnowledgeService.KnowledgeHit> hits = searchResult.hits();
+        metrics.setRetrievalMs(searchResult.retrievalMs());
+        metrics.setEmbeddingMs(searchResult.embeddingMs());
         boolean usedWebSearch = false;
         String answerType = AssistantConstants.ANSWER_RAG;
         List<AssistantDtos.AssistantCitation> citations;
         List<String> suggestedQuestions;
         StreamedAnswer streamedAnswer;
+        AssistantSearchService.SearchResult webSearchResult = searchWebIfEligible(prepared, request.message(), hits, metrics);
 
         if (!hits.isEmpty()) {
             citations = hits.stream()
@@ -275,34 +315,51 @@ public class AssistantAnswerService {
                     .map(AssistantKnowledgeService.KnowledgeHit::toCitation)
                     .toList();
             suggestedQuestions = nextQuestions(prepared.config().base().quickQuestions(), request.message());
-            streamedAnswer = streamPromptAnswer(
-                    buildKnowledgePrompt(prepared, request.message(), hits),
-                    fallbackKnowledgeAnswer(hits),
-                    emitter
-            );
-        } else if (prepared.config().search().webSearchEnabled() && assistantProperties.isWebSearchEnabled()) {
-            AssistantSearchService.SearchResult searchResult = assistantSearchService.searchWeb(
-                    request.message(),
-                    prepared.config().base().chatModel(),
-                    prepared.config().base().temperature()
-            );
-            if (searchResult.answer() == null || searchResult.answer().isBlank()) {
+            if (hasWebAnswer(webSearchResult)) {
+                GeneratedAnswer knowledgeAnswer = synthesizeKnowledgeMarkdown(prepared, request.message(), hits);
+                metrics.setModelMs(knowledgeAnswer.modelMs());
+                metrics.setFallbackModeIfBlank(knowledgeAnswer.fallbackMode());
+                usedWebSearch = true;
+                answerType = AssistantConstants.ANSWER_WEB;
+                citations = mergeCitations(citations, webSearchResult.citations());
+                suggestedQuestions = mergeSuggestedQuestions(
+                        webSearchResult.suggestedQuestions(),
+                        suggestedQuestions
+                );
+                metrics.setStreamMode("FALLBACK");
+                streamedAnswer = emitStaticAnswer(
+                        mergeKnowledgeAndWebAnswer(knowledgeAnswer.answer(), webSearchResult),
+                        emitter,
+                        metrics
+                );
+            } else {
+                streamedAnswer = streamPromptAnswer(
+                        buildKnowledgePrompt(prepared, request.message(), hits),
+                        fallbackKnowledgeAnswer(hits),
+                        emitter,
+                        metrics
+                );
+            }
+        } else if (shouldAugmentWithWebSearch(prepared, request.message(), hits)) {
+            if (hasWebAnswer(webSearchResult)) {
+                usedWebSearch = true;
+                answerType = AssistantConstants.ANSWER_WEB;
+                citations = webSearchResult.citations();
+                suggestedQuestions = webSearchResult.suggestedQuestions().isEmpty()
+                        ? nextQuestions(prepared.config().base().quickQuestions(), request.message())
+                        : webSearchResult.suggestedQuestions().stream()
+                        .limit(assistantProperties.getMaxSuggestions())
+                        .toList();
+                metrics.setStreamMode("FALLBACK");
+                streamedAnswer = emitStaticAnswer(buildWebMarkdownAnswer(webSearchResult.answer(), citations), emitter, metrics);
+            } else {
                 citations = List.of();
                 suggestedQuestions = prepared.config().base().quickQuestions().stream()
                         .limit(assistantProperties.getMaxSuggestions())
                         .toList();
                 answerType = AssistantConstants.ANSWER_REFUSAL;
-                streamedAnswer = emitStaticAnswer(buildRefusalMarkdown(prepared.config().prompt().refusalPrompt()), emitter);
-            } else {
-                usedWebSearch = true;
-                answerType = AssistantConstants.ANSWER_WEB;
-                citations = searchResult.citations();
-                suggestedQuestions = searchResult.suggestedQuestions().isEmpty()
-                        ? nextQuestions(prepared.config().base().quickQuestions(), request.message())
-                        : searchResult.suggestedQuestions().stream()
-                        .limit(assistantProperties.getMaxSuggestions())
-                        .toList();
-                streamedAnswer = emitStaticAnswer(buildWebMarkdownAnswer(searchResult.answer(), citations), emitter);
+                metrics.setFallbackModeIfBlank("WEB_EMPTY");
+                streamedAnswer = emitStaticAnswer(buildRefusalMarkdown(prepared.config().prompt().refusalPrompt()), emitter, metrics);
             }
         } else {
             citations = List.of();
@@ -310,7 +367,8 @@ public class AssistantAnswerService {
                     .limit(assistantProperties.getMaxSuggestions())
                     .toList();
             answerType = AssistantConstants.ANSWER_REFUSAL;
-            streamedAnswer = emitStaticAnswer(buildRefusalMarkdown(prepared.config().prompt().refusalPrompt()), emitter);
+            metrics.setFallbackModeIfBlank("NO_KNOWLEDGE");
+            streamedAnswer = emitStaticAnswer(buildRefusalMarkdown(prepared.config().prompt().refusalPrompt()), emitter, metrics);
         }
 
         return new StreamExecution(
@@ -328,26 +386,21 @@ public class AssistantAnswerService {
         );
     }
 
-    private AssistantDtos.AssistantAskResponse answerBoardRecommendation(PreparedAsk prepared, AssistantDtos.AssistantAskRequest request) {
+    private AssistantDtos.AssistantAskResponse answerBoardRecommendation(
+            PreparedAsk prepared,
+            AssistantDtos.AssistantAskRequest request,
+            ExecutionMetrics metrics
+    ) {
         List<AssistantDtos.RecommendedBoardCard> boards = recommendBoards(request.message());
-        String answer = synthesizeBoardRecommendationMarkdown(request.message(), boards, prepared.config());
+        GeneratedAnswer generatedAnswer = synthesizeBoardRecommendationMarkdown(request.message(), boards, prepared.config());
+        metrics.setModelMs(generatedAnswer.modelMs());
+        metrics.setFallbackModeIfBlank(generatedAnswer.fallbackMode());
+        String answer = generatedAnswer.answer();
         List<AssistantDtos.AssistantCitation> citations = List.of();
         List<String> suggestedQuestions = nextQuestions(prepared.config().base().quickQuestions(), request.message());
-        AssistantMessageEntity saved = assistantConversationService.saveAssistantMessage(
-                prepared.session().getSessionId(),
+        return persistAssistantResponse(
+                prepared.session(),
                 answer,
-                AssistantConstants.ANSWER_STRUCTURED,
-                citations,
-                boards,
-                suggestedQuestions,
-                false,
-                prepared.traceId()
-        );
-        return new AssistantDtos.AssistantAskResponse(
-                prepared.session().getSessionId(),
-                saved.getId(),
-                answer,
-                AssistantConstants.CONTENT_MARKDOWN,
                 AssistantConstants.ANSWER_STRUCTURED,
                 citations,
                 boards,
@@ -357,60 +410,66 @@ public class AssistantAnswerService {
         );
     }
 
-    private AssistantDtos.AssistantAskResponse answerKnowledge(PreparedAsk prepared, AssistantDtos.AssistantAskRequest request) {
-        List<AssistantKnowledgeService.KnowledgeHit> hits = assistantKnowledgeService.searchPublishedKnowledge(request.message());
+    private AssistantDtos.AssistantAskResponse answerKnowledge(
+            PreparedAsk prepared,
+            AssistantDtos.AssistantAskRequest request,
+            ExecutionMetrics metrics
+    ) {
+        AssistantKnowledgeService.KnowledgeSearchResult searchResult = assistantKnowledgeService.searchPublishedKnowledgeResult(request.message());
+        List<AssistantKnowledgeService.KnowledgeHit> hits = searchResult.hits();
+        metrics.setRetrievalMs(searchResult.retrievalMs());
+        metrics.setEmbeddingMs(searchResult.embeddingMs());
         boolean usedWebSearch = false;
         String answerType = AssistantConstants.ANSWER_RAG;
         String answer;
         List<AssistantDtos.AssistantCitation> citations;
         List<AssistantDtos.RecommendedBoardCard> boards = List.of();
         List<String> suggestedQuestions;
+        AssistantSearchService.SearchResult webSearchResult = searchWebIfEligible(prepared, request.message(), hits, metrics);
 
         if (!hits.isEmpty()) {
             citations = hits.stream()
                     .limit(assistantProperties.getTopK())
                     .map(AssistantKnowledgeService.KnowledgeHit::toCitation)
                     .toList();
-            answer = synthesizeKnowledgeMarkdown(prepared, request.message(), hits);
+            GeneratedAnswer generatedAnswer = synthesizeKnowledgeMarkdown(prepared, request.message(), hits);
+            metrics.setModelMs(generatedAnswer.modelMs());
+            metrics.setFallbackModeIfBlank(generatedAnswer.fallbackMode());
+            answer = generatedAnswer.answer();
             suggestedQuestions = nextQuestions(prepared.config().base().quickQuestions(), request.message());
-        } else if (prepared.config().search().webSearchEnabled() && assistantProperties.isWebSearchEnabled()) {
-            AssistantSearchService.SearchResult searchResult = assistantSearchService.searchWeb(
-                    request.message(),
-                    prepared.config().base().chatModel(),
-                    prepared.config().base().temperature()
-            );
-            if (searchResult.answer() != null && !searchResult.answer().isBlank()) {
+            if (hasWebAnswer(webSearchResult)) {
                 usedWebSearch = true;
                 answerType = AssistantConstants.ANSWER_WEB;
-                citations = searchResult.citations();
-                answer = buildWebMarkdownAnswer(searchResult.answer(), citations);
-                suggestedQuestions = searchResult.suggestedQuestions().isEmpty()
+                citations = mergeCitations(citations, webSearchResult.citations());
+                answer = mergeKnowledgeAndWebAnswer(answer, webSearchResult);
+                suggestedQuestions = mergeSuggestedQuestions(
+                        webSearchResult.suggestedQuestions(),
+                        suggestedQuestions
+                );
+            }
+        } else if (shouldAugmentWithWebSearch(prepared, request.message(), hits)) {
+            if (hasWebAnswer(webSearchResult)) {
+                usedWebSearch = true;
+                answerType = AssistantConstants.ANSWER_WEB;
+                citations = webSearchResult.citations();
+                answer = buildWebMarkdownAnswer(webSearchResult.answer(), citations);
+                suggestedQuestions = webSearchResult.suggestedQuestions().isEmpty()
                         ? nextQuestions(prepared.config().base().quickQuestions(), request.message())
-                        : searchResult.suggestedQuestions().stream()
+                        : webSearchResult.suggestedQuestions().stream()
                         .limit(assistantProperties.getMaxSuggestions())
                         .toList();
             } else {
+                metrics.setFallbackModeIfBlank("WEB_EMPTY");
                 return refusal(prepared.session(), prepared.config(), prepared.traceId(), prepared.config().prompt().refusalPrompt());
             }
         } else {
+            metrics.setFallbackModeIfBlank("NO_KNOWLEDGE");
             return refusal(prepared.session(), prepared.config(), prepared.traceId(), prepared.config().prompt().refusalPrompt());
         }
 
-        AssistantMessageEntity saved = assistantConversationService.saveAssistantMessage(
-                prepared.session().getSessionId(),
+        return persistAssistantResponse(
+                prepared.session(),
                 answer,
-                answerType,
-                citations,
-                boards,
-                suggestedQuestions,
-                usedWebSearch,
-                prepared.traceId()
-        );
-        return new AssistantDtos.AssistantAskResponse(
-                prepared.session().getSessionId(),
-                saved.getId(),
-                answer,
-                AssistantConstants.CONTENT_MARKDOWN,
                 answerType,
                 citations,
                 boards,
@@ -488,6 +547,187 @@ public class AssistantAnswerService {
         );
     }
 
+    private AssistantDtos.AssistantAskResponse persistCachedAnswer(PreparedAsk prepared, AssistantCacheService.CachedAnswer cachedAnswer) {
+        return persistAssistantResponse(
+                prepared.session(),
+                cachedAnswer.answer(),
+                cachedAnswer.answerType(),
+                cachedAnswer.citations(),
+                cachedAnswer.recommendedBoards(),
+                cachedAnswer.suggestedQuestions(),
+                cachedAnswer.usedWebSearch(),
+                prepared.traceId()
+        );
+    }
+
+    private AssistantCacheService.CachedAnswer findCachedAnswer(
+            PreparedAsk prepared,
+            AssistantDtos.AssistantAskRequest request,
+            ExecutionMetrics metrics
+    ) {
+        if (!isAnswerCacheEligible(prepared, request)) {
+            return null;
+        }
+        String cacheKey = assistantCacheService.buildAnswerCacheKey(request.message(), request.scene(), prepared.cacheVersion());
+        AssistantCacheService.CachedAnswer cachedAnswer = assistantCacheService.getAnswer(cacheKey);
+        if (cachedAnswer != null) {
+            metrics.setCacheHit(true);
+            metrics.setFallbackModeIfBlank("CACHE_HIT");
+            if (!"SYNC".equals(metrics.streamMode())) {
+                metrics.setStreamMode("FALLBACK");
+            }
+        }
+        return cachedAnswer;
+    }
+
+    private void cacheAnswerIfEligible(
+            PreparedAsk prepared,
+            AssistantDtos.AssistantAskRequest request,
+            AssistantDtos.AssistantAskResponse response
+    ) {
+        if (response == null || !isAnswerCacheEligible(prepared, request) || response.usedWebSearch()
+                || AssistantConstants.ANSWER_REFUSAL.equals(response.answerType())) {
+            return;
+        }
+        String cacheKey = assistantCacheService.buildAnswerCacheKey(request.message(), request.scene(), prepared.cacheVersion());
+        assistantCacheService.cacheAnswer(cacheKey, AssistantCacheService.CachedAnswer.fromResponse(response));
+    }
+
+    private boolean isAnswerCacheEligible(PreparedAsk prepared, AssistantDtos.AssistantAskRequest request) {
+        String message = request.message();
+        return prepared.intent() != QueryIntent.UNSUPPORTED
+                && (request.sessionId() == null || request.sessionId().isBlank())
+                && message != null
+                && message.length() <= 120;
+    }
+
+    private boolean shouldUseWebSearch(
+            PreparedAsk prepared,
+            String query,
+            List<AssistantKnowledgeService.KnowledgeHit> hits
+    ) {
+        if (!hits.isEmpty() || !prepared.config().search().webSearchEnabled() || !assistantProperties.isWebSearchEnabled()) {
+            return false;
+        }
+        String normalized = query == null ? "" : query.toLowerCase(Locale.ROOT);
+        return normalized.contains("联网")
+                || normalized.contains("最新")
+                || normalized.contains("今天")
+                || normalized.contains("近期")
+                || normalized.contains("版本")
+                || normalized.contains("更新")
+                || normalized.contains("新闻")
+                || normalized.contains("赛事");
+    }
+
+    private boolean shouldAugmentWithWebSearch(
+            PreparedAsk prepared,
+            String query,
+            List<AssistantKnowledgeService.KnowledgeHit> hits
+    ) {
+        if (!prepared.config().search().webSearchEnabled() || !assistantSearchService.isAvailable()) {
+            return false;
+        }
+        if (hits == null || hits.isEmpty()) {
+            return true;
+        }
+        return isTimeSensitiveQuery(query);
+    }
+
+    private boolean isTimeSensitiveQuery(String query) {
+        String normalized = query == null ? "" : query.toLowerCase(Locale.ROOT);
+        for (String keyword : List.of(
+                "联网", "网上", "搜索", "查一下", "查一查",
+                "最新", "今天", "今日", "刚刚", "近期", "最近",
+                "新闻", "赛事", "版本", "更新", "公告", "实时",
+                "latest", "today", "recent", "news", "version", "update"
+        )) {
+            if (normalized.contains(keyword)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private AssistantSearchService.SearchResult searchWebIfEligible(
+            PreparedAsk prepared,
+            String query,
+            List<AssistantKnowledgeService.KnowledgeHit> hits,
+            ExecutionMetrics metrics
+    ) {
+        if (!shouldAugmentWithWebSearch(prepared, query, hits)) {
+            return AssistantSearchService.SearchResult.empty();
+        }
+        long webSearchStartAt = System.currentTimeMillis();
+        AssistantSearchService.SearchResult searchResult = assistantSearchService.searchWeb(
+                query,
+                prepared.config().base().chatModel(),
+                prepared.config().base().temperature()
+        );
+        metrics.setWebSearchMs(System.currentTimeMillis() - webSearchStartAt);
+        return searchResult;
+    }
+
+    private boolean hasWebAnswer(AssistantSearchService.SearchResult searchResult) {
+        return searchResult != null
+                && searchResult.answer() != null
+                && !searchResult.answer().isBlank();
+    }
+
+    private List<AssistantDtos.AssistantCitation> mergeCitations(
+            List<AssistantDtos.AssistantCitation> primary,
+            List<AssistantDtos.AssistantCitation> secondary
+    ) {
+        Map<String, AssistantDtos.AssistantCitation> merged = new LinkedHashMap<>();
+        for (AssistantDtos.AssistantCitation citation : primary) {
+            merged.putIfAbsent(citationKey(citation), citation);
+        }
+        for (AssistantDtos.AssistantCitation citation : secondary) {
+            merged.putIfAbsent(citationKey(citation), citation);
+        }
+        return new ArrayList<>(merged.values());
+    }
+
+    private String citationKey(AssistantDtos.AssistantCitation citation) {
+        if (citation == null) {
+            return "null";
+        }
+        return String.join("|",
+                citation.sourceType() == null ? "" : citation.sourceType(),
+                citation.title() == null ? "" : citation.title(),
+                citation.url() == null ? "" : citation.url(),
+                citation.sourceId() == null ? "" : String.valueOf(citation.sourceId()));
+    }
+
+    private List<String> mergeSuggestedQuestions(List<String> primary, List<String> secondary) {
+        Map<String, String> merged = new LinkedHashMap<>();
+        for (String question : primary) {
+            if (question != null && !question.isBlank()) {
+                merged.putIfAbsent(question, question);
+            }
+        }
+        for (String question : secondary) {
+            if (question != null && !question.isBlank()) {
+                merged.putIfAbsent(question, question);
+            }
+        }
+        return merged.values().stream()
+                .limit(assistantProperties.getMaxSuggestions())
+                .toList();
+    }
+
+    private String mergeKnowledgeAndWebAnswer(String knowledgeAnswer, AssistantSearchService.SearchResult searchResult) {
+        if (!hasWebAnswer(searchResult)) {
+            return normalizeMarkdown(knowledgeAnswer);
+        }
+        String knowledge = normalizeMarkdown(knowledgeAnswer);
+        String web = buildWebMarkdownAnswer(searchResult.answer(), searchResult.citations());
+        if (knowledge == null || knowledge.isBlank()) {
+            return web;
+        }
+        return normalizeMarkdown(knowledge + "\n\n" + web);
+    }
+
     private QueryIntent classifyIntent(String message, List<String> blockedKeywords) {
         String normalized = message.toLowerCase(Locale.ROOT);
         boolean blocked = blockedKeywords.stream().filter(keyword -> keyword != null && !keyword.isBlank()).anyMatch(normalized::contains);
@@ -552,24 +792,24 @@ public class AssistantAnswerService {
         return new BoardCandidate(board, score, reason);
     }
 
-    private String synthesizeBoardRecommendationMarkdown(
+    private GeneratedAnswer synthesizeBoardRecommendationMarkdown(
             String query,
             List<AssistantDtos.RecommendedBoardCard> boards,
             AssistantDtos.AdminAiConfig config
     ) {
         if (boards.isEmpty()) {
-            return """
+            return new GeneratedAnswer("""
                     ## 暂时没找到完全匹配的板子
 
                     - 你可以补充 **人数**、**难度** 或 **玩法偏好**
                     - 例如：`12人 进阶 娱乐板子推荐`
                     - 如果愿意，我也可以直接按“入门 / 进阶 / 烧脑”重新给你筛一轮
-                    """;
+                    """, "NO_MATCH", 0L);
         }
 
         MiniMaxChatModel chatModel = miniMaxChatModelProvider.getIfAvailable();
         if (chatModel == null) {
-            return fallbackBoardAnswer(boards);
+            return new GeneratedAnswer(fallbackBoardAnswer(boards), "NO_MODEL", 0L);
         }
 
         StringBuilder context = new StringBuilder();
@@ -614,25 +854,31 @@ public class AssistantAnswerService {
                         .build()
         );
 
+        long modelStartAt = System.currentTimeMillis();
         try {
             ChatResponse response = chatModel.call(prompt);
             String content = response.getResult().getOutput().getText();
-            return content == null || content.isBlank() ? fallbackBoardAnswer(boards) : normalizeMarkdown(content);
+            long modelMs = System.currentTimeMillis() - modelStartAt;
+            if (content == null || content.isBlank()) {
+                return new GeneratedAnswer(fallbackBoardAnswer(boards), "MODEL_EMPTY", modelMs);
+            }
+            return new GeneratedAnswer(normalizeMarkdown(content), "NONE", modelMs);
         } catch (Exception exception) {
-            return fallbackBoardAnswer(boards);
+            return new GeneratedAnswer(fallbackBoardAnswer(boards), "MODEL_EXCEPTION", System.currentTimeMillis() - modelStartAt);
         }
     }
 
-    private String synthesizeKnowledgeMarkdown(PreparedAsk prepared, String query, List<AssistantKnowledgeService.KnowledgeHit> hits) {
+    private GeneratedAnswer synthesizeKnowledgeMarkdown(PreparedAsk prepared, String query, List<AssistantKnowledgeService.KnowledgeHit> hits) {
         MiniMaxChatModel chatModel = miniMaxChatModelProvider.getIfAvailable();
         StringBuilder context = new StringBuilder();
         for (AssistantKnowledgeService.KnowledgeHit hit : hits) {
-            context.append("来源：").append(hit.title()).append('\n')
+            context.append("来源类型：").append(describeKnowledgeSource(hit.sourceType())).append('\n')
+                    .append("来源：").append(hit.title()).append('\n')
                     .append(hit.snippet()).append("\n\n");
         }
 
         if (chatModel == null) {
-            return fallbackKnowledgeAnswer(hits);
+            return new GeneratedAnswer(fallbackKnowledgeAnswer(hits), "NO_MODEL", 0L);
         }
 
         List<String> recentMessages = assistantConversationService.recentContextMessages(prepared.openid(), prepared.session().getSessionId());
@@ -647,7 +893,9 @@ public class AssistantAnswerService {
                                 2. 如需拆解规则，再输出 `### 规则拆解`
                                 3. 如需给操作建议，再输出 `### 你可以怎么做`
                                 4. 只能依据给定资料，不要编造
-                                5. 句子尽量短，优先用项目符号
+                                5. 如果资料里同时有“上传知识库文档”和“结构化板子/角色资料”，优先采用上传知识库文档的说法，结构化资料只作为补充
+                                6. 不要把原始字段整段照抄成“板子名称/人数/难度/标签”的数据清单，除非用户明确要基础资料卡
+                                7. 句子尽量短，优先用项目符号
                                 """),
                         new UserMessage("""
                                 当前问题：
@@ -666,12 +914,17 @@ public class AssistantAnswerService {
                         .build()
         );
 
+        long modelStartAt = System.currentTimeMillis();
         try {
             ChatResponse response = chatModel.call(prompt);
             String content = response.getResult().getOutput().getText();
-            return content == null || content.isBlank() ? fallbackKnowledgeAnswer(hits) : normalizeMarkdown(content);
+            long modelMs = System.currentTimeMillis() - modelStartAt;
+            if (content == null || content.isBlank()) {
+                return new GeneratedAnswer(fallbackKnowledgeAnswer(hits), "MODEL_EMPTY", modelMs);
+            }
+            return new GeneratedAnswer(normalizeMarkdown(content), "NONE", modelMs);
         } catch (Exception exception) {
-            return fallbackKnowledgeAnswer(hits);
+            return new GeneratedAnswer(fallbackKnowledgeAnswer(hits), "MODEL_EXCEPTION", System.currentTimeMillis() - modelStartAt);
         }
     }
 
@@ -734,7 +987,8 @@ public class AssistantAnswerService {
     ) {
         StringBuilder context = new StringBuilder();
         for (AssistantKnowledgeService.KnowledgeHit hit : hits) {
-            context.append("来源: ").append(hit.title()).append('\n')
+            context.append("来源类型: ").append(describeKnowledgeSource(hit.sourceType())).append('\n')
+                    .append("来源: ").append(hit.title()).append('\n')
                     .append(hit.snippet()).append("\n\n");
         }
 
@@ -750,7 +1004,9 @@ public class AssistantAnswerService {
                                 2. 如需拆解规则，再输出 `### 规则拆解`
                                 3. 如需给操作建议，再输出 `### 你可以怎么做`
                                 4. 只能依据给定资料，不要编造
-                                5. 句子尽量短，优先用项目符号
+                                5. 如果资料里同时有“上传知识库文档”和“结构化板子/角色资料”，优先采用上传知识库文档的说法，结构化资料只作为补充
+                                6. 不要把原始字段整段照抄成“板子名称/人数/难度/标签”的数据清单，除非用户明确要基础资料卡
+                                7. 句子尽量短，优先用项目符号
                                 """),
                         new UserMessage("""
                                 当前问题：
@@ -770,14 +1026,22 @@ public class AssistantAnswerService {
         );
     }
 
-    private StreamedAnswer streamPromptAnswer(Prompt prompt, String fallbackAnswer, SseEmitter emitter) throws IOException {
+    private StreamedAnswer streamPromptAnswer(
+            Prompt prompt,
+            String fallbackAnswer,
+            SseEmitter emitter,
+            ExecutionMetrics metrics
+    ) throws IOException {
         MiniMaxChatModel chatModel = miniMaxChatModelProvider.getIfAvailable();
         if (prompt == null || chatModel == null) {
-            return emitStaticAnswer(fallbackAnswer, emitter);
+            metrics.setFallbackModeIfBlank("NO_MODEL");
+            metrics.setStreamMode("FALLBACK");
+            return emitStaticAnswer(fallbackAnswer, emitter, metrics);
         }
 
         StringBuilder answer = new StringBuilder();
         String failureType = null;
+        long modelStartAt = System.currentTimeMillis();
 
         try {
             for (ChatResponse chunkResponse : chatModel.stream(prompt).toIterable()) {
@@ -786,33 +1050,47 @@ public class AssistantAnswerService {
                 if (delta == null || delta.isBlank()) {
                     continue;
                 }
+                metrics.ensureFirstToken(System.currentTimeMillis() - metrics.startAtMs());
                 answer.append(delta);
                 emit(emitter, "delta", new AssistantDtos.AssistantStreamDelta(delta));
             }
         } catch (Exception exception) {
             failureType = exception.getClass().getSimpleName();
+            metrics.setModelMs(System.currentTimeMillis() - modelStartAt);
             if (answer.length() == 0) {
-                return emitStaticAnswer(fallbackAnswer, emitter, failureType);
+                metrics.setFallbackModeIfBlank("MODEL_EXCEPTION");
+                metrics.setStreamMode("FALLBACK");
+                return emitStaticAnswer(fallbackAnswer, emitter, metrics, failureType);
             }
             String degradedTail = "\n\n> 当前回答在生成过程中中断，以下是已生成内容。";
             answer.append(degradedTail);
             emit(emitter, "delta", new AssistantDtos.AssistantStreamDelta(degradedTail));
+            metrics.setFallbackModeIfBlank("PARTIAL_STREAM");
         }
 
         if (answer.length() == 0) {
-            return emitStaticAnswer(fallbackAnswer, emitter, failureType);
+            metrics.setFallbackModeIfBlank("MODEL_EMPTY");
+            metrics.setStreamMode("FALLBACK");
+            return emitStaticAnswer(fallbackAnswer, emitter, metrics, failureType);
         }
 
+        metrics.setModelMs(System.currentTimeMillis() - modelStartAt);
         return new StreamedAnswer(normalizeMarkdown(answer.toString()), failureType);
     }
 
-    private StreamedAnswer emitStaticAnswer(String markdown, SseEmitter emitter) throws IOException {
-        return emitStaticAnswer(markdown, emitter, null);
+    private StreamedAnswer emitStaticAnswer(String markdown, SseEmitter emitter, ExecutionMetrics metrics) throws IOException {
+        return emitStaticAnswer(markdown, emitter, metrics, null);
     }
 
-    private StreamedAnswer emitStaticAnswer(String markdown, SseEmitter emitter, String failureType) throws IOException {
+    private StreamedAnswer emitStaticAnswer(
+            String markdown,
+            SseEmitter emitter,
+            ExecutionMetrics metrics,
+            String failureType
+    ) throws IOException {
         String normalized = normalizeMarkdown(markdown);
         for (String chunk : splitMarkdownForStream(normalized)) {
+            metrics.ensureFirstToken(System.currentTimeMillis() - metrics.startAtMs());
             emit(emitter, "delta", new AssistantDtos.AssistantStreamDelta(chunk));
         }
         return new StreamedAnswer(normalized, failureType);
@@ -856,7 +1134,13 @@ public class AssistantAnswerService {
     }
 
     private String fallbackKnowledgeAnswer(List<AssistantKnowledgeService.KnowledgeHit> hits) {
-        AssistantKnowledgeService.KnowledgeHit first = hits.getFirst();
+        AssistantKnowledgeService.KnowledgeHit first = hits.stream()
+                .filter(hit -> AssistantConstants.SOURCE_DOCUMENT.equals(hit.sourceType()))
+                .findFirst()
+                .orElseGet(hits::getFirst);
+        String sourceHint = AssistantConstants.SOURCE_DOCUMENT.equals(first.sourceType())
+                ? "这条回答优先依据你上传并已发布的知识库文档"
+                : "这条回答优先依据站内已发布知识整理";
         return """
                 ## 结论
 
@@ -864,8 +1148,18 @@ public class AssistantAnswerService {
 
                 ### 依据
                 - 来源：**%s**
-                - 这条回答优先依据站内已发布知识整理
-                """.formatted(first.snippet(), first.title()).trim();
+                - %s
+                """.formatted(first.snippet(), first.title(), sourceHint).trim();
+    }
+
+    private String describeKnowledgeSource(String sourceType) {
+        if (AssistantConstants.SOURCE_DOCUMENT.equals(sourceType)) {
+            return "上传知识库文档";
+        }
+        if (AssistantConstants.SOURCE_STRUCTURED.equals(sourceType)) {
+            return "结构化板子/角色资料";
+        }
+        return "其他资料";
     }
 
     private String buildWebMarkdownAnswer(String answer, List<AssistantDtos.AssistantCitation> citations) {
@@ -988,7 +1282,15 @@ public class AssistantAnswerService {
         }
     }
 
-    private void writeLog(String openid, String sessionId, String userMessage, AssistantDtos.AssistantAskResponse response, long latencyMs, String failureType) {
+    private void writeLog(
+            String openid,
+            String sessionId,
+            String userMessage,
+            AssistantDtos.AssistantAskResponse response,
+            long latencyMs,
+            String failureType,
+            ExecutionMetrics metrics
+    ) {
         AssistantQueryLogEntity entity = new AssistantQueryLogEntity();
         entity.setOpenid(openid);
         entity.setSessionId(sessionId);
@@ -997,6 +1299,14 @@ public class AssistantAnswerService {
         entity.setHitSources(write(response.citations().stream().map(citation -> citation.sourceType() + ":" + citation.title()).toList()));
         entity.setUsedWebSearch(response.usedWebSearch() ? 1 : 0);
         entity.setLatencyMs(latencyMs);
+        entity.setFirstTokenMs(metrics.firstTokenMs());
+        entity.setEmbeddingMs(metrics.embeddingMs());
+        entity.setRetrievalMs(metrics.retrievalMs());
+        entity.setModelMs(metrics.modelMs());
+        entity.setWebSearchMs(metrics.webSearchMs());
+        entity.setCacheHit(metrics.cacheHit() ? 1 : 0);
+        entity.setFallbackMode(metrics.fallbackMode());
+        entity.setStreamMode(metrics.streamMode());
         entity.setSuccess(failureType == null ? 1 : 0);
         entity.setFailureType(failureType);
         entity.setTraceId(response.traceId());
@@ -1029,6 +1339,7 @@ public class AssistantAnswerService {
             AssistantDtos.AdminAiConfig config,
             String traceId,
             QueryIntent intent,
+            String cacheVersion,
             long startAtMs
     ) {
     }
@@ -1052,6 +1363,111 @@ public class AssistantAnswerService {
     ) {
     }
 
+    private record GeneratedAnswer(
+            String answer,
+            String fallbackMode,
+            long modelMs
+    ) {
+    }
+
     private record BoardCandidate(Board board, int score, String reason) {
+    }
+
+    private static final class ExecutionMetrics {
+        private final long startAtMs;
+        private Long firstTokenMs = 0L;
+        private Long embeddingMs = 0L;
+        private Long retrievalMs = 0L;
+        private Long modelMs = 0L;
+        private Long webSearchMs = 0L;
+        private boolean cacheHit = false;
+        private String fallbackMode = "NONE";
+        private String streamMode;
+
+        private ExecutionMetrics(long startAtMs, String streamMode) {
+            this.startAtMs = startAtMs;
+            this.streamMode = streamMode;
+        }
+
+        static ExecutionMetrics sync(long startAtMs) {
+            return new ExecutionMetrics(startAtMs, "SYNC");
+        }
+
+        static ExecutionMetrics stream(long startAtMs) {
+            return new ExecutionMetrics(startAtMs, "STREAM");
+        }
+
+        long startAtMs() {
+            return startAtMs;
+        }
+
+        long firstTokenMs() {
+            return firstTokenMs == null ? 0L : firstTokenMs;
+        }
+
+        void ensureFirstToken(long value) {
+            if (firstTokenMs == null || firstTokenMs <= 0L) {
+                firstTokenMs = Math.max(value, 0L);
+            }
+        }
+
+        long embeddingMs() {
+            return embeddingMs == null ? 0L : embeddingMs;
+        }
+
+        void setEmbeddingMs(long embeddingMs) {
+            this.embeddingMs = Math.max(embeddingMs, 0L);
+        }
+
+        long retrievalMs() {
+            return retrievalMs == null ? 0L : retrievalMs;
+        }
+
+        void setRetrievalMs(long retrievalMs) {
+            this.retrievalMs = Math.max(retrievalMs, 0L);
+        }
+
+        long modelMs() {
+            return modelMs == null ? 0L : modelMs;
+        }
+
+        void setModelMs(long modelMs) {
+            this.modelMs = Math.max(modelMs, 0L);
+        }
+
+        long webSearchMs() {
+            return webSearchMs == null ? 0L : webSearchMs;
+        }
+
+        void setWebSearchMs(long webSearchMs) {
+            this.webSearchMs = Math.max(webSearchMs, 0L);
+        }
+
+        boolean cacheHit() {
+            return cacheHit;
+        }
+
+        void setCacheHit(boolean cacheHit) {
+            this.cacheHit = cacheHit;
+        }
+
+        String fallbackMode() {
+            return fallbackMode == null || fallbackMode.isBlank() ? "NONE" : fallbackMode;
+        }
+
+        void setFallbackModeIfBlank(String fallbackMode) {
+            if ((this.fallbackMode == null || this.fallbackMode.isBlank() || "NONE".equals(this.fallbackMode))
+                    && fallbackMode != null && !fallbackMode.isBlank()) {
+                this.fallbackMode = fallbackMode;
+            }
+        }
+
+        String streamMode() {
+            return streamMode == null || streamMode.isBlank() ? "STREAM" : streamMode;
+        }
+
+        void setStreamMode(String streamMode) {
+            this.streamMode = streamMode;
+        }
     }
 }

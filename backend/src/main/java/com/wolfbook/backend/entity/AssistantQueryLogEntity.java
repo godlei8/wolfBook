@@ -18,6 +18,14 @@ public class AssistantQueryLogEntity {
     private String hitSources;
     private Integer usedWebSearch;
     private Long latencyMs;
+    private Long firstTokenMs;
+    private Long embeddingMs;
+    private Long retrievalMs;
+    private Long modelMs;
+    private Long webSearchMs;
+    private Integer cacheHit;
+    private String fallbackMode;
+    private String streamMode;
     private Integer success;
     private String failureType;
     private String traceId;
@@ -85,6 +93,70 @@ public class AssistantQueryLogEntity {
 
     public void setLatencyMs(Long latencyMs) {
         this.latencyMs = latencyMs;
+    }
+
+    public Long getFirstTokenMs() {
+        return firstTokenMs;
+    }
+
+    public void setFirstTokenMs(Long firstTokenMs) {
+        this.firstTokenMs = firstTokenMs;
+    }
+
+    public Long getEmbeddingMs() {
+        return embeddingMs;
+    }
+
+    public void setEmbeddingMs(Long embeddingMs) {
+        this.embeddingMs = embeddingMs;
+    }
+
+    public Long getRetrievalMs() {
+        return retrievalMs;
+    }
+
+    public void setRetrievalMs(Long retrievalMs) {
+        this.retrievalMs = retrievalMs;
+    }
+
+    public Long getModelMs() {
+        return modelMs;
+    }
+
+    public void setModelMs(Long modelMs) {
+        this.modelMs = modelMs;
+    }
+
+    public Long getWebSearchMs() {
+        return webSearchMs;
+    }
+
+    public void setWebSearchMs(Long webSearchMs) {
+        this.webSearchMs = webSearchMs;
+    }
+
+    public Integer getCacheHit() {
+        return cacheHit;
+    }
+
+    public void setCacheHit(Integer cacheHit) {
+        this.cacheHit = cacheHit;
+    }
+
+    public String getFallbackMode() {
+        return fallbackMode;
+    }
+
+    public void setFallbackMode(String fallbackMode) {
+        this.fallbackMode = fallbackMode;
+    }
+
+    public String getStreamMode() {
+        return streamMode;
+    }
+
+    public void setStreamMode(String streamMode) {
+        this.streamMode = streamMode;
     }
 
     public Integer getSuccess() {

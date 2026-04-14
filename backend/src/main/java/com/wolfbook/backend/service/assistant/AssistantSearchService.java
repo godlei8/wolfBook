@@ -27,6 +27,10 @@ public class AssistantSearchService {
         this.objectMapper = objectMapper;
     }
 
+    public boolean isAvailable() {
+        return miniMaxChatModelProvider.getIfAvailable() != null;
+    }
+
     public SearchResult searchWeb(String query, String modelName, double temperature) {
         MiniMaxChatModel chatModel = miniMaxChatModelProvider.getIfAvailable();
         if (chatModel == null) {

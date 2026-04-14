@@ -134,6 +134,12 @@ public class AdminAiController {
         return ApiResponse.success(assistantLogService.listLogs());
     }
 
+    @GetMapping("/summary")
+    public ApiResponse<AssistantDtos.AdminAiPerformanceView> getSummary(@RequestHeader("Authorization") String authorization) {
+        adminService.requireAdmin(authorization);
+        return ApiResponse.success(assistantLogService.getPerformanceView());
+    }
+
     @DeleteMapping("/logs")
     public ApiResponse<Integer> clearLogs(@RequestHeader("Authorization") String authorization) {
         adminService.requireAdmin(authorization);

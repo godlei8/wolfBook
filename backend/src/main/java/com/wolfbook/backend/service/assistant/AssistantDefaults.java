@@ -14,8 +14,8 @@ final class AssistantDefaults {
         return new AssistantDtos.AdminAiConfig(
                 new AssistantDtos.BaseSection(
                         true,
-                        "欢迎来到狼人杀 AI 助手，想问规则、角色，还是让我们一起挑个合适的板子？",
-                        List.of("12人进阶推荐什么板子", "女巫能不能自救", "守卫和女巫会不会冲突"),
+                        "欢迎来到狼人杀 AI 助手，可以直接问规则、角色、板子推荐和局后复盘。",
+                        List.of("12人进阶推荐什么板子", "女巫能不能自救", "复盘时怎么判断倒钩狼"),
                         properties.getMiniMax().getChatModel(),
                         properties.getDefaultEmbeddingModelLabel(),
                         properties.getTemperature(),
@@ -42,7 +42,7 @@ final class AssistantDefaults {
                 ),
                 new AssistantDtos.UiSection(
                         "wolf-head",
-                        "AI狼顾问",
+                        "AI战术顾问",
                         "#FFC000"
                 )
         );

@@ -26,17 +26,23 @@ public class AssistantConfigService {
     private final AssistantConfigMapper assistantConfigMapper;
     private final AssistantSessionMapper assistantSessionMapper;
     private final AssistantProperties assistantProperties;
+    private final AssistantCacheService assistantCacheService;
+    private final AssistantSearchService assistantSearchService;
     private final ObjectMapper objectMapper;
 
     public AssistantConfigService(
             AssistantConfigMapper assistantConfigMapper,
             AssistantSessionMapper assistantSessionMapper,
             AssistantProperties assistantProperties,
+            AssistantCacheService assistantCacheService,
+            AssistantSearchService assistantSearchService,
             ObjectMapper objectMapper
     ) {
         this.assistantConfigMapper = assistantConfigMapper;
         this.assistantSessionMapper = assistantSessionMapper;
         this.assistantProperties = assistantProperties;
+        this.assistantCacheService = assistantCacheService;
+        this.assistantSearchService = assistantSearchService;
         this.objectMapper = objectMapper;
     }
 
@@ -84,6 +90,26 @@ public class AssistantConfigService {
 
     public AssistantDtos.AssistantBootstrapResponse getBootstrap(String openid) {
         AssistantDtos.AdminAiConfig config = getAdminConfig();
+        String configVersion = assistantCacheService.buildConfigVersion(config);
+        AssistantCacheService.BootstrapShell shell = assistantCacheService.getBootstrapShell(configVersion);
+        if (shell == null) {
+            shell = new AssistantCacheService.BootstrapShell(
+                    config.base().enabled(),
+                    config.base().welcomeMessage(),
+                    config.base().quickQuestions(),
+                    new AssistantDtos.Appearance(
+                            config.ui().mascot(),
+                            config.ui().accentColor(),
+                            config.ui().dockLabel()
+                    ),
+                    new AssistantDtos.FeatureFlags(
+                            config.search().webSearchEnabled() && assistantSearchService.isAvailable(),
+                            true,
+                            true
+                    )
+            );
+            assistantCacheService.cacheBootstrapShell(configVersion, shell);
+        }
         AssistantSessionEntity latestSession = assistantSessionMapper.selectOne(
                 new LambdaQueryWrapper<AssistantSessionEntity>()
                         .eq(AssistantSessionEntity::getOpenid, openid)
@@ -91,20 +117,12 @@ public class AssistantConfigService {
                         .last("LIMIT 1")
         );
         return new AssistantDtos.AssistantBootstrapResponse(
-                config.base().enabled(),
-                config.base().welcomeMessage(),
-                config.base().quickQuestions(),
+                shell.enabled(),
+                shell.welcomeMessage(),
+                shell.quickQuestions(),
                 latestSession == null ? null : latestSession.getSessionId(),
-                new AssistantDtos.Appearance(
-                        config.ui().mascot(),
-                        config.ui().accentColor(),
-                        config.ui().dockLabel()
-                ),
-                new AssistantDtos.FeatureFlags(
-                        config.search().webSearchEnabled(),
-                        true,
-                        true
-                )
+                shell.appearance(),
+                shell.featureFlags()
         );
     }
 

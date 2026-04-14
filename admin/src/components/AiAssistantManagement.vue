@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadRequestOptions } from 'element-plus'
 import { api } from '../services/api'
-import type { AdminAiConfig, AdminAiDocument, AdminAiLog, AdminAiVersion } from '../types'
+import type { AdminAiConfig, AdminAiDocument, AdminAiLog, AdminAiPerformanceView, AdminAiVersion } from '../types'
 
 const loading = ref(false)
 const savingConfig = ref(false)
@@ -15,6 +15,19 @@ const activeTab = ref<'control' | 'documents' | 'publish' | 'logs'>('control')
 const documents = ref<AdminAiDocument[]>([])
 const versions = ref<AdminAiVersion[]>([])
 const logs = ref<AdminAiLog[]>([])
+const performance = ref<AdminAiPerformanceView>({
+  queryCount24h: 0,
+  avgFirstTokenMs: 0,
+  avgTotalLatencyMs: 0,
+  avgRetrievalMs: 0,
+  avgModelMs: 0,
+  p95LatencyMs: 0,
+  ragHitRate: 0,
+  structuredHitRate: 0,
+  webSearchRate: 0,
+  cacheHitRate: 0,
+  failureRate: 0,
+})
 const publishNotes = ref('')
 
 const documentPage = ref(1)
@@ -34,7 +47,7 @@ const config = reactive<AdminAiConfig>({
     quickQuestions: ['12人进阶推荐什么板子', '女巫能不能自救', '守卫和女巫会不会冲突'],
     chatModel: '',
     embeddingModel: '',
-    temperature: 0.35,
+    temperature: 0.25,
     maxSuggestions: 3,
   },
   prompt: {
@@ -43,13 +56,13 @@ const config = reactive<AdminAiConfig>({
     refusalPrompt: '',
   },
   retrieval: {
-    topK: 4,
-    similarityThreshold: 0.45,
-    historyWindow: 12,
+    topK: 3,
+    similarityThreshold: 0.55,
+    historyWindow: 4,
   },
   search: {
-    webSearchEnabled: true,
-    timeoutSeconds: 12,
+    webSearchEnabled: false,
+    timeoutSeconds: 4,
     provider: 'MINIMAX_WEB_SEARCH',
   },
   safety: {
@@ -58,10 +71,21 @@ const config = reactive<AdminAiConfig>({
   },
   ui: {
     mascot: 'wolf-head',
-    dockLabel: 'AI狼顾问',
+    dockLabel: 'AI战术顾问',
     accentColor: '#FFC000',
   },
 })
+
+const performanceCards = computed(() => [
+  { label: '24h 问答量', value: `${performance.value.queryCount24h}`, hint: '最近 24 小时' },
+  { label: '平均首字', value: `${performance.value.avgFirstTokenMs}ms`, hint: '首 token 速度' },
+  { label: '平均总耗时', value: `${performance.value.avgTotalLatencyMs}ms`, hint: '完整回答' },
+  { label: 'P95 延迟', value: `${performance.value.p95LatencyMs}ms`, hint: '波动参考' },
+  { label: '结构化命中', value: `${performance.value.structuredHitRate}%`, hint: '规则/推荐快路径' },
+  { label: '知识命中', value: `${performance.value.ragHitRate}%`, hint: 'RAG 召回' },
+  { label: '缓存命中', value: `${performance.value.cacheHitRate}%`, hint: '热问题缓存' },
+  { label: '失败率', value: `${performance.value.failureRate}%`, hint: '越低越好' },
+])
 
 const documentSummary = computed(() => {
   const total = documents.value.length
@@ -189,21 +213,59 @@ function formatHitSources(items: string[]) {
 async function loadAll() {
   loading.value = true
   try {
-    const [configData, documentData, versionData, logData] = await Promise.all([
+    const [configData, documentData, versionData, logData, summaryData] = await Promise.all([
       api.getAiConfig(),
       api.getAiDocuments(),
       api.getAiVersions(),
       api.getAiLogs(),
+      api.getAiSummary(),
     ])
     assignConfig(configData)
     documents.value = documentData
     versions.value = versionData
     logs.value = logData
+    performance.value = summaryData
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : 'AI 助手数据加载失败')
   } finally {
     loading.value = false
   }
+}
+
+function applyPreset(type: 'small-machine' | 'speed' | 'accuracy') {
+  if (type === 'small-machine') {
+    config.base.chatModel = 'MiniMax-M2.7-highspeed'
+    config.base.embeddingModel = 'embo-01'
+    config.base.temperature = 0.25
+    config.retrieval.topK = 3
+    config.retrieval.similarityThreshold = 0.55
+    config.retrieval.historyWindow = 4
+    config.search.webSearchEnabled = false
+    config.search.timeoutSeconds = 4
+    ElMessage.success('已应用小机型推荐配置')
+    return
+  }
+  if (type === 'speed') {
+    config.base.chatModel = 'MiniMax-M2.7-highspeed'
+    config.base.embeddingModel = 'embo-01'
+    config.base.temperature = 0.2
+    config.retrieval.topK = 2
+    config.retrieval.similarityThreshold = 0.6
+    config.retrieval.historyWindow = 3
+    config.search.webSearchEnabled = false
+    config.search.timeoutSeconds = 4
+    ElMessage.success('已应用高速优先配置')
+    return
+  }
+  config.base.chatModel = 'MiniMax-M2.7'
+  config.base.embeddingModel = 'embo-01'
+  config.base.temperature = 0.3
+  config.retrieval.topK = 4
+  config.retrieval.similarityThreshold = 0.5
+  config.retrieval.historyWindow = 6
+  config.search.webSearchEnabled = true
+  config.search.timeoutSeconds = 6
+  ElMessage.success('已应用准确率优先配置')
 }
 
 async function saveConfig() {
@@ -341,6 +403,27 @@ onMounted(loadAll)
 
     <el-tabs v-model="activeTab" class="ai-tabs">
       <el-tab-pane label="控制台" name="control">
+        <div class="preset-shell">
+          <div class="preset-copy">
+            <div class="knowledge-kicker">Production Presets</div>
+            <h4>一键套用推荐配置</h4>
+            <p>先用推荐值把小机型首响和稳定性拉起来，再按日志和性能概览微调。</p>
+          </div>
+          <div class="preset-actions">
+            <el-button @click="applyPreset('small-machine')">小机型推荐</el-button>
+            <el-button @click="applyPreset('speed')">高速优先</el-button>
+            <el-button @click="applyPreset('accuracy')">准确率优先</el-button>
+          </div>
+        </div>
+
+        <div class="performance-grid">
+          <div v-for="card in performanceCards" :key="card.label" class="performance-card">
+            <span class="performance-label">{{ card.label }}</span>
+            <strong>{{ card.value }}</strong>
+            <small>{{ card.hint }}</small>
+          </div>
+        </div>
+
         <div class="form-grid">
           <el-card class="sub-card">
             <template #header>基础配置</template>
@@ -638,6 +721,14 @@ onMounted(loadAll)
           </el-button>
         </div>
 
+        <div class="performance-grid performance-grid--compact">
+          <div v-for="card in performanceCards" :key="`logs-${card.label}`" class="performance-card">
+            <span class="performance-label">{{ card.label }}</span>
+            <strong>{{ card.value }}</strong>
+            <small>{{ card.hint }}</small>
+          </div>
+        </div>
+
         <div class="table-scroll-shell">
           <el-table :data="pagedLogs" class="wide-table wide-table--logs" empty-text="暂无问答日志">
             <el-table-column prop="createTime" label="时间" width="180" />
@@ -661,6 +752,30 @@ onMounted(loadAll)
             <el-table-column label="耗时" width="90">
               <template #default="{ row }">{{ row.latencyMs }}ms</template>
             </el-table-column>
+            <el-table-column label="首字" width="90">
+              <template #default="{ row }">{{ row.firstTokenMs }}ms</template>
+            </el-table-column>
+            <el-table-column label="检索" width="90">
+              <template #default="{ row }">{{ row.retrievalMs }}ms</template>
+            </el-table-column>
+            <el-table-column label="向量" width="90">
+              <template #default="{ row }">{{ row.embeddingMs }}ms</template>
+            </el-table-column>
+            <el-table-column label="模型" width="90">
+              <template #default="{ row }">{{ row.modelMs }}ms</template>
+            </el-table-column>
+            <el-table-column label="联网检索" width="100">
+              <template #default="{ row }">{{ row.webSearchMs }}ms</template>
+            </el-table-column>
+            <el-table-column label="缓存" width="84">
+              <template #default="{ row }">
+                <el-tag :type="row.cacheHit ? 'success' : 'info'">
+                  {{ row.cacheHit ? '命中' : '未命中' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="streamMode" label="流式模式" width="110" />
+            <el-table-column prop="fallbackMode" label="回退路径" width="140" show-overflow-tooltip />
             <el-table-column label="结果" width="90">
               <template #default="{ row }">
                 <el-tag :type="row.success ? 'success' : 'danger'">
@@ -753,6 +868,84 @@ onMounted(loadAll)
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+}
+
+.preset-shell {
+  padding: 18px 20px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(255, 192, 0, 0.12);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 192, 0, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(28, 28, 28, 0.96), rgba(14, 14, 14, 0.96));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+}
+
+.preset-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.preset-copy h4 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.preset-copy p {
+  margin: 0;
+  color: #9d9d9d;
+  line-height: 1.6;
+}
+
+.preset-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.performance-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.performance-grid--compact {
+  margin-bottom: 14px;
+}
+
+.performance-card {
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 192, 0, 0.1);
+  background: linear-gradient(180deg, rgba(30, 30, 30, 0.94), rgba(18, 18, 18, 0.94));
+  display: grid;
+  gap: 6px;
+}
+
+.performance-card strong {
+  font-size: 26px;
+  line-height: 1;
+  color: #ffc000;
+}
+
+.performance-label,
+.performance-card small {
+  color: #9d9d9d;
+}
+
+.performance-label {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.performance-card small {
+  font-size: 12px;
 }
 
 .sub-card {
@@ -1017,7 +1210,7 @@ onMounted(loadAll)
 }
 
 .table-scroll-shell :deep(.wide-table--logs) {
-  min-width: 1320px;
+  min-width: 1980px;
 }
 
 .table-footer {
@@ -1083,6 +1276,18 @@ onMounted(loadAll)
 }
 
 @media (max-width: 1200px) {
+  .preset-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .preset-actions {
+    justify-content: flex-start;
+  }
+
+  .performance-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .knowledge-upload-card {
     grid-template-columns: 1fr;
   }
@@ -1117,6 +1322,10 @@ onMounted(loadAll)
   }
 
   .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .performance-grid {
     grid-template-columns: 1fr;
   }
 

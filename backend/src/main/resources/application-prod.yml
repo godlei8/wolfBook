@@ -36,19 +36,19 @@ wolfbook:
       prefix: ${COS_PREFIX:wolfbook}
   assistant:
     enabled: ${ASSISTANT_ENABLED:true}
-    history-window: ${ASSISTANT_HISTORY_WINDOW:12}
+    history-window: ${ASSISTANT_HISTORY_WINDOW:4}
     max-sessions-per-user: ${ASSISTANT_MAX_SESSIONS:20}
     max-suggestions: ${ASSISTANT_MAX_SUGGESTIONS:3}
-    similarity-threshold: ${ASSISTANT_SIMILARITY_THRESHOLD:0.45}
-    top-k: ${ASSISTANT_TOP_K:4}
-    temperature: ${ASSISTANT_TEMPERATURE:0.35}
-    web-search-enabled: ${ASSISTANT_WEB_SEARCH_ENABLED:true}
-    web-search-timeout-seconds: ${ASSISTANT_WEB_SEARCH_TIMEOUT_SECONDS:12}
-    embedding-provider: ${ASSISTANT_EMBEDDING_PROVIDER:ollama}
+    similarity-threshold: ${ASSISTANT_SIMILARITY_THRESHOLD:0.55}
+    top-k: ${ASSISTANT_TOP_K:3}
+    temperature: ${ASSISTANT_TEMPERATURE:0.25}
+    web-search-enabled: ${ASSISTANT_WEB_SEARCH_ENABLED:false}
+    web-search-timeout-seconds: ${ASSISTANT_WEB_SEARCH_TIMEOUT_SECONDS:4}
+    embedding-provider: ${ASSISTANT_EMBEDDING_PROVIDER:minimax}
     minimax:
       api-key: ${MINIMAX_API_KEY}
       base-url: ${MINIMAX_BASE_URL:https://api.minimax.chat}
-      chat-model: ${MINIMAX_CHAT_MODEL:MiniMax-M2.7}
+      chat-model: ${MINIMAX_CHAT_MODEL:MiniMax-M2.7-highspeed}
       embedding-model: ${MINIMAX_EMBEDDING_MODEL:embo-01}
     ollama:
       base-url: ${OLLAMA_BASE_URL:http://ollama:11434}

@@ -3,6 +3,7 @@ import type {
   AdminAiConfig,
   AdminAiDocument,
   AdminAiLog,
+  AdminAiPerformanceView,
   AdminAiVersion,
   ApiResponse,
   Board,
@@ -171,6 +172,9 @@ export const api = {
   },
   async getAiLogs() {
     return unwrap<AdminAiLog[]>(http.get('/admin/ai/logs'))
+  },
+  async getAiSummary() {
+    return unwrap<AdminAiPerformanceView>(http.get('/admin/ai/summary'))
   },
   async clearAiLogs() {
     return unwrap<number>(http.delete('/admin/ai/logs'))

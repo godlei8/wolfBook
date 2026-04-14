@@ -8,14 +8,14 @@ public class AssistantProperties {
     public static final String OLLAMA_DEFAULT_EMBEDDING_MODEL = "qwen3-embedding:0.6b";
 
     private boolean enabled = true;
-    private int historyWindow = 12;
+    private int historyWindow = 4;
     private int maxSessionsPerUser = 20;
     private int maxSuggestions = 3;
-    private int topK = 4;
-    private double similarityThreshold = 0.45;
-    private double temperature = 0.35;
-    private boolean webSearchEnabled = true;
-    private int webSearchTimeoutSeconds = 12;
+    private int topK = 3;
+    private double similarityThreshold = 0.55;
+    private double temperature = 0.25;
+    private boolean webSearchEnabled = false;
+    private int webSearchTimeoutSeconds = 4;
     private String embeddingProvider = "ollama";
     private final MiniMax miniMax = new MiniMax();
     private final Ollama ollama = new Ollama();
@@ -126,7 +126,7 @@ public class AssistantProperties {
     public static class MiniMax {
         private String apiKey;
         private String baseUrl = "https://api.minimax.chat";
-        private String chatModel = "MiniMax-M2.7";
+        private String chatModel = "MiniMax-M2.7-highspeed";
         private String embeddingModel = "embo-01";
 
         public String getApiKey() {

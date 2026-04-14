@@ -274,10 +274,15 @@ public class AssistantKnowledgeService {
     }
 
     public List<KnowledgeHit> searchPublishedKnowledge(String query) {
+        return searchPublishedKnowledgeResult(query).hits();
+    }
+
+    public KnowledgeSearchResult searchPublishedKnowledgeResult(String query) {
+        long startAt = System.currentTimeMillis();
         ensureStructuredDocuments();
         Integer currentVersionId = assistantPublishService.getCurrentVersionId();
         if (currentVersionId == null) {
-            return List.of();
+            return new KnowledgeSearchResult(List.of(), System.currentTimeMillis() - startAt, 0L, false);
         }
 
         List<AssistantDocumentEntity> publishedDocuments = assistantDocumentMapper.selectList(
@@ -287,7 +292,7 @@ public class AssistantKnowledgeService {
                         .eq(AssistantDocumentEntity::getProcessingStatus, AssistantConstants.STATUS_READY)
         );
         if (publishedDocuments.isEmpty()) {
-            return List.of();
+            return new KnowledgeSearchResult(List.of(), System.currentTimeMillis() - startAt, 0L, false);
         }
 
         Map<String, AssistantDocumentEntity> bySourceKey = publishedDocuments.stream()
@@ -295,15 +300,15 @@ public class AssistantKnowledgeService {
 
         List<KnowledgeHit> vectorHits = searchViaVectorStore(query, currentVersionId, bySourceKey);
         if (!vectorHits.isEmpty()) {
-            return vectorHits;
+            return new KnowledgeSearchResult(pruneHits(vectorHits), System.currentTimeMillis() - startAt, 0L, true);
         }
 
-        return publishedDocuments.stream()
+        List<KnowledgeHit> fallbackHits = publishedDocuments.stream()
                 .map(document -> scoreFallback(query, document))
                 .filter(hit -> hit.score() > 0)
                 .sorted((left, right) -> Double.compare(right.score(), left.score()))
-                .limit(assistantProperties.getTopK())
                 .toList();
+        return new KnowledgeSearchResult(pruneHits(fallbackHits), System.currentTimeMillis() - startAt, 0L, false);
     }
 
     private List<KnowledgeHit> searchViaVectorStore(String query, Integer currentVersionId, Map<String, AssistantDocumentEntity> bySourceKey) {
@@ -313,7 +318,7 @@ public class AssistantKnowledgeService {
         }
         List<Document> documents = vectorStore.similaritySearch(SearchRequest.builder()
                 .query(query)
-                .topK(assistantProperties.getTopK())
+                .topK(Math.max(assistantProperties.getTopK() + 2, assistantProperties.getTopK()))
                 .similarityThreshold(assistantProperties.getSimilarityThreshold())
                 .filterExpression("publishedVersion == " + currentVersionId)
                 .build());
@@ -341,6 +346,52 @@ public class AssistantKnowledgeService {
             ));
         }
         return hits;
+    }
+
+    private List<KnowledgeHit> pruneHits(List<KnowledgeHit> hits) {
+        if (hits == null || hits.isEmpty()) {
+            return List.of();
+        }
+        Map<String, KnowledgeHit> deduplicated = new LinkedHashMap<>();
+        hits.stream()
+                .sorted((left, right) -> {
+                    int scoreCompare = Double.compare(right.score(), left.score());
+                    if (scoreCompare != 0) {
+                        return scoreCompare;
+                    }
+                    int sourceCompare = Integer.compare(sourcePriority(left.sourceType()), sourcePriority(right.sourceType()));
+                    if (sourceCompare != 0) {
+                        return sourceCompare;
+                    }
+                    return left.title().compareToIgnoreCase(right.title());
+                })
+                .forEach(hit -> deduplicated.putIfAbsent(hit.document().getSourceKey(), hit));
+        List<KnowledgeHit> rankedHits = new ArrayList<>(deduplicated.values());
+        List<KnowledgeHit> preferredDocuments = rankedHits.stream()
+                .filter(hit -> AssistantConstants.SOURCE_DOCUMENT.equals(hit.sourceType()))
+                .limit(assistantProperties.getTopK())
+                .toList();
+        if (preferredDocuments.isEmpty()) {
+            return rankedHits.stream()
+                    .limit(assistantProperties.getTopK())
+                    .toList();
+        }
+        List<KnowledgeHit> merged = new ArrayList<>(preferredDocuments);
+        rankedHits.stream()
+                .filter(hit -> !AssistantConstants.SOURCE_DOCUMENT.equals(hit.sourceType()))
+                .limit(Math.max(assistantProperties.getTopK() - merged.size(), 0))
+                .forEach(merged::add);
+        return merged;
+    }
+
+    private int sourcePriority(String sourceType) {
+        if (AssistantConstants.SOURCE_DOCUMENT.equals(sourceType)) {
+            return 0;
+        }
+        if (AssistantConstants.SOURCE_STRUCTURED.equals(sourceType)) {
+            return 1;
+        }
+        return 2;
     }
 
     private KnowledgeHit scoreFallback(String query, AssistantDocumentEntity document) {
@@ -623,5 +674,13 @@ public class AssistantKnowledgeService {
         AssistantDtos.AssistantCitation toCitation() {
             return new AssistantDtos.AssistantCitation(sourceType, title, snippet, null, sourceId);
         }
+    }
+
+    public record KnowledgeSearchResult(
+            List<KnowledgeHit> hits,
+            long retrievalMs,
+            long embeddingMs,
+            boolean vectorSearchUsed
+    ) {
     }
 }

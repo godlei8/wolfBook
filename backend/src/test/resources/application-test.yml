@@ -19,6 +19,7 @@ wolfbook:
     dir: ./target/test-uploads
   assistant:
     enabled: true
+    embedding-provider: ollama
     web-search-enabled: false
     pgvector:
       enabled: false

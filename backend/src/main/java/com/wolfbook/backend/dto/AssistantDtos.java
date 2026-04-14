@@ -219,10 +219,33 @@ public final class AssistantDtos {
             List<String> hitSources,
             boolean usedWebSearch,
             long latencyMs,
+            long firstTokenMs,
+            long embeddingMs,
+            long retrievalMs,
+            long modelMs,
+            long webSearchMs,
+            boolean cacheHit,
+            String fallbackMode,
+            String streamMode,
             boolean success,
             String failureType,
             String traceId,
             LocalDateTime createTime
+    ) {
+    }
+
+    public record AdminAiPerformanceView(
+            long queryCount24h,
+            long avgFirstTokenMs,
+            long avgTotalLatencyMs,
+            long avgRetrievalMs,
+            long avgModelMs,
+            long p95LatencyMs,
+            double ragHitRate,
+            double structuredHitRate,
+            double webSearchRate,
+            double cacheHitRate,
+            double failureRate
     ) {
     }
 }

@@ -1,6 +1,6 @@
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { computed, nextTick, ref } from 'vue'
+import { onLoad, onUnload } from '@dcloudio/uni-app'
 import assistant from '../../services/assistant'
 import { markdownToRichText, plainTextToRichText } from '../../services/markdown'
 import storage from '../../services/storage'
@@ -8,16 +8,24 @@ import storage from '../../services/storage'
 const bootstrap = ref(null)
 const messages = ref([])
 const loading = ref(false)
+const loadingHistory = ref(false)
 const sending = ref(false)
 const activeSessionId = ref('')
 const scene = ref('general')
 const pageContext = ref({})
 const draft = ref('')
 const chatScrollIntoView = ref('')
+const responseStage = ref('')
+const citationExpanded = ref({})
+
+const streamingBuffers = new Map()
+let scrollTimer = null
+let deltaFlushTimer = null
+let stageTimer = null
 
 const draftCount = computed(() => (draft.value || '').length)
 const canSend = computed(() => !!(draft.value || '').trim() && !sending.value)
-const composerHint = computed(() => '可以问规则、角色技能冲突，或者按人数推荐板子。')
+const composerHint = computed(() => responseStage.value || '可以问规则、角色技能冲突、板子推荐，或者直接让我帮你复盘。')
 
 function scrollChatToBottom() {
   chatScrollIntoView.value = ''
@@ -26,80 +34,119 @@ function scrollChatToBottom() {
   })
 }
 
-watch(
-  messages,
-  () => {
+function scheduleScrollToBottom(delay = 80) {
+  if (scrollTimer) return
+  scrollTimer = setTimeout(() => {
+    scrollTimer = null
     scrollChatToBottom()
-  },
-  { deep: true }
-)
+  }, delay)
+}
+
+function clearStageTimer() {
+  if (!stageTimer) return
+  clearTimeout(stageTimer)
+  stageTimer = null
+}
+
+function clearDeltaFlushTimer() {
+  if (!deltaFlushTimer) return
+  clearTimeout(deltaFlushTimer)
+  deltaFlushTimer = null
+}
+
+function clearStreamingState() {
+  clearStageTimer()
+  clearDeltaFlushTimer()
+  if (scrollTimer) {
+    clearTimeout(scrollTimer)
+    scrollTimer = null
+  }
+  streamingBuffers.clear()
+}
+
+function scheduleDeepSearchHint() {
+  clearStageTimer()
+  stageTimer = setTimeout(() => {
+    if (sending.value && responseStage.value === '正在查资料...') {
+      responseStage.value = '正在整理站内资料...'
+    }
+  }, 2200)
+}
 
 function renderContent(message) {
   const content = message?.content || ''
   if ((message?.contentFormat || 'PLAIN_TEXT') === 'MARKDOWN') {
-    if (message?.isStreaming) {
-      return plainTextToRichText(content)
-    }
-    return markdownToRichText(content, { streaming: !!message?.isStreaming })
+    return markdownToRichText(content, { streaming: false })
   }
   return plainTextToRichText(content)
 }
 
-function normalizeMessage(message) {
-  const citations = Array.isArray(message?.citations) ? message.citations : []
-  const boards = Array.isArray(message?.recommendedBoards) ? message.recommendedBoards : []
-  const contentFormat = message?.contentFormat || (message?.role === 'ASSISTANT' ? 'MARKDOWN' : 'PLAIN_TEXT')
-
-  let visibleCitations = citations
-  if (citations.length && boards.length) {
-    const boardIds = new Set(boards.map((board) => String(board.id)))
-    visibleCitations = citations.filter((citation) => {
-      if (citation?.sourceType !== 'STRUCTURED') {
-        return true
-      }
-      return !boardIds.has(String(citation.sourceId))
-    })
+function normalizeCitations(citations, boards) {
+  if (!citations.length || !boards.length) {
+    return citations
   }
+  const boardIds = new Set(boards.map((board) => String(board.id)))
+  return citations.filter((citation) => {
+    if (citation?.sourceType !== 'STRUCTURED') {
+      return true
+    }
+    return !boardIds.has(String(citation.sourceId))
+  })
+}
 
-  visibleCitations = visibleCitations.filter((citation) => citation?.sourceType === 'WEB')
+function normalizeMessage(message) {
+  const citations = normalizeCitations(
+    Array.isArray(message?.citations) ? message.citations : [],
+    Array.isArray(message?.recommendedBoards) ? message.recommendedBoards : [],
+  )
+  const contentFormat = message?.contentFormat || (message?.role === 'ASSISTANT' ? 'MARKDOWN' : 'PLAIN_TEXT')
 
   return {
     ...message,
+    citations,
     contentFormat,
-    visibleCitations,
-    renderedContent: renderContent({ ...message, contentFormat }),
+    renderedContent:
+      message?.role === 'ASSISTANT' && !message?.isStreaming
+        ? renderContent({ ...message, citations, contentFormat })
+        : '',
   }
 }
 
 function appendOptimisticUserMessage(message) {
-  const tempMessage = normalizeMessage({
-    id: `local-user-${Date.now()}`,
-    role: 'USER',
-    content: message,
-    contentFormat: 'PLAIN_TEXT',
-    citations: [],
-    recommendedBoards: [],
-    suggestedQuestions: [],
-    usedWebSearch: false,
-  })
-  messages.value = [...messages.value, tempMessage]
+  messages.value = [
+    ...messages.value,
+    normalizeMessage({
+      id: `local-user-${Date.now()}`,
+      role: 'USER',
+      content: message,
+      contentFormat: 'PLAIN_TEXT',
+      citations: [],
+      recommendedBoards: [],
+      suggestedQuestions: [],
+      usedWebSearch: false,
+    }),
+  ]
+  scheduleScrollToBottom(0)
 }
 
 function addStreamingAssistantMessage() {
   const messageId = `local-assistant-${Date.now()}`
-  const streamingMessage = normalizeMessage({
-    id: messageId,
-    role: 'ASSISTANT',
-    content: '',
-    contentFormat: 'MARKDOWN',
-    answerType: 'STREAMING',
-    citations: [],
-    recommendedBoards: [],
-    suggestedQuestions: [],
-    usedWebSearch: false,
-    isStreaming: true,
-  })
-  messages.value = [...messages.value, streamingMessage]
+  messages.value = [
+    ...messages.value,
+    normalizeMessage({
+      id: messageId,
+      role: 'ASSISTANT',
+      content: '',
+      contentFormat: 'MARKDOWN',
+      answerType: 'STREAMING',
+      citations: [],
+      recommendedBoards: [],
+      suggestedQuestions: [],
+      usedWebSearch: false,
+      isStreaming: true,
+    }),
+  ]
+  scheduleScrollToBottom(0)
   return messageId
 }
 
@@ -114,6 +161,31 @@ function patchMessage(messageId, patcher) {
   })
 }
 
+function flushStreamingDeltas() {
+  clearDeltaFlushTimer()
+  if (!streamingBuffers.size) {
+    return
+  }
+  streamingBuffers.forEach((delta, messageId) => {
+    patchMessage(messageId, (current) => ({
+      ...current,
+      content: `${current.content || ''}${delta}`,
+      isStreaming: true,
+    }))
+  })
+  streamingBuffers.clear()
+  scheduleScrollToBottom()
+}
+
+function queueStreamingDelta(messageId, delta) {
+  if (!delta) return
+  streamingBuffers.set(messageId, `${streamingBuffers.get(messageId) || ''}${delta}`)
+  if (deltaFlushTimer) return
+  deltaFlushTimer = setTimeout(() => {
+    flushStreamingDeltas()
+  }, 80)
+}
+
 function replaceStreamingMessage(messageId, response) {
   patchMessage(messageId, () => ({
     id: response.messageId,
@@ -126,22 +198,31 @@ function replaceStreamingMessage(messageId, response) {
     suggestedQuestions: response.suggestedQuestions,
     usedWebSearch: response.usedWebSearch,
     traceId: response.traceId,
+    retryQuestion: '',
     isStreaming: false,
   }))
+  scheduleScrollToBottom()
 }
 
-function markStreamingFailed(messageId, errorMessage) {
-  patchMessage(messageId, () => ({
-    role: 'ASSISTANT',
-    content: `## 发送失败\n\n- ${errorMessage || '当前消息发送失败，请稍后再试。'}`,
-    contentFormat: 'MARKDOWN',
-    answerType: 'REFUSAL',
-    citations: [],
-    recommendedBoards: [],
-    suggestedQuestions: [],
-    usedWebSearch: false,
-    isStreaming: false,
-  }))
+function markStreamingFailed(messageId, errorMessage, retryQuestion) {
+  patchMessage(messageId, (current) => {
+    const partialContent = (current.content || '').trim()
+    const content = partialContent
+      ? `${partialContent}\n\n> 输出中断：${errorMessage || '当前消息发送失败，请稍后再试。'}`
+      : `## 发送失败\n\n- ${errorMessage || '当前消息发送失败，请稍后再试。'}`
+    return {
+      ...current,
+      content,
+      contentFormat: 'MARKDOWN',
+      answerType: partialContent ? 'INTERRUPTED' : 'REFUSAL',
+      citations: [],
+      recommendedBoards: [],
+      suggestedQuestions: [],
+      usedWebSearch: false,
+      retryQuestion,
+      isStreaming: false,
+    }
+  })
 }
 
 async function loadBootstrap() {
@@ -158,6 +239,7 @@ async function loadMessages() {
   }
   const rawMessages = await assistant.getMessages(activeSessionId.value)
   messages.value = rawMessages.map(normalizeMessage)
+  scheduleScrollToBottom(0)
 }
 
 async function loadAll() {
@@ -168,15 +250,29 @@ async function loadAll() {
   loading.value = true
   try {
     await loadBootstrap()
-    await loadMessages()
   } catch (error) {
     uni.showToast({ title: 'AI 助手加载失败', icon: 'none' })
+    loading.value = false
+    return
   } finally {
     loading.value = false
   }
+
+  if (!activeSessionId.value) {
+    return
+  }
+
+  loadingHistory.value = true
+  try {
+    await loadMessages()
+  } catch (error) {
+    uni.showToast({ title: '会话历史加载失败', icon: 'none' })
+  } finally {
+    loadingHistory.value = false
+  }
 }
 
-async function sendQuestion(question = draft.value) {
+async function sendQuestion(question = draft.value, options = {}) {
   if (sending.value) return
   const message = (question || '').trim()
   if (!message) {
@@ -184,7 +280,15 @@ async function sendQuestion(question = draft.value) {
     return
   }
 
+  if (options.newSession) {
+    activeSessionId.value = ''
+    messages.value = []
+  }
+
+  const retryQuestion = message
   sending.value = true
+  responseStage.value = '正在查资料...'
+  scheduleDeepSearchHint()
   appendOptimisticUserMessage(message)
   const streamingMessageId = addStreamingAssistantMessage()
 
@@ -202,30 +306,35 @@ async function sendQuestion(question = draft.value) {
           if (event?.sessionId) {
             activeSessionId.value = event.sessionId
           }
+          responseStage.value = '正在查资料...'
+          scheduleDeepSearchHint()
         },
         onDelta(event) {
           const delta = event?.delta || ''
           if (!delta) return
-          patchMessage(streamingMessageId, (current) => ({
-            ...current,
-            content: `${current.content || ''}${delta}`,
-            isStreaming: true,
-          }))
+          clearStageTimer()
+          responseStage.value = '正在生成回答...'
+          queueStreamingDelta(streamingMessageId, delta)
         },
         onDone(event) {
+          flushStreamingDeltas()
           replaceStreamingMessage(streamingMessageId, event)
+          responseStage.value = ''
         },
-      }
+      },
     )
 
     activeSessionId.value = response.sessionId
     draft.value = ''
   } catch (error) {
+    flushStreamingDeltas()
     const messageText = error instanceof Error && error.message ? error.message : '发送失败，请稍后再试'
-    markStreamingFailed(streamingMessageId, messageText)
+    markStreamingFailed(streamingMessageId, messageText, retryQuestion)
     uni.showToast({ title: messageText.slice(0, 18), icon: 'none' })
   } finally {
     sending.value = false
+    responseStage.value = ''
+    clearStageTimer()
   }
 }
 
@@ -233,17 +342,26 @@ function openBoard(boardId) {
   uni.navigateTo({ url: `/pages/boards/detail?id=${boardId}` })
 }
 
+function openBoardNote(board) {
+  uni.navigateTo({ url: `/pages/sessions/edit?boardId=${board.id}` })
+}
+
+function openBoardJudge(board) {
+  uni.navigateTo({ url: `/pages/judge/create?source=board&boardId=${board.id}` })
+}
+
 function answerTypeLabel(answerType) {
   if (answerType === 'STRUCTURED_RECOMMENDATION') return '站内推荐'
   if (answerType === 'RAG_ANSWER') return '知识库回答'
   if (answerType === 'WEB_AUGMENTED_ANSWER') return '联网增强'
+  if (answerType === 'INTERRUPTED') return '输出中断'
   if (answerType === 'REFUSAL') return '边界提示'
   if (answerType === 'STREAMING') return '生成中'
   return 'AI 回答'
 }
 
 function sourceTypeLabel(sourceType) {
-  if (sourceType === 'STRUCTURED') return '站内板库'
+  if (sourceType === 'STRUCTURED') return '站内资料'
   if (sourceType === 'DOCUMENT') return '知识文档'
   if (sourceType === 'WEB') return '联网来源'
   return sourceType || '来源'
@@ -256,18 +374,75 @@ function sourceTypeClass(sourceType) {
   return 'citation-badge--default'
 }
 
+function isCitationExpanded(messageId) {
+  return !!citationExpanded.value[String(messageId)]
+}
+
+function toggleCitationExpansion(messageId) {
+  const key = String(messageId)
+  citationExpanded.value = {
+    ...citationExpanded.value,
+    [key]: !citationExpanded.value[key],
+  }
+}
+
+function visibleCitations(message) {
+  const citations = Array.isArray(message?.citations) ? message.citations : []
+  if (isCitationExpanded(message?.id) || citations.length <= 2) {
+    return citations
+  }
+  return citations.slice(0, 2)
+}
+
+function hiddenCitationCount(message) {
+  const citations = Array.isArray(message?.citations) ? message.citations : []
+  return Math.max(citations.length - visibleCitations(message).length, 0)
+}
+
 function handleCitationAction(citation) {
-  if (!citation?.url) return
-  uni.setClipboardData({
-    data: citation.url,
-    success: () => uni.showToast({ title: '链接已复制', icon: 'none' }),
+  if (citation?.sourceType === 'WEB' && citation?.url) {
+    uni.setClipboardData({
+      data: citation.url,
+      success: () => uni.showToast({ title: '链接已复制', icon: 'none' }),
+    })
+    return
+  }
+
+  if (
+    citation?.sourceType === 'STRUCTURED'
+    && citation?.sourceId
+    && /^\d+$/.test(String(citation.sourceId))
+    && /板子名称|规则类型|人数/.test(citation?.snippet || '')
+  ) {
+    openBoard(Number(citation.sourceId))
+    return
+  }
+
+  const content = [citation?.title, citation?.snippet].filter(Boolean).join('\n\n')
+  uni.showModal({
+    title: sourceTypeLabel(citation?.sourceType),
+    content: content || '当前来源暂时没有更多可展示内容。',
+    showCancel: false,
   })
+}
+
+function retryFailedMessage(item) {
+  if (!item?.retryQuestion) return
+  sendQuestion(item.retryQuestion)
+}
+
+function retryInNewSession(item) {
+  if (!item?.retryQuestion) return
+  sendQuestion(item.retryQuestion, { newSession: true })
 }
 
 function startNewSession() {
   activeSessionId.value = ''
   messages.value = []
   draft.value = ''
+  responseStage.value = ''
+  citationExpanded.value = {}
+  clearStreamingState()
 }
 
 async function resetCurrentSession() {
@@ -293,6 +468,10 @@ onLoad((options) => {
   }
   loadAll()
 })
+
+onUnload(() => {
+  clearStreamingState()
+})
 </script>
 
 <template>
@@ -302,8 +481,8 @@ onLoad((options) => {
         <view class="assistant-header-kicker">WOLFBOOK AI ASSISTANT</view>
         <view class="assistant-header-main">
           <view class="assistant-header-copy">
-            <view class="assistant-header-title">AI 狼人顾问</view>
-            <view class="assistant-header-desc">规则、角色、板子和站内知识，都可以在这里快速问。</view>
+            <view class="assistant-header-title">AI 战术顾问</view>
+            <view class="assistant-header-desc">规则解释、板子推荐、局后复盘和站内知识，都可以在这里快速问。</view>
           </view>
           <view class="assistant-header-actions">
             <button class="button-primary header-action" @tap="startNewSession">新建</button>
@@ -311,7 +490,7 @@ onLoad((options) => {
           </view>
         </view>
         <view class="assistant-header-meta">
-          <view class="hero-chip">{{ bootstrap?.appearance?.dockLabel || 'AI狼人顾问' }}</view>
+          <view class="hero-chip">{{ bootstrap?.appearance?.dockLabel || 'AI战术顾问' }}</view>
         </view>
       </view>
 
@@ -334,7 +513,11 @@ onLoad((options) => {
           </view>
 
           <view v-if="loading && !messages.length" class="glass-card section-card welcome-panel">
-            <view class="section-desc">正在整理当前会话和知识来源...</view>
+            <view class="section-desc">正在准备 AI 助手入口和快捷提问...</view>
+          </view>
+
+          <view v-if="loadingHistory && !messages.length" class="glass-card section-card welcome-panel">
+            <view class="section-desc">正在同步最近一段会话记录...</view>
           </view>
 
           <view
@@ -356,10 +539,13 @@ onLoad((options) => {
               </view>
 
               <rich-text
-                v-if="item.role === 'ASSISTANT'"
+                v-if="item.role === 'ASSISTANT' && !item.isStreaming"
                 class="message-content message-content--markdown"
                 :nodes="item.renderedContent"
               />
+              <view v-else-if="item.role === 'ASSISTANT'" class="message-content message-content--plain message-content--streaming">
+                {{ item.content || '正在整理回答...' }}
+              </view>
               <view v-else class="message-content message-content--plain">{{ item.content }}</view>
 
               <view v-if="item.recommendedBoards && item.recommendedBoards.length" class="board-stack">
@@ -367,20 +553,34 @@ onLoad((options) => {
                   v-for="board in item.recommendedBoards"
                   :key="board.id"
                   class="board-card"
-                  @tap="openBoard(board.id)"
                 >
                   <image v-if="board.coverImage" class="board-cover" :src="board.coverImage" mode="aspectFill" />
                   <view class="board-copy">
                     <view class="board-name">{{ board.name }}</view>
                     <view class="section-meta">{{ board.playerCount }} 人 / {{ board.difficulty }}</view>
                     <view class="board-reason">{{ board.reason }}</view>
+                    <view class="board-actions">
+                      <button class="button-ghost board-action" @tap.stop="openBoard(board.id)">查看板子</button>
+                      <button class="button-ghost board-action" @tap.stop="openBoardNote(board)">开笔记</button>
+                      <button class="button-primary board-action" @tap.stop="openBoardJudge(board)">开法官局</button>
+                    </view>
                   </view>
                 </view>
               </view>
 
-              <view v-if="item.visibleCitations && item.visibleCitations.length" class="citation-stack">
+              <view v-if="item.citations && item.citations.length" class="citation-stack">
+                <view class="citation-toolbar">
+                  <view class="section-meta">参考来源</view>
+                  <view
+                    v-if="hiddenCitationCount(item)"
+                    class="citation-toggle"
+                    @tap="toggleCitationExpansion(item.id)"
+                  >
+                    {{ isCitationExpanded(item.id) ? '收起来源' : `展开其余 ${hiddenCitationCount(item)} 条` }}
+                  </view>
+                </view>
                 <view
-                  v-for="citation in item.visibleCitations"
+                  v-for="citation in visibleCitations(item)"
                   :key="`${citation.sourceType}-${citation.title}-${citation.sourceId}`"
                   class="citation-card"
                   @tap="handleCitationAction(citation)"
@@ -392,7 +592,27 @@ onLoad((options) => {
                     <view v-if="citation.url" class="citation-action">复制链接</view>
                   </view>
                   <view class="citation-title">{{ citation.title }}</view>
+                  <view v-if="citation.snippet" class="citation-snippet">{{ citation.snippet }}</view>
                 </view>
+              </view>
+
+              <view v-if="item.suggestedQuestions && item.suggestedQuestions.length && !item.isStreaming" class="followup-stack">
+                <view class="section-meta">继续追问</view>
+                <view class="followup-grid">
+                  <view
+                    v-for="question in item.suggestedQuestions"
+                    :key="question"
+                    class="followup-chip"
+                    @tap="sendQuestion(question)"
+                  >
+                    {{ question }}
+                  </view>
+                </view>
+              </view>
+
+              <view v-if="item.retryQuestion && !item.isStreaming" class="retry-actions">
+                <button class="button-ghost retry-button" @tap="retryFailedMessage(item)">重试发送</button>
+                <button class="button-ghost retry-button" @tap="retryInNewSession(item)">新会话重试</button>
               </view>
             </view>
           </view>
@@ -418,7 +638,7 @@ onLoad((options) => {
             auto-height
             :show-confirm-bar="false"
             :cursor-spacing="24"
-            placeholder="比如：12人进阶推荐什么板子？女巫能不能自救？"
+            placeholder="比如：12人进阶推荐什么板子？女巫能不能自救？这局复盘该先看谁？"
           />
         </view>
 
@@ -650,6 +870,10 @@ onLoad((options) => {
   font-size: 24rpx;
 }
 
+.message-content--streaming {
+  color: #f7f1df;
+}
+
 .message-content--markdown {
   display: block;
 }
@@ -711,6 +935,36 @@ onLoad((options) => {
   color: #cacaca;
 }
 
+.board-actions {
+  display: flex;
+  gap: 12rpx;
+  flex-wrap: wrap;
+  margin-top: 16rpx;
+}
+
+.board-action,
+.retry-button {
+  margin: 0;
+  min-width: 0;
+  height: 60rpx;
+  line-height: 60rpx;
+  padding: 0 18rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+}
+
+.citation-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.citation-toggle {
+  color: #d3b562;
+  font-size: 20rpx;
+}
+
 .citation-snippet {
   color: #d8cfba;
 }
@@ -745,6 +999,28 @@ onLoad((options) => {
 .citation-action {
   color: #8f8f8f;
   font-size: 20rpx;
+}
+
+.followup-stack,
+.retry-actions {
+  margin-top: 20rpx;
+}
+
+.followup-grid,
+.retry-actions {
+  display: flex;
+  gap: 12rpx;
+  flex-wrap: wrap;
+}
+
+.followup-chip {
+  padding: 10rpx 18rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.05);
+  color: #f2ead6;
+  font-size: 22rpx;
+  line-height: 1.45;
+  border: 1rpx solid rgba(255, 255, 255, 0.06);
 }
 
 .assistant-composer {

@@ -20,6 +20,7 @@ public class AssistantSchemaInitializer implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         createAssistantTables();
+        upgradeAssistantTables();
         createAssistantIndexes();
     }
 
@@ -111,12 +112,31 @@ public class AssistantSchemaInitializer implements ApplicationRunner {
                   hit_sources JSON,
                   used_web_search TINYINT DEFAULT 0,
                   latency_ms BIGINT DEFAULT 0,
+                  first_token_ms BIGINT DEFAULT 0,
+                  embedding_ms BIGINT DEFAULT 0,
+                  retrieval_ms BIGINT DEFAULT 0,
+                  model_ms BIGINT DEFAULT 0,
+                  web_search_ms BIGINT DEFAULT 0,
+                  cache_hit TINYINT DEFAULT 0,
+                  fallback_mode VARCHAR(40),
+                  stream_mode VARCHAR(30),
                   success TINYINT DEFAULT 1,
                   failure_type VARCHAR(50),
                   trace_id VARCHAR(64),
                   create_time DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
                 """);
+    }
+
+    private void upgradeAssistantTables() {
+        addColumnIfMissing("assistant_query_logs", "first_token_ms", "ALTER TABLE assistant_query_logs ADD COLUMN first_token_ms BIGINT DEFAULT 0");
+        addColumnIfMissing("assistant_query_logs", "embedding_ms", "ALTER TABLE assistant_query_logs ADD COLUMN embedding_ms BIGINT DEFAULT 0");
+        addColumnIfMissing("assistant_query_logs", "retrieval_ms", "ALTER TABLE assistant_query_logs ADD COLUMN retrieval_ms BIGINT DEFAULT 0");
+        addColumnIfMissing("assistant_query_logs", "model_ms", "ALTER TABLE assistant_query_logs ADD COLUMN model_ms BIGINT DEFAULT 0");
+        addColumnIfMissing("assistant_query_logs", "web_search_ms", "ALTER TABLE assistant_query_logs ADD COLUMN web_search_ms BIGINT DEFAULT 0");
+        addColumnIfMissing("assistant_query_logs", "cache_hit", "ALTER TABLE assistant_query_logs ADD COLUMN cache_hit TINYINT DEFAULT 0");
+        addColumnIfMissing("assistant_query_logs", "fallback_mode", "ALTER TABLE assistant_query_logs ADD COLUMN fallback_mode VARCHAR(40)");
+        addColumnIfMissing("assistant_query_logs", "stream_mode", "ALTER TABLE assistant_query_logs ADD COLUMN stream_mode VARCHAR(30)");
     }
 
     private void createAssistantIndexes() {
@@ -142,6 +162,24 @@ public class AssistantSchemaInitializer implements ApplicationRunner {
                 Integer.class,
                 tableName,
                 indexName
+        );
+        if (count == null || count == 0) {
+            jdbcTemplate.execute(ddl);
+        }
+    }
+
+    private void addColumnIfMissing(String tableName, String columnName, String ddl) {
+        Integer count = jdbcTemplate.queryForObject(
+                """
+                        SELECT COUNT(1)
+                        FROM information_schema.columns
+                        WHERE table_schema = DATABASE()
+                          AND table_name = ?
+                          AND column_name = ?
+                        """,
+                Integer.class,
+                tableName,
+                columnName
         );
         if (count == null || count == 0) {
             jdbcTemplate.execute(ddl);
