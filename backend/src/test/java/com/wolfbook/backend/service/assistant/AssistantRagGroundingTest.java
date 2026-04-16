@@ -139,11 +139,34 @@ class AssistantRagGroundingTest {
         List<AssistantKnowledgeService.KnowledgeHit> hits = reranker.rerank(List.of(
                 hit("舞者", "ROLE:1", "起舞", 20),
                 hit("假面", "ROLE:2", "面具", 999)
-        ), plan, 3);
+        ), plan, 3).hits();
 
         assertThat(hits).hasSize(1);
         assertThat(hits.getFirst().subjectKey()).isEqualTo("ROLE:1");
         assertThat(hits.getFirst().contextText()).contains("起舞");
+    }
+
+    @Test
+    void rerankerAppliesDocumentDiversityAndEmitsRankingMetrics() {
+        AssistantReranker reranker = new AssistantReranker();
+        AssistantQueryPlan plan = new AssistantQueryPlan(
+                "舞者技能",
+                "舞者技能",
+                new AssistantSubject("ROLE", "ROLE:1", "1", "舞者", List.of("舞者"), 100),
+                true,
+                false,
+                false,
+                List.of("舞者")
+        );
+
+        AssistantKnowledgeService.KnowledgeHit base = hit("舞者 / 基础", "ROLE:1", "角色名称：舞者", 100, "BASE", "chunk-a");
+        AssistantKnowledgeService.KnowledgeHit skill = hit("舞者 / 技能", "ROLE:1", "技能：起舞", 90, "SKILL", "chunk-b");
+        AssistantKnowledgeService.KnowledgeHit faq = hit("舞者 / FAQ", "ROLE:1", "Q：能否跳过", 80, "FAQ", "chunk-c");
+
+        AssistantReranker.RerankResult result = reranker.rerank(List.of(base, skill, faq), plan, 2);
+
+        assertThat(result.hits()).hasSize(2);
+        assertThat(result.metrics()).containsKeys("before", "after", "evaluationK");
     }
 
     @Test
@@ -213,7 +236,7 @@ class AssistantRagGroundingTest {
         List<AssistantKnowledgeService.KnowledgeHit> filteredHits = new AssistantReranker().rerank(List.of(
                 hit("金水 / 狼人杀术语", "TERM:金水", "金水：预言家查验后显示为好人的玩家，通常只能说明查验结果，不代表绝对铁好人。", 80, "GLOSSARY"),
                 hit("狼人 / 狼人杀术语", "ROLE:1", "狼人：夜间与狼队共同刀人。", 999, "GLOSSARY")
-        ), plan, 10);
+        ), plan, 10).hits();
 
         String answer = generationService.templateKnowledgeAnswer(plan, filteredHits);
 
