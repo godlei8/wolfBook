@@ -418,6 +418,25 @@ public class AssistantAnswerService {
                 String checkedAnswer = sanitizeSubjectDrift(generatedAnswer.answer(), request.message());
                 AssistantAnswerValidation validation = assistantAnswerValidator.validate(checkedAnswer, prepared.queryPlan(), hits);
                 if (!validation.valid()) {
+                    if ("LOW_CONFIDENCE".equals(validation.reason())) {
+                        metrics.setFallbackMode("VALIDATION_LOW_CONFIDENCE");
+                        checkedAnswer = buildLowConfidenceFallbackAnswer(request.message(), hits, shouldAugmentWithWebSearch(prepared, request.message(), hits));
+                        answerType = AssistantConstants.ANSWER_REFUSAL;
+                        streamedAnswer = emitStaticAnswer(checkedAnswer, emitter, metrics);
+                        return new StreamExecution(
+                                persistAssistantResponse(
+                                        prepared.session(),
+                                        streamedAnswer.answer(),
+                                        answerType,
+                                        citations,
+                                        List.of(),
+                                        List.of(),
+                                        false,
+                                        prepared.traceId()
+                                ),
+                                streamedAnswer.failureType()
+                        );
+                    }
                     metrics.setFallbackMode("VALIDATION_" + validation.reason());
                     checkedAnswer = sanitizeSubjectDrift(
                             assistantAnswerGenerationService.templateKnowledgeAnswer(prepared.queryPlan(), hits),
@@ -555,6 +574,21 @@ public class AssistantAnswerService {
             answer = sanitizeSubjectDrift(generatedAnswer.answer(), request.message());
             AssistantAnswerValidation validation = assistantAnswerValidator.validate(answer, prepared.queryPlan(), hits);
             if (!validation.valid()) {
+                if ("LOW_CONFIDENCE".equals(validation.reason())) {
+                    metrics.setFallbackMode("VALIDATION_LOW_CONFIDENCE");
+                    answerType = AssistantConstants.ANSWER_REFUSAL;
+                    answer = buildLowConfidenceFallbackAnswer(request.message(), hits, shouldAugmentWithWebSearch(prepared, request.message(), hits));
+                    return persistAssistantResponse(
+                            prepared.session(),
+                            answer,
+                            answerType,
+                            citations,
+                            boards,
+                            List.of(),
+                            false,
+                            prepared.traceId()
+                    );
+                }
                 metrics.setFallbackMode("VALIDATION_" + validation.reason());
                 answer = sanitizeSubjectDrift(
                         assistantAnswerGenerationService.templateKnowledgeAnswer(prepared.queryPlan(), hits),
@@ -1348,6 +1382,47 @@ public class AssistantAnswerService {
                 .append("- 先看人数和难度是否贴近你的局配置\n")
                 .append("- 如果你愿意，我还能继续帮你比较其中两张板子的节奏差异");
         return builder.toString().trim();
+    }
+
+    private String buildLowConfidenceFallbackAnswer(
+            String query,
+            List<AssistantKnowledgeService.KnowledgeHit> hits,
+            boolean allowWebSearch
+    ) {
+        String evidence = hits == null || hits.isEmpty()
+                ? "- 暂无可引用证据。"
+                : "- [E1] " + clipText(hits.getFirst().title(), 40) + "：" + clipText(hits.getFirst().contextText(), 120);
+        String suggestion = allowWebSearch
+                ? "建议允许联网检索最新规则，或补充更具体的主体与场景。"
+                : "请先补充更具体的主体与场景（例如角色名、板子名、局势阶段）。";
+        return """
+                ## 结论
+
+                - 当前回答置信度较低，基于现有证据不足以可靠回答“%s”。
+
+                ## 证据引用
+
+                %s
+
+                ## 置信度
+
+                - 低（0.35）
+
+                ## 后续建议
+
+                - %s
+                """.formatted(clipText(query, 80), evidence, suggestion).trim();
+    }
+
+    private String clipText(String value, int maxLength) {
+        if (value == null) {
+            return "";
+        }
+        String compact = value.replaceAll("\\s+", " ").trim();
+        if (compact.length() <= maxLength) {
+            return compact;
+        }
+        return compact.substring(0, Math.max(0, maxLength));
     }
 
     private String fallbackKnowledgeAnswer(String query, List<AssistantKnowledgeService.KnowledgeHit> hits) {

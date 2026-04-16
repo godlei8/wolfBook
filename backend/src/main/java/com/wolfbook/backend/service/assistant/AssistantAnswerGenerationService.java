@@ -11,11 +11,13 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -69,7 +71,19 @@ class AssistantAnswerGenerationService {
             return """
                     ## 结论
 
-                    - 现有知识库暂时没有找到能直接回答这个问题的资料。
+                    - 现有知识库暂时没有找到能直接回答这个问题的资料，当前信息不足。
+
+                    ## 证据引用
+
+                    - 暂无可引用证据。
+
+                    ## 置信度
+
+                    - 低（0.20）
+
+                    ## 后续建议
+
+                    - 请补充更具体的问题主体（角色/板子/术语），或允许我联网检索最新资料。
                     """.trim();
         }
         String subjectName = queryPlan != null && queryPlan.subject() != null
@@ -77,6 +91,7 @@ class AssistantAnswerGenerationService {
                 : firstNonBlank(hits.getFirst().subjectName(), hits.getFirst().title(), "这个问题");
         boolean skillOnly = asksForSkill(queryPlan == null ? "" : queryPlan.effectiveQuery());
         Map<String, List<String>> sections = new LinkedHashMap<>();
+        Map<String, String> evidenceMap = buildEvidenceMap(hits);
         Set<String> fingerprints = new LinkedHashSet<>();
 
         List<AssistantKnowledgeService.KnowledgeHit> orderedHits = hits.stream()
@@ -98,7 +113,8 @@ class AssistantAnswerGenerationService {
             }
         }
         if (sections.isEmpty()) {
-            sections.put("知识库补充", List.of("- " + clean(hits.getFirst().contextText(), 520)));
+            String fallbackEvidenceId = firstEvidenceId(evidenceMap);
+            sections.put("知识库补充", List.of("- " + clean(hits.getFirst().contextText(), 520) + " " + fallbackEvidenceId));
         }
         StringBuilder builder = new StringBuilder("## 结论\n\n");
         if (queryPlan != null && queryPlan.hasSubject()) {
@@ -111,6 +127,12 @@ class AssistantAnswerGenerationService {
             builder.append("\n### ").append(section.getKey()).append('\n');
             section.getValue().forEach(line -> builder.append(line).append('\n'));
         }
+        builder.append("\n## 证据引用\n\n");
+        evidenceMap.forEach((key, value) -> builder.append("- ").append(key).append(" ").append(value).append('\n'));
+        builder.append("\n## 置信度\n\n")
+                .append("- 中（0.78）\n")
+                .append("\n## 后续建议\n\n")
+                .append("- 若你需要更高置信度，我可以继续检索同一主体的更多条目或补充联网检索。\n");
         return normalizeMarkdown(builder.toString());
     }
 
@@ -150,11 +172,14 @@ class AssistantAnswerGenerationService {
                         new SystemMessage("""
                                 你是 Wolfbook 的狼人杀知识助手。你必须只依据给定 chunk 回答。
                                 要求：
-                                1. 输出简洁 Markdown，先写 `## 结论`。
-                                2. 每个要点独占一行，不要把多个 `-` 挤在一行。
-                                3. 如果用户问的是具体角色、板子或术语，只回答该主体，不得混入相邻主体。
-                                4. 如果 chunk 没有直接说明，就回答“现有资料未直接说明”，不要猜测。
-                                5. 不要输出依据、来源、chunkUid、参考来源或继续追问。
+                                1. 硬约束：仅可基于给定 chunk 的检索证据回答；若证据不足，必须明确写“证据不足/资料不足”。
+                                2. 输出必须严格按四段格式：
+                                   `## 结论`、`## 证据引用`、`## 置信度`、`## 后续建议`。
+                                3. `## 结论`中的每个要点必须在行末追加证据标记（如 `[E1]`、`[E1][E2]`）。
+                                4. `## 证据引用`必须列出所有证据标记及对应摘要，不得出现未在 chunk 中出现的信息。
+                                5. `## 置信度`仅能输出“高/中/低 + 0~1 小数”，当证据缺口明显时必须输出低置信度。
+                                6. 若低置信度，在`## 后续建议`中优先给出“追问补充信息”或“建议联网检索”。
+                                7. 如果用户问的是具体角色、板子或术语，只回答该主体，不得混入相邻主体。
                                 """),
                         new UserMessage("""
                                 当前问题：
@@ -179,8 +204,9 @@ class AssistantAnswerGenerationService {
         if (content == null || content.isBlank()) {
             return List.of();
         }
+        String evidenceId = evidenceId(hit);
         if ("SKILL".equals(hit.chunkKind())) {
-            return List.of("- **技能**：" + cleanField(content, "技能", 520));
+            return List.of("- **技能**：" + cleanField(content, "技能", 520) + " " + evidenceId);
         }
         if (skillOnly && !"FAQ".equals(hit.chunkKind()) && !"SKILL".equals(hit.chunkKind())) {
             return List.of();
@@ -206,7 +232,9 @@ class AssistantAnswerGenerationService {
                 lines.add("- " + line);
             }
         }
-        return lines;
+        return lines.stream()
+                .map(line -> line + " " + evidenceId)
+                .toList();
     }
 
     private List<String> splitAnswerLines(String content) {
@@ -350,6 +378,37 @@ class AssistantAnswerGenerationService {
             return normalized;
         }
         return "## 结论\n\n" + normalized;
+    }
+
+    private Map<String, String> buildEvidenceMap(List<AssistantKnowledgeService.KnowledgeHit> hits) {
+        Map<String, String> evidence = new LinkedHashMap<>();
+        if (hits == null) {
+            return evidence;
+        }
+        hits.stream()
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparing(this::evidenceId))
+                .forEach(hit -> evidence.put(
+                        evidenceId(hit),
+                        "%s：%s".formatted(
+                                firstNonBlank(hit.title(), hit.subjectName(), "检索片段"),
+                                clean(hit.contextText(), 180)
+                        )
+                ));
+        return evidence;
+    }
+
+    private String firstEvidenceId(Map<String, String> evidenceMap) {
+        return evidenceMap.keySet().stream().findFirst().orElse("[E1]");
+    }
+
+    private String evidenceId(AssistantKnowledgeService.KnowledgeHit hit) {
+        String uid = hit.chunkUid();
+        if (uid == null || uid.isBlank()) {
+            return "[E1]";
+        }
+        int number = Math.abs(uid.hashCode() % 900) + 100;
+        return "[E" + number + "]";
     }
 
     private String clean(String value, int maxLength) {
