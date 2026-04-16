@@ -20,11 +20,20 @@ public class AssistantKnowledgeChunkEntity {
     private String subjectKey;
     private String subjectName;
     private String sectionTitle;
+    private String sectionPath;
+    private String chunkType;
     private String chunkKind;
     private String fieldName;
     private String contentText;
     private String embeddingText;
     private String contentHash;
+    private String chunkVersion;
+    private LocalDateTime updatedAt;
+    private String sourceUrl;
+    private String permissionTag;
+    private String parentChunkUid;
+    private Integer childIndex;
+    private Integer childCount;
     private Integer ordinal;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
@@ -117,6 +126,22 @@ public class AssistantKnowledgeChunkEntity {
         this.chunkKind = chunkKind;
     }
 
+    public String getSectionPath() {
+        return sectionPath;
+    }
+
+    public void setSectionPath(String sectionPath) {
+        this.sectionPath = sectionPath;
+    }
+
+    public String getChunkType() {
+        return chunkType;
+    }
+
+    public void setChunkType(String chunkType) {
+        this.chunkType = chunkType;
+    }
+
     public String getFieldName() {
         return fieldName;
     }
@@ -147,6 +172,62 @@ public class AssistantKnowledgeChunkEntity {
 
     public void setContentHash(String contentHash) {
         this.contentHash = contentHash;
+    }
+
+    public String getChunkVersion() {
+        return chunkVersion;
+    }
+
+    public void setChunkVersion(String chunkVersion) {
+        this.chunkVersion = chunkVersion;
+    }
+
+    public LocalDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(LocalDateTime updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
+    public String getSourceUrl() {
+        return sourceUrl;
+    }
+
+    public void setSourceUrl(String sourceUrl) {
+        this.sourceUrl = sourceUrl;
+    }
+
+    public String getPermissionTag() {
+        return permissionTag;
+    }
+
+    public void setPermissionTag(String permissionTag) {
+        this.permissionTag = permissionTag;
+    }
+
+    public String getParentChunkUid() {
+        return parentChunkUid;
+    }
+
+    public void setParentChunkUid(String parentChunkUid) {
+        this.parentChunkUid = parentChunkUid;
+    }
+
+    public Integer getChildIndex() {
+        return childIndex;
+    }
+
+    public void setChildIndex(Integer childIndex) {
+        this.childIndex = childIndex;
+    }
+
+    public Integer getChildCount() {
+        return childCount;
+    }
+
+    public void setChildCount(Integer childCount) {
+        this.childCount = childCount;
     }
 
     public Integer getOrdinal() {

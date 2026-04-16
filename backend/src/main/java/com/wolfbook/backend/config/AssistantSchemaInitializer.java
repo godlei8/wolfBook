@@ -74,11 +74,20 @@ public class AssistantSchemaInitializer implements ApplicationRunner {
                   subject_key VARCHAR(100),
                   subject_name VARCHAR(150),
                   section_title VARCHAR(200),
+                  section_path VARCHAR(500),
+                  chunk_type VARCHAR(40),
                   chunk_kind VARCHAR(40),
                   field_name VARCHAR(80),
                   content_text TEXT,
                   embedding_text TEXT,
                   content_hash VARCHAR(64),
+                  chunk_version VARCHAR(40),
+                  updated_at DATETIME,
+                  source_url VARCHAR(500),
+                  permission_tag VARCHAR(80),
+                  parent_chunk_uid VARCHAR(64),
+                  child_index INT,
+                  child_count INT,
                   ordinal INT DEFAULT 0,
                   create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
                   update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -162,6 +171,15 @@ public class AssistantSchemaInitializer implements ApplicationRunner {
         addColumnIfMissing("assistant_query_logs", "fallback_mode", "ALTER TABLE assistant_query_logs ADD COLUMN fallback_mode VARCHAR(40)");
         addColumnIfMissing("assistant_query_logs", "stream_mode", "ALTER TABLE assistant_query_logs ADD COLUMN stream_mode VARCHAR(30)");
         addColumnIfMissing("assistant_query_logs", "retrieval_meta_json", "ALTER TABLE assistant_query_logs ADD COLUMN retrieval_meta_json JSON");
+        addColumnIfMissing("assistant_knowledge_chunks", "section_path", "ALTER TABLE assistant_knowledge_chunks ADD COLUMN section_path VARCHAR(500)");
+        addColumnIfMissing("assistant_knowledge_chunks", "chunk_type", "ALTER TABLE assistant_knowledge_chunks ADD COLUMN chunk_type VARCHAR(40)");
+        addColumnIfMissing("assistant_knowledge_chunks", "chunk_version", "ALTER TABLE assistant_knowledge_chunks ADD COLUMN chunk_version VARCHAR(40)");
+        addColumnIfMissing("assistant_knowledge_chunks", "updated_at", "ALTER TABLE assistant_knowledge_chunks ADD COLUMN updated_at DATETIME");
+        addColumnIfMissing("assistant_knowledge_chunks", "source_url", "ALTER TABLE assistant_knowledge_chunks ADD COLUMN source_url VARCHAR(500)");
+        addColumnIfMissing("assistant_knowledge_chunks", "permission_tag", "ALTER TABLE assistant_knowledge_chunks ADD COLUMN permission_tag VARCHAR(80)");
+        addColumnIfMissing("assistant_knowledge_chunks", "parent_chunk_uid", "ALTER TABLE assistant_knowledge_chunks ADD COLUMN parent_chunk_uid VARCHAR(64)");
+        addColumnIfMissing("assistant_knowledge_chunks", "child_index", "ALTER TABLE assistant_knowledge_chunks ADD COLUMN child_index INT");
+        addColumnIfMissing("assistant_knowledge_chunks", "child_count", "ALTER TABLE assistant_knowledge_chunks ADD COLUMN child_count INT");
     }
 
     private void createAssistantIndexes() {
@@ -171,6 +189,8 @@ public class AssistantSchemaInitializer implements ApplicationRunner {
                 "CREATE INDEX idx_assistant_chunks_subject ON assistant_knowledge_chunks (publish_version_id, subject_key, source_type)");
         createIndexIfMissing("assistant_knowledge_chunks", "idx_assistant_chunks_document",
                 "CREATE INDEX idx_assistant_chunks_document ON assistant_knowledge_chunks (document_id, ordinal)");
+        createIndexIfMissing("assistant_knowledge_chunks", "idx_assistant_chunks_type",
+                "CREATE INDEX idx_assistant_chunks_type ON assistant_knowledge_chunks (publish_version_id, chunk_type, parent_chunk_uid)");
         createIndexIfMissing("assistant_sessions", "idx_assistant_sessions_openid",
                 "CREATE INDEX idx_assistant_sessions_openid ON assistant_sessions (openid, update_time)");
         createIndexIfMissing("assistant_messages", "idx_assistant_messages_session",

@@ -270,7 +270,9 @@ class AssistantRagGroundingTest {
                 chunkUid,
                 subjectKey,
                 title,
-                chunkKind
+                chunkKind,
+                "PARAGRAPH",
+                null
         );
     }
 
