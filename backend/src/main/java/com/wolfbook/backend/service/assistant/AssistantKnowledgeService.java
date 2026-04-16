@@ -317,6 +317,7 @@ public class AssistantKnowledgeService {
                 false,
                 false,
                 false,
+                false,
                 AssistantKeywordMatcher.extractTokens(query)
         );
         return searchPublishedKnowledgeResult(query, queryPlan, topK, similarityThreshold);

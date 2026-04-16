@@ -10,6 +10,7 @@ record AssistantQueryPlan(
         boolean strictSubject,
         boolean boardCatalogQuery,
         boolean timeSensitive,
+        boolean explicitWebSearch,
         List<String> tokens
 ) {
     AssistantQueryPlan(
@@ -48,6 +49,7 @@ record AssistantQueryPlan(
                 queryType == null ? "OPEN_QA" : queryType.name(),
                 boardCatalogQuery ? "BOARD_CATALOG" : "DEFAULT",
                 timeSensitive ? "TIME" : "STATIC",
+                explicitWebSearch ? "WEB_EXPLICIT" : "WEB_AUTO",
                 subjectPart
         );
     }
