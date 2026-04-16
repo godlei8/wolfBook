@@ -9,6 +9,7 @@ record AssistantQueryPlan(
         boolean strictSubject,
         boolean boardCatalogQuery,
         boolean timeSensitive,
+        boolean explicitWebSearch,
         List<String> tokens
 ) {
     boolean hasSubject() {
@@ -25,6 +26,7 @@ record AssistantQueryPlan(
                 strictSubject ? "STRICT" : "BROAD",
                 boardCatalogQuery ? "BOARD_CATALOG" : "DEFAULT",
                 timeSensitive ? "TIME" : "STATIC",
+                explicitWebSearch ? "WEB_EXPLICIT" : "WEB_AUTO",
                 subjectPart
         );
     }

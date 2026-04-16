@@ -378,7 +378,7 @@ public class AssistantAnswerService {
                         request.message()
                 );
                 streamedAnswer = emitStaticAnswer(
-                        mergedAnswer,
+                        appendSourceRatio(mergedAnswer, citations),
                         emitter,
                         metrics
                 );
@@ -408,7 +408,11 @@ public class AssistantAnswerService {
                     answerType = AssistantConstants.ANSWER_REFUSAL;
                     citations = List.of();
                 }
-                streamedAnswer = emitStaticAnswer(checkedAnswer, emitter, metrics);
+                if (shouldAugmentWithWebSearch(prepared, request.message(), hits)) {
+                    checkedAnswer = normalizeMarkdown(checkedAnswer + "\n\n> 联网补充失败（%s），以下内容仅基于本地知识库。"
+                            .formatted(describeWebFailure(webSearchResult)));
+                }
+                streamedAnswer = emitStaticAnswer(appendSourceRatio(checkedAnswer, citations), emitter, metrics);
             }
         } else if (shouldAugmentWithWebSearch(prepared, request.message(), hits)) {
             if (hasWebAnswer(webSearchResult)) {
@@ -422,7 +426,10 @@ public class AssistantAnswerService {
                         .toList();
                 metrics.setStreamMode("FALLBACK");
                 streamedAnswer = emitStaticAnswer(
-                        sanitizeSubjectDrift(buildWebMarkdownAnswer(webSearchResult.answer(), citations), request.message()),
+                        appendSourceRatio(
+                                sanitizeSubjectDrift(buildWebMarkdownAnswer(webSearchResult.answer(), citations), request.message()),
+                                citations
+                        ),
                         emitter,
                         metrics
                 );
@@ -433,7 +440,12 @@ public class AssistantAnswerService {
                         .toList();
                 answerType = AssistantConstants.ANSWER_REFUSAL;
                 metrics.setFallbackModeIfBlank("WEB_EMPTY");
-                streamedAnswer = emitStaticAnswer(buildRefusalMarkdown(prepared.config().prompt().refusalPrompt()), emitter, metrics);
+                streamedAnswer = emitStaticAnswer(
+                        buildRefusalMarkdown("联网失败（%s），本地知识库也没有命中直接资料。%s"
+                                .formatted(describeWebFailure(webSearchResult), prepared.config().prompt().refusalPrompt())),
+                        emitter,
+                        metrics
+                );
             }
         } else {
             citations = List.of();
@@ -544,6 +556,9 @@ public class AssistantAnswerService {
                         webSearchResult.suggestedQuestions(),
                         suggestedQuestions
                 );
+            } else if (shouldAugmentWithWebSearch(prepared, request.message(), hits)) {
+                answer = normalizeMarkdown(answer + "\n\n> 联网补充失败（%s），以下内容仅基于本地知识库。"
+                        .formatted(describeWebFailure(webSearchResult)));
             }
         } else if (shouldAugmentWithWebSearch(prepared, request.message(), hits)) {
             if (hasWebAnswer(webSearchResult)) {
@@ -559,13 +574,20 @@ public class AssistantAnswerService {
                 answer = sanitizeSubjectDrift(answer, request.message());
             } else {
                 metrics.setFallbackModeIfBlank("WEB_EMPTY");
-                return refusal(prepared.session(), prepared.config(), prepared.traceId(), prepared.config().prompt().refusalPrompt());
+                return refusal(
+                        prepared.session(),
+                        prepared.config(),
+                        prepared.traceId(),
+                        "联网失败（%s），本地知识库也没有命中直接资料。%s"
+                                .formatted(describeWebFailure(webSearchResult), prepared.config().prompt().refusalPrompt())
+                );
             }
         } else {
             metrics.setFallbackModeIfBlank("NO_KNOWLEDGE");
             return refusal(prepared.session(), prepared.config(), prepared.traceId(), prepared.config().prompt().refusalPrompt());
         }
 
+        answer = appendSourceRatio(answer, citations);
         return persistAssistantResponse(
                 prepared.session(),
                 answer,
@@ -736,9 +758,11 @@ public class AssistantAnswerService {
             return false;
         }
         if (hits == null || hits.isEmpty()) {
-            return prepared.queryPlan() != null && prepared.queryPlan().timeSensitive();
+            return true;
         }
-        return prepared.queryPlan() != null ? prepared.queryPlan().timeSensitive() : isTimeSensitiveQuery(query);
+        return prepared.queryPlan() != null
+                ? prepared.queryPlan().timeSensitive() || prepared.queryPlan().explicitWebSearch()
+                : isTimeSensitiveQuery(query);
     }
 
     private boolean isTimeSensitiveQuery(String query) {
@@ -763,21 +787,24 @@ public class AssistantAnswerService {
             ExecutionMetrics metrics
     ) {
         if (!shouldAugmentWithWebSearch(prepared, query, hits)) {
-            return AssistantSearchService.SearchResult.empty();
+            return AssistantSearchService.SearchResult.empty("WEB_NOT_TRIGGERED");
         }
         long webSearchStartAt = System.currentTimeMillis();
         try {
             AssistantSearchService.SearchResult searchResult = assistantSearchService.searchWeb(
                     query,
                     prepared.config().base().chatModel(),
-                    prepared.config().base().temperature()
+                    prepared.config().base().temperature(),
+                    prepared.config().search().timeoutSeconds()
             );
             metrics.setWebSearchMs(System.currentTimeMillis() - webSearchStartAt);
+            metrics.mergeRetrievalMeta("webSearch", searchResult.observable());
             return searchResult;
         } catch (Exception exception) {
             metrics.setWebSearchMs(System.currentTimeMillis() - webSearchStartAt);
             metrics.setFallbackModeIfBlank("WEB_EXCEPTION");
-            return AssistantSearchService.SearchResult.empty();
+            metrics.mergeRetrievalMeta("webSearch", Map.of("failureReason", exception.getClass().getSimpleName()));
+            return AssistantSearchService.SearchResult.empty(exception.getClass().getSimpleName());
         }
     }
 
@@ -839,6 +866,24 @@ public class AssistantAnswerService {
             return web;
         }
         return normalizeMarkdown(knowledge + "\n\n" + web);
+    }
+
+    private String describeWebFailure(AssistantSearchService.SearchResult searchResult) {
+        if (searchResult == null || searchResult.failureReason() == null || searchResult.failureReason().isBlank()) {
+            return "WEB_NO_RESULT";
+        }
+        return searchResult.failureReason();
+    }
+
+    private String appendSourceRatio(String answer, List<AssistantDtos.AssistantCitation> citations) {
+        List<AssistantDtos.AssistantCitation> safeCitations = citations == null ? List.of() : citations;
+        long webCount = safeCitations.stream().filter(citation -> AssistantConstants.SOURCE_WEB.equals(citation.sourceType())).count();
+        long localCount = Math.max(0, safeCitations.size() - webCount);
+        long total = localCount + webCount;
+        int localRatio = total == 0 ? 100 : (int) Math.round(localCount * 100.0 / total);
+        int webRatio = total == 0 ? 0 : 100 - localRatio;
+        String ratio = "### 来源占比\n- 本地知识：%d%%\n- 联网来源：%d%%".formatted(localRatio, webRatio);
+        return normalizeMarkdown((answer == null ? "" : answer) + "\n\n" + ratio);
     }
 
     private QueryIntent classifyIntent(String message, List<String> blockedKeywords) {
@@ -2132,6 +2177,15 @@ public class AssistantAnswerService {
 
         void setRetrievalMeta(Map<String, Object> retrievalMeta) {
             this.retrievalMeta = retrievalMeta == null ? Map.of() : retrievalMeta;
+        }
+
+        void mergeRetrievalMeta(String key, Map<String, Object> value) {
+            if (key == null || key.isBlank() || value == null || value.isEmpty()) {
+                return;
+            }
+            Map<String, Object> merged = new LinkedHashMap<>(retrievalMeta());
+            merged.put(key, value);
+            this.retrievalMeta = merged;
         }
     }
 }

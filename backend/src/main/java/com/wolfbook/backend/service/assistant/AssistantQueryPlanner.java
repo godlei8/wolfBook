@@ -42,6 +42,7 @@ class AssistantQueryPlanner {
                 strictSubject,
                 boardCatalogQuery,
                 isTimeSensitiveQuery(effectiveQuery),
+                isExplicitWebSearchQuery(effectiveQuery),
                 AssistantKeywordMatcher.extractTokens(effectiveQuery)
         );
     }
@@ -87,10 +88,22 @@ class AssistantQueryPlanner {
     private boolean isTimeSensitiveQuery(String query) {
         String normalized = query == null ? "" : query.toLowerCase(Locale.ROOT);
         for (String keyword : List.of(
-                "联网", "网上", "搜索一下", "查一下",
                 "最新", "今天", "今日", "刚刚", "近期", "最近",
                 "新闻", "赛事", "版本", "更新", "公告", "实时",
                 "latest", "today", "recent", "news", "version", "update"
+        )) {
+            if (normalized.contains(keyword)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isExplicitWebSearchQuery(String query) {
+        String normalized = query == null ? "" : query.toLowerCase(Locale.ROOT);
+        for (String keyword : List.of(
+                "联网", "网上", "搜索", "搜一下", "查一下", "查一查", "帮我查", "帮我搜",
+                "web search", "search online", "look up online"
         )) {
             if (normalized.contains(keyword)) {
                 return true;

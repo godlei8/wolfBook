@@ -133,6 +133,7 @@ class AssistantRagGroundingTest {
                 true,
                 false,
                 false,
+                false,
                 List.of("舞者")
         );
 
@@ -160,6 +161,7 @@ class AssistantRagGroundingTest {
                 true,
                 false,
                 false,
+                false,
                 List.of("舞者")
         );
 
@@ -177,6 +179,7 @@ class AssistantRagGroundingTest {
                 "假面",
                 new AssistantSubject("ROLE", "ROLE:2", "2", "假面", List.of("假面"), 100),
                 true,
+                false,
                 false,
                 false,
                 List.of("假面")
@@ -205,6 +208,7 @@ class AssistantRagGroundingTest {
                 "金水在狼人杀游戏里啥意思",
                 new AssistantSubject("TERM", "TERM:金水", "金水", "金水", List.of("金水"), 100),
                 true,
+                false,
                 false,
                 false,
                 List.of("金水")
@@ -246,6 +250,20 @@ class AssistantRagGroundingTest {
         assertThat(pruned).hasSize(3);
         assertThat(pruned).extracting(AssistantKnowledgeService.KnowledgeHit::chunkKind)
                 .containsExactly("BASE", "SKILL", "FAQ");
+    }
+
+    @Test
+    void plannerMarksExplicitAndTimeSensitiveWebTriggersSeparately() {
+        AssistantSubjectCatalog catalog = subjectCatalog(List.of(role(1, "舞者", null)), List.of());
+        AssistantQueryPlanner planner = new AssistantQueryPlanner(catalog);
+
+        AssistantQueryPlan explicitPlan = planner.plan("请联网搜索舞者最新比赛");
+        AssistantQueryPlan noWebHintPlan = planner.plan("舞者技能是什么");
+
+        assertThat(explicitPlan.explicitWebSearch()).isTrue();
+        assertThat(explicitPlan.timeSensitive()).isTrue();
+        assertThat(noWebHintPlan.explicitWebSearch()).isFalse();
+        assertThat(noWebHintPlan.timeSensitive()).isFalse();
     }
 
     private AssistantKnowledgeService.KnowledgeHit hit(String title, String subjectKey, String context, double score) {
