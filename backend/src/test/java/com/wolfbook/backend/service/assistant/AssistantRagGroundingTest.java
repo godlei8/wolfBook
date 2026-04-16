@@ -193,8 +193,12 @@ class AssistantRagGroundingTest {
         assertThat(answer).contains("### 技能与限制");
         assertThat(answer).contains("### 规则补充");
         assertThat(answer).contains("### 常见问题");
+        assertThat(answer).contains("## 证据引用");
+        assertThat(answer).contains("## 置信度");
+        assertThat(answer).contains("## 后续建议");
         assertThat(answer).contains("不与狼队见面");
         assertThat(answer).contains("从第二夜开始");
+        assertThat(answer).contains("[E");
     }
 
     @Test
@@ -218,8 +222,79 @@ class AssistantRagGroundingTest {
         String answer = generationService.templateKnowledgeAnswer(plan, filteredHits);
 
         assertThat(answer).contains("### 术语解释");
+        assertThat(answer).contains("## 证据引用");
         assertThat(answer).contains("预言家查验");
         assertThat(answer).doesNotContain("共同刀人");
+    }
+
+    @Test
+    void validatorRejectsConclusionWithoutEvidenceCoverage() {
+        AssistantSubjectCatalog catalog = subjectCatalog(
+                List.of(role(1, "舞者", null)),
+                List.of()
+        );
+        AssistantAnswerValidator validator = new AssistantAnswerValidator(catalog);
+        AssistantQueryPlan plan = new AssistantQueryPlan(
+                "舞者的信息",
+                "舞者的信息",
+                new AssistantSubject("ROLE", "ROLE:1", "1", "舞者", List.of("舞者"), 100),
+                true,
+                false,
+                false,
+                List.of("舞者")
+        );
+
+        AssistantAnswerValidation validation = validator.validate("""
+                ## 结论
+
+                - 舞者从第二夜开始起舞。
+
+                ## 证据引用
+
+                - [E1] 舞者 / 技能：从第二夜开始必须选择三名玩家共舞。
+
+                ## 置信度
+
+                - 中（0.8）
+                """, plan, List.of());
+
+        assertThat(validation.valid()).isFalse();
+        assertThat(validation.reason()).isEqualTo("COVERAGE_GAP");
+    }
+
+    @Test
+    void validatorMarksLowConfidenceAnswerAsInvalid() {
+        AssistantSubjectCatalog catalog = subjectCatalog(
+                List.of(role(1, "舞者", null)),
+                List.of()
+        );
+        AssistantAnswerValidator validator = new AssistantAnswerValidator(catalog);
+        AssistantQueryPlan plan = new AssistantQueryPlan(
+                "舞者的信息",
+                "舞者的信息",
+                new AssistantSubject("ROLE", "ROLE:1", "1", "舞者", List.of("舞者"), 100),
+                true,
+                false,
+                false,
+                List.of("舞者")
+        );
+
+        AssistantAnswerValidation validation = validator.validate("""
+                ## 结论
+
+                - 舞者技能是起舞。[E1]
+
+                ## 证据引用
+
+                - [E1] 舞者 / 技能：从第二夜开始必须选择三名玩家共舞。
+
+                ## 置信度
+
+                - 低（0.3）
+                """, plan, List.of());
+
+        assertThat(validation.valid()).isFalse();
+        assertThat(validation.reason()).isEqualTo("LOW_CONFIDENCE");
     }
 
     @Test
