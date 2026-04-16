@@ -120,6 +120,7 @@ public class AssistantSchemaInitializer implements ApplicationRunner {
                   title VARCHAR(120),
                   scene VARCHAR(50),
                   page_context JSON,
+                  retrieval_context JSON,
                   create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
                   update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                 )
@@ -168,6 +169,7 @@ public class AssistantSchemaInitializer implements ApplicationRunner {
     }
 
     private void upgradeAssistantTables() {
+        addColumnIfMissing("assistant_sessions", "retrieval_context", "ALTER TABLE assistant_sessions ADD COLUMN retrieval_context JSON");
         addColumnIfMissing("assistant_query_logs", "first_token_ms", "ALTER TABLE assistant_query_logs ADD COLUMN first_token_ms BIGINT DEFAULT 0");
         addColumnIfMissing("assistant_query_logs", "embedding_ms", "ALTER TABLE assistant_query_logs ADD COLUMN embedding_ms BIGINT DEFAULT 0");
         addColumnIfMissing("assistant_query_logs", "retrieval_ms", "ALTER TABLE assistant_query_logs ADD COLUMN retrieval_ms BIGINT DEFAULT 0");

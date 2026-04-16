@@ -21,7 +21,12 @@ class AssistantQueryPlanner {
     }
 
     AssistantQueryPlan plan(String query, List<String> recentMessages) {
+        return plan(query, recentMessages, AssistantConversationService.RetrievalContext.empty());
+    }
+
+    AssistantQueryPlan plan(String query, List<String> recentMessages, AssistantConversationService.RetrievalContext retrievalContext) {
         String effectiveQuery = enrichFollowUp(query, recentMessages);
+        effectiveQuery = enrichByRetrievalContext(effectiveQuery, retrievalContext);
 
         // “金水是啥 / 金水在狼人杀里啥意思”这类定义题必须先抽术语，不能让“狼人杀”里的“狼人”抢主体。
         AssistantSubject subject = subjectCatalog.fallbackVirtualSubjectFromQuery(effectiveQuery);
@@ -50,6 +55,29 @@ class AssistantQueryPlanner {
 
     AssistantQueryPlan plan(String query) {
         return plan(query, List.of());
+    }
+
+    private String enrichByRetrievalContext(String query, AssistantConversationService.RetrievalContext retrievalContext) {
+        if (query == null || query.isBlank() || retrievalContext == null) {
+            return query == null ? "" : query;
+        }
+        String result = query.trim();
+        if (retrievalContext.confirmedEntity() != null
+                && !retrievalContext.confirmedEntity().isBlank()
+                && !result.contains(retrievalContext.confirmedEntity())) {
+            result = retrievalContext.confirmedEntity().trim() + " " + result;
+        }
+        if (retrievalContext.clarifiedTimeRange() != null
+                && !retrievalContext.clarifiedTimeRange().isBlank()
+                && !result.contains(retrievalContext.clarifiedTimeRange())) {
+            result = result + " " + retrievalContext.clarifiedTimeRange().trim();
+        }
+        if (retrievalContext.confirmedSystemVersion() != null
+                && !retrievalContext.confirmedSystemVersion().isBlank()
+                && !result.contains(retrievalContext.confirmedSystemVersion())) {
+            result = result + " " + retrievalContext.confirmedSystemVersion().trim();
+        }
+        return result;
     }
 
     private String enrichFollowUp(String query, List<String> recentMessages) {
