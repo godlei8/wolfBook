@@ -19,6 +19,12 @@ public class AssistantDocumentEntity {
     private String filePath;
     private String summary;
     private String contentText;
+    private String contentHash;
+    private Integer documentVersion;
+    private Integer archived;
+    private Integer ttlDays;
+    private LocalDateTime expiresAt;
+    private LocalDateTime evidenceUpdatedAt;
     private String metadataJson;
     private Integer chunkCount;
     private String processingStatus;
@@ -98,6 +104,54 @@ public class AssistantDocumentEntity {
 
     public void setContentText(String contentText) {
         this.contentText = contentText;
+    }
+
+    public String getContentHash() {
+        return contentHash;
+    }
+
+    public void setContentHash(String contentHash) {
+        this.contentHash = contentHash;
+    }
+
+    public Integer getDocumentVersion() {
+        return documentVersion;
+    }
+
+    public void setDocumentVersion(Integer documentVersion) {
+        this.documentVersion = documentVersion;
+    }
+
+    public Integer getArchived() {
+        return archived;
+    }
+
+    public void setArchived(Integer archived) {
+        this.archived = archived;
+    }
+
+    public Integer getTtlDays() {
+        return ttlDays;
+    }
+
+    public void setTtlDays(Integer ttlDays) {
+        this.ttlDays = ttlDays;
+    }
+
+    public LocalDateTime getExpiresAt() {
+        return expiresAt;
+    }
+
+    public void setExpiresAt(LocalDateTime expiresAt) {
+        this.expiresAt = expiresAt;
+    }
+
+    public LocalDateTime getEvidenceUpdatedAt() {
+        return evidenceUpdatedAt;
+    }
+
+    public void setEvidenceUpdatedAt(LocalDateTime evidenceUpdatedAt) {
+        this.evidenceUpdatedAt = evidenceUpdatedAt;
     }
 
     public String getMetadataJson() {

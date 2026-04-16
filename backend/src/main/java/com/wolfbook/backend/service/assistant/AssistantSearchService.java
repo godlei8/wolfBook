@@ -105,6 +105,7 @@ public class AssistantSearchService {
                         item.path("title").asText(),
                         item.path("snippet").asText(),
                         item.path("url").asText(null),
+                        null,
                         null
                 ));
             }
@@ -224,7 +225,8 @@ public class AssistantSearchService {
                     citation.title(),
                     snippet,
                     citation.url(),
-                    citation.sourceId()
+                    citation.sourceId(),
+                    citation.evidenceUpdatedAt()
             ));
         }
         return enriched;

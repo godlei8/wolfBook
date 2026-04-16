@@ -30,6 +30,7 @@ record AssistantQueryPlan(
                 strictSubject,
                 boardCatalogQuery,
                 timeSensitive,
+                false,
                 tokens
         );
     }

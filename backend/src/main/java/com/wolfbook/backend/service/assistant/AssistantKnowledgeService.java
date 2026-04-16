@@ -31,6 +31,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -41,7 +42,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
+import java.util.HexFormat;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -70,6 +71,7 @@ public class AssistantKnowledgeService {
     private static final int RRF_K = 60;
     private static final Pattern MARKDOWN_HEADING_PATTERN = Pattern.compile("^(#{1,6}\\s+.+|\\d{1,3}[.、．]\\s*.+|第[一二三四五六七八九十百0-9]{1,4}[章节].*)$");
     private static final Pattern ERROR_CODE_PATTERN = Pattern.compile("(?i)(error\\s*code|错误码|报错|[a-z]{1,8}[-_]?\\d{3,6})");
+    private static final int DEFAULT_DOCUMENT_TTL_DAYS = 90;
 
     private final AssistantDocumentMapper assistantDocumentMapper;
     private final AssistantKnowledgeChunkMapper assistantKnowledgeChunkMapper;
@@ -159,33 +161,48 @@ public class AssistantKnowledgeService {
             throw new ApiException(4000, "Only pdf, md and txt are supported");
         }
 
-        AssistantDocumentEntity entity = new AssistantDocumentEntity();
-        entity.setName(stripExtension(fileName));
-        entity.setFileName(fileName);
-        entity.setSourceType(AssistantConstants.SOURCE_DOCUMENT);
-        entity.setSourceKey("DOCUMENT:" + UUID.randomUUID());
-        entity.setProcessingStatus(AssistantConstants.STATUS_READY);
-        entity.setReviewStatus(AssistantConstants.REVIEW_PENDING);
-        entity.setCreateTime(LocalDateTime.now());
-        entity.setUpdateTime(LocalDateTime.now());
-
         try {
             byte[] fileBytes = file.getBytes();
+            String logicalKey = "DOC:" + stripExtension(fileName).toLowerCase(Locale.ROOT);
+            String content = readFileContent(fileBytes, extension);
+            String contentHash = sha256(content);
+            AssistantDocumentEntity latest = loadLatestUploadedDocument(logicalKey);
+            if (latest != null && Objects.equals(latest.getContentHash(), contentHash)) {
+                return toView(latest);
+            }
+
+            AssistantDocumentEntity entity = new AssistantDocumentEntity();
+            entity.setName(stripExtension(fileName));
+            entity.setFileName(fileName);
+            entity.setSourceType(AssistantConstants.SOURCE_DOCUMENT);
+            entity.setSourceId(logicalKey);
+            entity.setSourceKey(logicalKey + ":v" + nextVersion(latest));
+            entity.setProcessingStatus(AssistantConstants.STATUS_READY);
+            entity.setReviewStatus(AssistantConstants.REVIEW_PENDING);
+            entity.setDocumentVersion(nextVersion(latest));
+            entity.setArchived(0);
+            entity.setTtlDays(DEFAULT_DOCUMENT_TTL_DAYS);
+            entity.setEvidenceUpdatedAt(LocalDateTime.now());
+            entity.setExpiresAt(LocalDateTime.now().plusDays(DEFAULT_DOCUMENT_TTL_DAYS));
+            entity.setCreateTime(LocalDateTime.now());
+            entity.setUpdateTime(LocalDateTime.now());
             UploadProvider.UploadResult uploaded = uploadProvider.uploadObject(fileName, file.getContentType(), fileBytes, "assistant/knowledge");
             entity.setFilePath(uploaded.url());
-            String content = readFileContent(fileBytes, extension);
             entity.setContentText(content);
+            entity.setContentHash(contentHash);
             entity.setSummary(buildSummary(content));
             entity.setChunkCount(assistantKnowledgeIndexer.buildChunks(entity).size());
             entity.setMetadataJson(write(Map.of("sourceType", AssistantConstants.SOURCE_DOCUMENT)));
             assistantDocumentMapper.insert(entity);
+            if (latest != null) {
+                latest.setArchived(1);
+                latest.setUpdateTime(LocalDateTime.now());
+                assistantDocumentMapper.updateById(latest);
+            }
             indexDocument(entity);
             assistantDocumentMapper.updateById(entity);
             return toView(entity);
         } catch (Exception exception) {
-            entity.setProcessingStatus(AssistantConstants.STATUS_FAILED);
-            entity.setLastError(exception.getMessage());
-            assistantDocumentMapper.insert(entity);
             throw new ApiException(5001, "Failed to process knowledge file");
         }
     }
@@ -709,6 +726,7 @@ public class AssistantKnowledgeService {
                 new LambdaQueryWrapper<AssistantDocumentEntity>()
                         .eq(AssistantDocumentEntity::getReviewStatus, AssistantConstants.REVIEW_APPROVED)
                         .eq(AssistantDocumentEntity::getProcessingStatus, AssistantConstants.STATUS_READY)
+                        .ne(AssistantDocumentEntity::getArchived, 1)
         );
         if (currentVersionId == null) {
             return approvedDocuments;
@@ -1105,10 +1123,11 @@ public class AssistantKnowledgeService {
     ) {
         boolean versionChanged = publishVersionId != null
                 && (existing == null || !Objects.equals(existing.getPublishVersionId(), publishVersionId));
+        String contentHash = sha256(content);
         boolean contentChanged = existing == null
                 || !Objects.equals(existing.getName(), name)
                 || !Objects.equals(existing.getSourceId(), sourceId)
-                || !Objects.equals(existing.getContentText(), content)
+                || !Objects.equals(existing.getContentHash(), contentHash)
                 || !Objects.equals(existing.getProcessingStatus(), AssistantConstants.STATUS_READY)
                 || !Objects.equals(existing.getReviewStatus(), AssistantConstants.REVIEW_APPROVED);
         if (!contentChanged && !versionChanged && !refreshIndex) {
@@ -1122,9 +1141,15 @@ public class AssistantKnowledgeService {
         entity.setSourceType(AssistantConstants.SOURCE_STRUCTURED);
         entity.setSourceKey(sourceKey);
         entity.setSourceId(sourceId);
+        entity.setDocumentVersion(1);
+        entity.setArchived(0);
+        entity.setTtlDays(null);
+        entity.setExpiresAt(null);
+        entity.setEvidenceUpdatedAt(LocalDateTime.now());
         entity.setFilePath(null);
         entity.setSummary(buildSummary(content));
         entity.setContentText(content);
+        entity.setContentHash(contentHash);
         entity.setMetadataJson(write(Map.of("sourceType", AssistantConstants.SOURCE_STRUCTURED, "sourceKey", sourceKey)));
         entity.setChunkCount(assistantKnowledgeIndexer.buildChunks(entity).size());
         entity.setProcessingStatus(AssistantConstants.STATUS_READY);
@@ -1280,6 +1305,11 @@ public class AssistantKnowledgeService {
                 entity.getSourceId(),
                 entity.getSummary(),
                 entity.getChunkCount(),
+                entity.getDocumentVersion(),
+                entity.getContentHash(),
+                entity.getArchived(),
+                entity.getExpiresAt(),
+                entity.getEvidenceUpdatedAt(),
                 entity.getProcessingStatus(),
                 entity.getReviewStatus(),
                 entity.getPublishVersionId(),
@@ -1342,6 +1372,34 @@ public class AssistantKnowledgeService {
     private String stripExtension(String fileName) {
         int dotIndex = fileName.lastIndexOf('.');
         return dotIndex >= 0 ? fileName.substring(0, dotIndex) : fileName;
+    }
+
+    private AssistantDocumentEntity loadLatestUploadedDocument(String logicalKey) {
+        if (logicalKey == null || logicalKey.isBlank()) {
+            return null;
+        }
+        return assistantDocumentMapper.selectOne(new LambdaQueryWrapper<AssistantDocumentEntity>()
+                .eq(AssistantDocumentEntity::getSourceType, AssistantConstants.SOURCE_DOCUMENT)
+                .eq(AssistantDocumentEntity::getSourceId, logicalKey)
+                .orderByDesc(AssistantDocumentEntity::getDocumentVersion)
+                .last("LIMIT 1"));
+    }
+
+    private int nextVersion(AssistantDocumentEntity latest) {
+        if (latest == null || latest.getDocumentVersion() == null || latest.getDocumentVersion() < 1) {
+            return 1;
+        }
+        return latest.getDocumentVersion() + 1;
+    }
+
+    private String sha256(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] raw = digest.digest((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(raw);
+        } catch (Exception exception) {
+            return Integer.toHexString((value == null ? "" : value).hashCode());
+        }
     }
 
     private String write(Object value) {
@@ -1420,7 +1478,9 @@ public class AssistantKnowledgeService {
         }
 
         AssistantDtos.AssistantCitation toCitation() {
-            return new AssistantDtos.AssistantCitation(sourceType, title, snippet, null, sourceId);
+            LocalDateTime evidenceUpdatedAt = document == null ? null
+                    : (document.getEvidenceUpdatedAt() == null ? document.getUpdateTime() : document.getEvidenceUpdatedAt());
+            return new AssistantDtos.AssistantCitation(sourceType, title, snippet, null, sourceId, evidenceUpdatedAt);
         }
     }
 

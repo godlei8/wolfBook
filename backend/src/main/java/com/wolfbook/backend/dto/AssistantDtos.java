@@ -75,7 +75,8 @@ public final class AssistantDtos {
             String title,
             String snippet,
             String url,
-            String sourceId
+            String sourceId,
+            LocalDateTime evidenceUpdatedAt
     ) {
     }
 
@@ -190,6 +191,11 @@ public final class AssistantDtos {
             String sourceId,
             String summary,
             Integer chunkCount,
+            Integer documentVersion,
+            String contentHash,
+            Integer archived,
+            LocalDateTime expiresAt,
+            LocalDateTime evidenceUpdatedAt,
             String processingStatus,
             String reviewStatus,
             Integer publishVersionId,
