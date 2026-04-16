@@ -42,6 +42,7 @@ class AssistantRetrievalService {
         boolean enoughEvidence = !reranked.isEmpty() && topScore >= MIN_EVIDENCE_SCORE;
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("subjectKey", queryPlan == null ? null : queryPlan.subjectKey());
+        meta.put("queryType", queryPlan == null || queryPlan.queryType() == null ? AssistantQueryType.OPEN_QA.name() : queryPlan.queryType().name());
         meta.put("strictSubject", queryPlan != null && queryPlan.strictSubject());
         meta.put("boardCatalogQuery", queryPlan != null && queryPlan.boardCatalogQuery());
         meta.put("vectorSearchUsed", searchResult.vectorSearchUsed());
@@ -52,11 +53,15 @@ class AssistantRetrievalService {
         meta.put("topEvidenceScore", topScore);
         meta.put("minimumEvidenceMet", enoughEvidence);
         meta.put("rankingMetrics", rerankResult.metrics());
+        if (searchResult.diagnostics() != null && !searchResult.diagnostics().isEmpty()) {
+            meta.put("retrievalDiagnostics", searchResult.diagnostics());
+        }
         meta.put("selectedChunks", reranked.stream().map(hit -> Map.of(
                 "chunkUid", hit.chunkUid() == null ? "" : hit.chunkUid(),
                 "title", hit.title() == null ? "" : hit.title(),
                 "subjectKey", hit.subjectKey() == null ? "" : hit.subjectKey(),
-                "score", hit.score()
+                "score", hit.score(),
+                "retrievalChannel", hit.retrievalChannel() == null ? "HYBRID" : hit.retrievalChannel()
         )).toList());
         return new AssistantRetrievalResult(
                 reranked,

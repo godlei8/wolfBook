@@ -6,11 +6,33 @@ record AssistantQueryPlan(
         String originalQuery,
         String effectiveQuery,
         AssistantSubject subject,
+        AssistantQueryType queryType,
         boolean strictSubject,
         boolean boardCatalogQuery,
         boolean timeSensitive,
         List<String> tokens
 ) {
+    AssistantQueryPlan(
+            String originalQuery,
+            String effectiveQuery,
+            AssistantSubject subject,
+            boolean strictSubject,
+            boolean boardCatalogQuery,
+            boolean timeSensitive,
+            List<String> tokens
+    ) {
+        this(
+                originalQuery,
+                effectiveQuery,
+                subject,
+                AssistantQueryType.OPEN_QA,
+                strictSubject,
+                boardCatalogQuery,
+                timeSensitive,
+                tokens
+        );
+    }
+
     boolean hasSubject() {
         return subject != null;
     }
@@ -23,6 +45,7 @@ record AssistantQueryPlan(
         String subjectPart = subject == null ? "NO_SUBJECT" : subject.sourceKey();
         return String.join(":",
                 strictSubject ? "STRICT" : "BROAD",
+                queryType == null ? "OPEN_QA" : queryType.name(),
                 boardCatalogQuery ? "BOARD_CATALOG" : "DEFAULT",
                 timeSensitive ? "TIME" : "STATIC",
                 subjectPart

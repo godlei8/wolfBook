@@ -47,6 +47,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * AI 助手知识库服务。
@@ -66,7 +67,9 @@ public class AssistantKnowledgeService {
     private static final int KEYWORD_SEGMENT_MAX_LENGTH = 900;
     private static final int DOCUMENT_RECALL_LIMIT = 20;
     private static final double MIN_KEYWORD_SCORE = 8.0d;
+    private static final int RRF_K = 60;
     private static final Pattern MARKDOWN_HEADING_PATTERN = Pattern.compile("^(#{1,6}\\s+.+|\\d{1,3}[.、．]\\s*.+|第[一二三四五六七八九十百0-9]{1,4}[章节].*)$");
+    private static final Pattern ERROR_CODE_PATTERN = Pattern.compile("(?i)(error\\s*code|错误码|报错|[a-z]{1,8}[-_]?\\d{3,6})");
 
     private final AssistantDocumentMapper assistantDocumentMapper;
     private final AssistantKnowledgeChunkMapper assistantKnowledgeChunkMapper;
@@ -310,6 +313,7 @@ public class AssistantKnowledgeService {
                 query,
                 query,
                 null,
+                AssistantQueryType.OPEN_QA,
                 false,
                 false,
                 false,
@@ -329,7 +333,7 @@ public class AssistantKnowledgeService {
         Integer currentVersionId = assistantPublishService.getCurrentVersionId();
         List<AssistantDocumentEntity> searchableDocuments = loadSearchableDocuments(currentVersionId);
         if (searchableDocuments.isEmpty()) {
-            return new KnowledgeSearchResult(List.of(), System.currentTimeMillis() - startAt, 0L, false);
+            return new KnowledgeSearchResult(List.of(), System.currentTimeMillis() - startAt, 0L, false, Map.of());
         }
         ensureChunkIndex(searchableDocuments);
 
@@ -363,18 +367,20 @@ public class AssistantKnowledgeService {
                     ? List.of()
                     : searchChunksViaVectorStore(query, queryPlan, currentVersionId, chunksByUid, parentChunksByUid, byDocumentId, topK, similarityThreshold);
             List<KnowledgeHit> keywordHits = searchChunksViaKeyword(query, queryPlan, new ArrayList<>(chunksByUid.values()), parentChunksByUid, byDocumentId, unscopedTermFallback);
-            List<KnowledgeHit> mergedHits = new ArrayList<>(keywordHits);
-            mergedHits.addAll(vectorHits);
-            return new KnowledgeSearchResult(pruneHits(mergedHits, topK), System.currentTimeMillis() - startAt, 0L, !vectorHits.isEmpty());
+            HybridWeights weights = resolveHybridWeights(queryPlan, query);
+            List<KnowledgeHit> fusedHits = fuseHybridHits(keywordHits, vectorHits, weights, topK);
+            Map<String, Object> diagnostics = buildRetrievalDiagnostics(queryPlan, weights, keywordHits.size(), vectorHits.size(), fusedHits);
+            return new KnowledgeSearchResult(pruneHits(fusedHits, topK), System.currentTimeMillis() - startAt, 0L, !vectorHits.isEmpty(), diagnostics);
         }
 
         // 没有 chunk 表时才退回旧检索，但仍优先沿用查询计划里的主体，不能重新把术语问题解析成角色。
         QueryFocus queryFocus = queryFocusFromPlan(queryPlan).orElseGet(() -> resolveQueryFocus(query));
         List<KnowledgeHit> vectorHits = searchViaVectorStore(query, queryFocus, currentVersionId, bySourceKey, topK, similarityThreshold);
         List<KnowledgeHit> keywordHits = searchViaKeywordFallback(query, queryFocus, searchableDocuments);
-        List<KnowledgeHit> mergedHits = new ArrayList<>(keywordHits);
-        mergedHits.addAll(vectorHits);
-        return new KnowledgeSearchResult(pruneHits(mergedHits, topK), System.currentTimeMillis() - startAt, 0L, !vectorHits.isEmpty());
+        HybridWeights weights = resolveHybridWeights(queryPlan, query);
+        List<KnowledgeHit> fusedHits = fuseHybridHits(keywordHits, vectorHits, weights, topK);
+        Map<String, Object> diagnostics = buildRetrievalDiagnostics(queryPlan, weights, keywordHits.size(), vectorHits.size(), fusedHits);
+        return new KnowledgeSearchResult(pruneHits(fusedHits, topK), System.currentTimeMillis() - startAt, 0L, !vectorHits.isEmpty(), diagnostics);
     }
 
     private void ensureChunkIndex(List<AssistantDocumentEntity> documents) {
@@ -536,7 +542,7 @@ public class AssistantKnowledgeService {
             if (queryPlan != null && queryPlan.subjectKey() != null && queryPlan.subjectKey().equals(chunk.getSubjectKey())) {
                 score += 150;
             }
-            hits.add(toKnowledgeHit(source, chunk, parentChunksByUid.get(chunk.getParentChunkUid()), score));
+            hits.add(toKnowledgeHit(source, chunk, parentChunksByUid.get(chunk.getParentChunkUid()), score, "DENSE"));
         }
         return hits;
     }
@@ -580,7 +586,7 @@ public class AssistantKnowledgeService {
             if (queryPlan != null && queryPlan.subjectKey() != null && queryPlan.subjectKey().equals(chunk.getSubjectKey())) {
                 score += 150;
             }
-            hits.add(toKnowledgeHit(source, chunk, parentChunksByUid.get(chunk.getParentChunkUid()), score));
+            hits.add(toKnowledgeHit(source, chunk, parentChunksByUid.get(chunk.getParentChunkUid()), score, "BM25"));
         }
         return hits.stream()
                 .sorted((left, right) -> Double.compare(right.score(), left.score()))
@@ -632,7 +638,8 @@ public class AssistantKnowledgeService {
             AssistantDocumentEntity source,
             AssistantKnowledgeChunkEntity chunk,
             AssistantKnowledgeChunkEntity parentChunk,
-            double score
+            double score,
+            String retrievalChannel
     ) {
         String content = chunk.getContentText() == null ? "" : chunk.getContentText();
         if ("CHILD".equalsIgnoreCase(chunk.getChunkType())) {
@@ -656,7 +663,8 @@ public class AssistantKnowledgeService {
                 chunk.getSubjectName(),
                 chunk.getChunkKind(),
                 chunk.getChunkType(),
-                chunk.getParentChunkUid()
+                chunk.getParentChunkUid(),
+                retrievalChannel
         );
     }
 
@@ -882,7 +890,14 @@ public class AssistantKnowledgeService {
                     trimSnippet(hitText),
                     compactContext(hitText),
                     score,
-                    source.getSourceId()
+                    source.getSourceId(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    "DENSE"
             ));
         }
         return hits;
@@ -1002,7 +1017,14 @@ public class AssistantKnowledgeService {
                         match.snippet().isBlank() ? trimSnippet(matchContent) : match.snippet(),
                         compactContext(matchContent),
                         score,
-                        document.getSourceId()
+                        document.getSourceId(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "BM25"
                 ));
             }
         }
@@ -1381,7 +1403,8 @@ public class AssistantKnowledgeService {
             String subjectName,
             String chunkKind,
             String chunkType,
-            String parentChunkUid
+            String parentChunkUid,
+            String retrievalChannel
     ) {
         KnowledgeHit(
                 AssistantDocumentEntity document,
@@ -1392,7 +1415,7 @@ public class AssistantKnowledgeService {
                 double score,
                 String sourceId
         ) {
-            this(document, title, sourceType, snippet, contextText, score, sourceId, null, null, null, null, null, null);
+            this(document, title, sourceType, snippet, contextText, score, sourceId, null, null, null, null, null, null, "BM25");
         }
 
         AssistantDtos.AssistantCitation toCitation() {
@@ -1405,7 +1428,152 @@ public class AssistantKnowledgeService {
             long retrievalMs,
             long embeddingMs,
             boolean vectorSearchUsed
+            ,
+            Map<String, Object> diagnostics
     ) {
+    }
+
+    private HybridWeights resolveHybridWeights(AssistantQueryPlan queryPlan, String query) {
+        AssistantQueryType queryType = queryPlan == null || queryPlan.queryType() == null
+                ? AssistantQueryType.OPEN_QA
+                : queryPlan.queryType();
+        double bm25Weight;
+        double denseWeight;
+        switch (queryType) {
+            case ENTITY_QUERY -> {
+                bm25Weight = 0.72d;
+                denseWeight = 0.28d;
+            }
+            case PROCESS_QUERY -> {
+                bm25Weight = 0.55d;
+                denseWeight = 0.45d;
+            }
+            case COMPARISON_QUERY -> {
+                bm25Weight = 0.65d;
+                denseWeight = 0.35d;
+            }
+            case OPEN_QA -> {
+                bm25Weight = 0.35d;
+                denseWeight = 0.65d;
+            }
+            default -> {
+                bm25Weight = 0.5d;
+                denseWeight = 0.5d;
+            }
+        }
+        String normalized = query == null ? "" : query.toLowerCase(Locale.ROOT);
+        if (ERROR_CODE_PATTERN.matcher(normalized).find()) {
+            bm25Weight = Math.min(0.85d, bm25Weight + 0.1d);
+            denseWeight = 1d - bm25Weight;
+        }
+        if (containsAny(normalized, List.of("解释", "含义", "原理", "为什么", "背景", "怎么理解", "meaning", "explain"))) {
+            denseWeight = Math.min(0.85d, denseWeight + 0.1d);
+            bm25Weight = 1d - denseWeight;
+        }
+        return new HybridWeights(bm25Weight, denseWeight);
+    }
+
+    private List<KnowledgeHit> fuseHybridHits(
+            List<KnowledgeHit> keywordHits,
+            List<KnowledgeHit> vectorHits,
+            HybridWeights weights,
+            int topK
+    ) {
+        Map<String, FusionCandidate> fusedByKey = new LinkedHashMap<>();
+        IntStream.range(0, keywordHits.size()).forEach(index -> {
+            KnowledgeHit hit = keywordHits.get(index);
+            String key = hitDeduplicationKey(hit);
+            FusionCandidate current = fusedByKey.getOrDefault(key, new FusionCandidate(hit));
+            double channelScore = weights.bm25Weight() / (RRF_K + index + 1);
+            fusedByKey.put(key, current.withBm25(hit, channelScore));
+        });
+        IntStream.range(0, vectorHits.size()).forEach(index -> {
+            KnowledgeHit hit = vectorHits.get(index);
+            String key = hitDeduplicationKey(hit);
+            FusionCandidate current = fusedByKey.getOrDefault(key, new FusionCandidate(hit));
+            double channelScore = weights.denseWeight() / (RRF_K + index + 1);
+            fusedByKey.put(key, current.withDense(hit, channelScore));
+        });
+        return fusedByKey.values().stream()
+                .map(FusionCandidate::toHybridHit)
+                .sorted((left, right) -> Double.compare(right.score(), left.score()))
+                .limit(Math.max(topK * 3, topK + 6))
+                .toList();
+    }
+
+    private Map<String, Object> buildRetrievalDiagnostics(
+            AssistantQueryPlan queryPlan,
+            HybridWeights weights,
+            int bm25Count,
+            int denseCount,
+            List<KnowledgeHit> fusedHits
+    ) {
+        Map<String, Object> diagnostics = new LinkedHashMap<>();
+        diagnostics.put("queryType", queryPlan == null || queryPlan.queryType() == null
+                ? AssistantQueryType.OPEN_QA.name()
+                : queryPlan.queryType().name());
+        diagnostics.put("fusionStrategy", "WEIGHTED_RRF");
+        diagnostics.put("bm25Weight", weights.bm25Weight());
+        diagnostics.put("denseWeight", weights.denseWeight());
+        diagnostics.put("bm25Candidates", bm25Count);
+        diagnostics.put("denseCandidates", denseCount);
+        diagnostics.put("channels", fusedHits.stream()
+                .map(hit -> Map.of(
+                        "chunkUid", hit.chunkUid() == null ? "" : hit.chunkUid(),
+                        "title", hit.title() == null ? "" : hit.title(),
+                        "retrievalChannel", hit.retrievalChannel() == null ? "HYBRID" : hit.retrievalChannel(),
+                        "score", hit.score()
+                ))
+                .limit(20)
+                .toList());
+        return diagnostics;
+    }
+
+    private record HybridWeights(double bm25Weight, double denseWeight) {
+    }
+
+    private record FusionCandidate(
+            KnowledgeHit seed,
+            KnowledgeHit bm25Hit,
+            KnowledgeHit denseHit,
+            double bm25Score,
+            double denseScore
+    ) {
+        FusionCandidate(KnowledgeHit seed) {
+            this(seed, null, null, 0d, 0d);
+        }
+
+        FusionCandidate withBm25(KnowledgeHit hit, double score) {
+            return new FusionCandidate(seed, hit, denseHit, score, denseScore);
+        }
+
+        FusionCandidate withDense(KnowledgeHit hit, double score) {
+            return new FusionCandidate(seed, bm25Hit, hit, bm25Score, score);
+        }
+
+        KnowledgeHit toHybridHit() {
+            boolean hasBm25 = bm25Hit != null;
+            boolean hasDense = denseHit != null;
+            KnowledgeHit primary = hasDense && (!hasBm25 || denseHit.score() >= bm25Hit.score()) ? denseHit : hasBm25 ? bm25Hit : seed;
+            String channel = hasBm25 && hasDense ? "HYBRID" : hasBm25 ? "BM25" : "DENSE";
+            double finalScore = (bm25Score + denseScore) * 10000 + (primary == null ? 0 : primary.score() * 0.2d);
+            return new KnowledgeHit(
+                    primary.document(),
+                    primary.title(),
+                    primary.sourceType(),
+                    primary.snippet(),
+                    primary.contextText(),
+                    finalScore,
+                    primary.sourceId(),
+                    primary.chunkUid(),
+                    primary.subjectKey(),
+                    primary.subjectName(),
+                    primary.chunkKind(),
+                    primary.chunkType(),
+                    primary.parentChunkUid(),
+                    channel
+            );
+        }
     }
 
     private record KnowledgeSegment(

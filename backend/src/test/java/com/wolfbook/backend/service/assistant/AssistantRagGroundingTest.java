@@ -130,6 +130,7 @@ class AssistantRagGroundingTest {
                 "舞者的信息",
                 "舞者的信息",
                 new AssistantSubject("ROLE", "ROLE:1", "1", "舞者", List.of("舞者"), 100),
+                AssistantQueryType.ENTITY_QUERY,
                 true,
                 false,
                 false,
@@ -180,6 +181,7 @@ class AssistantRagGroundingTest {
                 "舞者的信息",
                 "舞者的信息",
                 new AssistantSubject("ROLE", "ROLE:1", "1", "舞者", List.of("舞者"), 100),
+                AssistantQueryType.ENTITY_QUERY,
                 true,
                 false,
                 false,
@@ -199,6 +201,7 @@ class AssistantRagGroundingTest {
                 "假面",
                 "假面",
                 new AssistantSubject("ROLE", "ROLE:2", "2", "假面", List.of("假面"), 100),
+                AssistantQueryType.ENTITY_QUERY,
                 true,
                 false,
                 false,
@@ -231,6 +234,7 @@ class AssistantRagGroundingTest {
                 "金水在狼人杀游戏里啥意思",
                 "金水在狼人杀游戏里啥意思",
                 new AssistantSubject("TERM", "TERM:金水", "金水", "金水", List.of("金水"), 100),
+                AssistantQueryType.OPEN_QA,
                 true,
                 false,
                 false,
@@ -370,7 +374,8 @@ class AssistantRagGroundingTest {
                 title,
                 chunkKind,
                 "PARAGRAPH",
-                null
+                null,
+                "HYBRID"
         );
     }
 

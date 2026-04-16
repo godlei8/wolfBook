@@ -39,6 +39,7 @@ class AssistantQueryPlanner {
                 query,
                 effectiveQuery,
                 subject,
+                classifyQueryType(effectiveQuery),
                 strictSubject,
                 boardCatalogQuery,
                 isTimeSensitiveQuery(effectiveQuery),
@@ -109,5 +110,20 @@ class AssistantQueryPlanner {
             }
         }
         return false;
+    }
+
+    private AssistantQueryType classifyQueryType(String query) {
+        String normalized = query == null ? "" : query.toLowerCase(Locale.ROOT);
+        if (containsAny(normalized, List.of("对比", "区别", "差异", "哪个好", "vs", "versus"))) {
+            return AssistantQueryType.COMPARISON_QUERY;
+        }
+        if (containsAny(normalized, List.of("流程", "步骤", "顺序", "怎么做", "如何", "怎么办", "玩法", "规则"))) {
+            return AssistantQueryType.PROCESS_QUERY;
+        }
+        if (containsAny(normalized, List.of(
+                "谁", "哪个", "哪位", "名称", "叫啥", "是什么", "错误码", "报错", "code", "编号", "ID"))) {
+            return AssistantQueryType.ENTITY_QUERY;
+        }
+        return AssistantQueryType.OPEN_QA;
     }
 }
