@@ -138,6 +138,7 @@ admin/               Vue 3 管理后台
 miniprogram-vue/     uni-app 微信小程序
 deploy/              Nginx / 证书 / 环境变量 / PostgreSQL 初始化脚本
 docs/                部署文档
+docs/ai-assistant-eval-regression.md  AI 助手评测与发布门禁方案
 scripts/             本地辅助脚本
 docker-compose.prod.yml
 README.md
