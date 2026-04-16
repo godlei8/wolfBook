@@ -22,6 +22,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * AI 知识库 v2 索引器。
@@ -33,11 +34,12 @@ import java.util.regex.Pattern;
 @Service
 class AssistantKnowledgeIndexer {
 
-    static final String INDEX_SCHEMA_VERSION = "rag-v5-chunks-entity-first-v4";
+    static final String INDEX_SCHEMA_VERSION = "rag-v6-structured-slicer-parent-child";
 
     private static final Pattern INLINE_ENTRY_PATTERN = Pattern.compile("\\h+-\\h+(?=[\\u4e00-\\u9fa5A-Za-z0-9]{1,24}[（(])");
     private static final Pattern MIXED_ROW_SEPARATOR_PATTERN = Pattern.compile("\\|{2,}|[；;]\\s*(?=[\\u4e00-\\u9fa5A-Za-z0-9]{1,24}[（(：:])");
     private static final Pattern HEADING_PATTERN = Pattern.compile("^(#{1,6}\\s+.+|\\d{1,3}[.、．]\\s*.+|第[一二三四五六七八九十百0-9]{1,4}[章节].*)$");
+    private static final Pattern MARKDOWN_TABLE_PATTERN = Pattern.compile("^\\|.+\\|$");
     private static final Pattern LEADING_SUBJECT_PATTERN = Pattern.compile(
             "^([\\u4e00-\\u9fa5A-Za-z0-9]{2,16})(?:[（(][^）)]{1,80}[）)])?\\s*(?:[-–—:：]|\\s+(?:是指|指的是|就是|一般指|在狼人杀))"
     );
@@ -45,10 +47,14 @@ class AssistantKnowledgeIndexer {
             "技能", "规则", "如果", "若被", "玩家", "法官", "阵营", "保护", "接刀", "小贴士", "常见问题",
             "回答", "结论", "狼人杀", "狼人杀游戏", "游戏", "信息", "资料", "说明", "角色", "身份"
     );
+    private static final int PARENT_CHILD_SPLIT_THRESHOLD = 700;
+    private static final int CHILD_CHUNK_SIZE = 420;
+    private static final int CHILD_CHUNK_OVERLAP = 80;
 
     private final AssistantKnowledgeChunkMapper chunkMapper;
     private final ObjectProvider<VectorStore> vectorStoreProvider;
     private final AssistantSubjectCatalog subjectCatalog;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     AssistantKnowledgeIndexer(
             AssistantKnowledgeChunkMapper chunkMapper,
@@ -109,17 +115,17 @@ class AssistantKnowledgeIndexer {
         AssistantSubject subject = subjectFromStructuredDocument(entity, fields);
         List<ChunkDraft> drafts = new ArrayList<>();
         if (entity.getSourceKey() != null && entity.getSourceKey().startsWith("ROLE:")) {
-            addDraft(drafts, "基础信息", "BASE", "基础信息", subject, joinFields(fields, List.of("角色名称", "别名", "阵营", "类型", "定位")));
-            addDraft(drafts, "技能与限制", "SKILL", "技能", subject, fields.get("技能"));
-            addDraft(drafts, "背景", "BACKGROUND", "背景", subject, fields.get("背景"));
-            splitFaq(fields.get("FAQ")).forEach(faq -> addDraft(drafts, "常见问题", "FAQ", "FAQ", subject, faq));
+            addDraft(drafts, "基础信息", entity.getName() + " > 基础信息", "PARAGRAPH", "BASE", "基础信息", subject, joinFields(fields, List.of("角色名称", "别名", "阵营", "类型", "定位")));
+            addDraft(drafts, "技能与限制", entity.getName() + " > 技能与限制", "PARAGRAPH", "SKILL", "技能", subject, fields.get("技能"));
+            addDraft(drafts, "背景", entity.getName() + " > 背景", "PARAGRAPH", "BACKGROUND", "背景", subject, fields.get("背景"));
+            splitFaq(fields.get("FAQ")).forEach(faq -> addDraft(drafts, "常见问题", entity.getName() + " > 常见问题", "LIST", "FAQ", "FAQ", subject, faq));
         } else if (entity.getSourceKey() != null && entity.getSourceKey().startsWith("BOARD:")) {
-            addDraft(drafts, "基础信息", "BASE", "基础信息", subject, joinFields(fields, List.of("板子名称", "人数", "难度", "标签", "规则类型", "胜利条件", "简介", "阵容")));
-            addDraft(drafts, "规则", "RULE", "规则", subject, fields.get("规则"));
-            addDraft(drafts, "提示", "TIP", "提示", subject, fields.get("提示"));
-            splitFaq(fields.get("FAQ")).forEach(faq -> addDraft(drafts, "常见问题", "FAQ", "FAQ", subject, faq));
+            addDraft(drafts, "基础信息", entity.getName() + " > 基础信息", "PARAGRAPH", "BASE", "基础信息", subject, joinFields(fields, List.of("板子名称", "人数", "难度", "标签", "规则类型", "胜利条件", "简介", "阵容")));
+            addDraft(drafts, "规则", entity.getName() + " > 规则", "PARAGRAPH", "RULE", "规则", subject, fields.get("规则"));
+            addDraft(drafts, "提示", entity.getName() + " > 提示", "PARAGRAPH", "TIP", "提示", subject, fields.get("提示"));
+            splitFaq(fields.get("FAQ")).forEach(faq -> addDraft(drafts, "常见问题", entity.getName() + " > 常见问题", "LIST", "FAQ", "FAQ", subject, faq));
         } else {
-            addDraft(drafts, entity.getName(), "TEXT", null, subject, entity.getContentText());
+            addDraft(drafts, entity.getName(), entity.getName(), "PARAGRAPH", "TEXT", null, subject, entity.getContentText());
         }
         return toEntities(entity, drafts);
     }
@@ -130,35 +136,67 @@ class AssistantKnowledgeIndexer {
         prepared = INLINE_ENTRY_PATTERN.matcher(prepared).replaceAll("\n- ");
 
         List<ChunkDraft> drafts = new ArrayList<>();
-        String sectionTitle = entity.getName();
+        List<String> headingStack = new ArrayList<>();
+        headingStack.add(entity.getName());
         StringBuilder paragraph = new StringBuilder();
+        StringBuilder listBlock = new StringBuilder();
+        StringBuilder tableBlock = new StringBuilder();
+        StringBuilder codeBlock = new StringBuilder();
         AssistantSubject paragraphSubject = null;
+        boolean inCodeBlock = false;
         for (String rawLine : prepared.split("\n", -1)) {
             String line = rawLine.strip();
+            if (line.startsWith("```")) {
+                if (!inCodeBlock) {
+                    flushParagraph(drafts, headingStack, paragraph, paragraphSubject, "PARAGRAPH");
+                    flushListOrTable(drafts, headingStack, listBlock, "LIST");
+                    flushListOrTable(drafts, headingStack, tableBlock, "TABLE");
+                    paragraphSubject = null;
+                }
+                inCodeBlock = !inCodeBlock;
+                codeBlock.append(rawLine).append('\n');
+                if (!inCodeBlock) {
+                    flushCode(drafts, headingStack, codeBlock);
+                }
+                continue;
+            }
+            if (inCodeBlock) {
+                codeBlock.append(rawLine).append('\n');
+                continue;
+            }
             if (line.isBlank()) {
-                flushParagraph(drafts, sectionTitle, paragraph, paragraphSubject);
+                flushParagraph(drafts, headingStack, paragraph, paragraphSubject, "PARAGRAPH");
+                flushListOrTable(drafts, headingStack, listBlock, "LIST");
+                flushListOrTable(drafts, headingStack, tableBlock, "TABLE");
                 paragraphSubject = null;
                 continue;
             }
             if (isHeading(line)) {
-                flushParagraph(drafts, sectionTitle, paragraph, paragraphSubject);
+                flushParagraph(drafts, headingStack, paragraph, paragraphSubject, "PARAGRAPH");
+                flushListOrTable(drafts, headingStack, listBlock, "LIST");
+                flushListOrTable(drafts, headingStack, tableBlock, "TABLE");
                 paragraphSubject = null;
-                sectionTitle = cleanHeading(line);
+                updateHeadingStack(headingStack, line);
                 continue;
             }
-            List<String> entries = splitListOrTableLine(line);
-            if (entries.size() > 1 || isListLike(line) || isTableLike(line)) {
-                flushParagraph(drafts, sectionTitle, paragraph, paragraphSubject);
+            if (isTableLike(line)) {
+                flushParagraph(drafts, headingStack, paragraph, paragraphSubject, "PARAGRAPH");
+                flushListOrTable(drafts, headingStack, listBlock, "LIST");
                 paragraphSubject = null;
-                for (String entry : entries) {
-                    addUploadedDraft(drafts, sectionTitle, entry);
-                }
+                tableBlock.append(rawLine).append('\n');
+                continue;
+            }
+            if (isListLike(line)) {
+                flushParagraph(drafts, headingStack, paragraph, paragraphSubject, "PARAGRAPH");
+                flushListOrTable(drafts, headingStack, tableBlock, "TABLE");
+                paragraphSubject = null;
+                listBlock.append(rawLine).append('\n');
                 continue;
             }
 
             AssistantSubject lineSubject = inferSubjectFromEntry(line);
             if (paragraph.length() > 0 && (paragraph.length() + line.length() > 900 || subjectChanged(paragraphSubject, lineSubject))) {
-                flushParagraph(drafts, sectionTitle, paragraph, paragraphSubject);
+                flushParagraph(drafts, headingStack, paragraph, paragraphSubject, "PARAGRAPH");
                 paragraphSubject = null;
             }
             if (paragraphSubject == null) {
@@ -166,11 +204,14 @@ class AssistantKnowledgeIndexer {
             }
             paragraph.append(rawLine).append('\n');
         }
-        flushParagraph(drafts, sectionTitle, paragraph, paragraphSubject);
+        flushParagraph(drafts, headingStack, paragraph, paragraphSubject, "PARAGRAPH");
+        flushListOrTable(drafts, headingStack, listBlock, "LIST");
+        flushListOrTable(drafts, headingStack, tableBlock, "TABLE");
+        flushCode(drafts, headingStack, codeBlock);
         return toEntities(entity, drafts);
     }
 
-    private void addUploadedDraft(List<ChunkDraft> drafts, String sectionTitle, String entry) {
+    private void addUploadedDraft(List<ChunkDraft> drafts, String sectionTitle, String sectionPath, String chunkType, String entry) {
         String cleaned = cleanEntry(entry);
         if (cleaned.isBlank()) {
             return;
@@ -179,20 +220,67 @@ class AssistantKnowledgeIndexer {
         if (subject == null) {
             subject = inferSubjectFromEntry(sectionTitle);
         }
-        addDraft(drafts, sectionTitle, chunkKindFor(cleaned, subject), null, subject, cleaned);
+        addDraft(drafts, sectionTitle, sectionPath, chunkType, chunkKindFor(cleaned, subject), null, subject, cleaned);
     }
 
-    private void flushParagraph(List<ChunkDraft> drafts, String sectionTitle, StringBuilder paragraph, AssistantSubject subject) {
+    private void flushParagraph(List<ChunkDraft> drafts, List<String> headingStack, StringBuilder paragraph, AssistantSubject subject, String chunkType) {
         String text = paragraph.toString().trim();
         paragraph.setLength(0);
         if (text.isBlank()) {
             return;
         }
+        String sectionTitle = headingStack.isEmpty() ? "" : headingStack.get(headingStack.size() - 1);
         AssistantSubject resolvedSubject = subject == null ? inferSubjectFromEntry(text) : subject;
         if (resolvedSubject == null) {
             resolvedSubject = inferSubjectFromEntry(sectionTitle);
         }
-        addDraft(drafts, sectionTitle, chunkKindFor(text, resolvedSubject), null, resolvedSubject, text);
+        addDraft(drafts, sectionTitle, String.join(" > ", headingStack), chunkType, chunkKindFor(text, resolvedSubject), null, resolvedSubject, text);
+    }
+
+    private void flushListOrTable(List<ChunkDraft> drafts, List<String> headingStack, StringBuilder block, String chunkType) {
+        String text = block.toString().trim();
+        block.setLength(0);
+        if (text.isBlank()) {
+            return;
+        }
+        String sectionTitle = headingStack.isEmpty() ? "" : headingStack.get(headingStack.size() - 1);
+        for (String line : text.split("\n")) {
+            addUploadedDraft(drafts, sectionTitle, String.join(" > ", headingStack), chunkType, line);
+        }
+    }
+
+    private void flushCode(List<ChunkDraft> drafts, List<String> headingStack, StringBuilder codeBlock) {
+        String text = codeBlock.toString().trim();
+        codeBlock.setLength(0);
+        if (text.isBlank()) {
+            return;
+        }
+        String sectionTitle = headingStack.isEmpty() ? "" : headingStack.get(headingStack.size() - 1);
+        AssistantSubject subject = inferSubjectFromEntry(sectionTitle);
+        addDraft(drafts, sectionTitle, String.join(" > ", headingStack), "CODE", "TEXT", null, subject, text);
+    }
+
+    private void updateHeadingStack(List<String> headingStack, String line) {
+        String cleaned = cleanHeading(line);
+        int level = headingLevel(line);
+        while (headingStack.size() > Math.max(level, 1)) {
+            headingStack.remove(headingStack.size() - 1);
+        }
+        headingStack.add(cleaned);
+    }
+
+    private int headingLevel(String line) {
+        if (line == null) {
+            return 1;
+        }
+        if (line.startsWith("#")) {
+            int count = 0;
+            while (count < line.length() && line.charAt(count) == '#') {
+                count++;
+            }
+            return Math.max(1, count);
+        }
+        return 1;
     }
 
     private AssistantSubject inferSubjectFromEntry(String text) {
@@ -250,34 +338,85 @@ class AssistantKnowledgeIndexer {
         List<AssistantKnowledgeChunkEntity> chunks = new ArrayList<>();
         int ordinal = 0;
         LocalDateTime now = LocalDateTime.now();
+        String permissionTag = resolvePermissionTag(document);
         for (ChunkDraft draft : drafts) {
             String content = limit(draft.content(), 1800);
             if (content.isBlank()) {
                 continue;
             }
-            AssistantKnowledgeChunkEntity chunk = new AssistantKnowledgeChunkEntity();
-            chunk.setDocumentId(document.getId());
-            chunk.setPublishVersionId(document.getPublishVersionId());
-            chunk.setSourceType(document.getSourceType());
-            chunk.setSourceKey(document.getSourceKey());
-            if (draft.subject() != null) {
-                chunk.setSubjectType(draft.subject().type());
-                chunk.setSubjectKey(draft.subject().sourceKey());
-                chunk.setSubjectName(draft.subject().name());
+            if (content.length() > PARENT_CHILD_SPLIT_THRESHOLD) {
+                AssistantKnowledgeChunkEntity parentChunk = createChunkEntity(document, draft, content, now, permissionTag);
+                parentChunk.setChunkType("PARENT");
+                parentChunk.setOrdinal(ordinal++);
+                parentChunk.setChunkUid(buildChunkUid(document, parentChunk));
+                chunks.add(parentChunk);
+                List<String> children = splitChildren(content);
+                for (int i = 0; i < children.size(); i++) {
+                    AssistantKnowledgeChunkEntity childChunk = createChunkEntity(document, draft, children.get(i), now, permissionTag);
+                    childChunk.setChunkType("CHILD");
+                    childChunk.setParentChunkUid(parentChunk.getChunkUid());
+                    childChunk.setChildIndex(i);
+                    childChunk.setChildCount(children.size());
+                    childChunk.setOrdinal(ordinal++);
+                    childChunk.setChunkUid(buildChunkUid(document, childChunk));
+                    chunks.add(childChunk);
+                }
+                continue;
             }
-            chunk.setSectionTitle(limit(draft.sectionTitle(), 200));
-            chunk.setChunkKind(draft.chunkKind());
-            chunk.setFieldName(draft.fieldName());
-            chunk.setContentText(content);
-            chunk.setEmbeddingText(buildEmbeddingText(draft, content));
-            chunk.setContentHash(sha256(content));
+            AssistantKnowledgeChunkEntity chunk = createChunkEntity(document, draft, content, now, permissionTag);
             chunk.setOrdinal(ordinal++);
             chunk.setChunkUid(buildChunkUid(document, chunk));
-            chunk.setCreateTime(now);
-            chunk.setUpdateTime(now);
             chunks.add(chunk);
         }
         return chunks;
+    }
+
+    private AssistantKnowledgeChunkEntity createChunkEntity(
+            AssistantDocumentEntity document,
+            ChunkDraft draft,
+            String content,
+            LocalDateTime now,
+            String permissionTag
+    ) {
+        AssistantKnowledgeChunkEntity chunk = new AssistantKnowledgeChunkEntity();
+        chunk.setDocumentId(document.getId());
+        chunk.setPublishVersionId(document.getPublishVersionId());
+        chunk.setSourceType(document.getSourceType());
+        chunk.setSourceKey(document.getSourceKey());
+        if (draft.subject() != null) {
+            chunk.setSubjectType(draft.subject().type());
+            chunk.setSubjectKey(draft.subject().sourceKey());
+            chunk.setSubjectName(draft.subject().name());
+        }
+        chunk.setSectionTitle(limit(draft.sectionTitle(), 200));
+        chunk.setSectionPath(limit(draft.sectionPath(), 500));
+        chunk.setChunkType(limit(draft.chunkType(), 40));
+        chunk.setChunkKind(draft.chunkKind());
+        chunk.setFieldName(draft.fieldName());
+        chunk.setContentText(content);
+        chunk.setEmbeddingText(buildEmbeddingText(draft, content));
+        chunk.setContentHash(sha256(content));
+        chunk.setChunkVersion(INDEX_SCHEMA_VERSION);
+        chunk.setUpdatedAt(now);
+        chunk.setSourceUrl(document.getFilePath());
+        chunk.setPermissionTag(permissionTag);
+        chunk.setCreateTime(now);
+        chunk.setUpdateTime(now);
+        return chunk;
+    }
+
+    private List<String> splitChildren(String content) {
+        List<String> children = new ArrayList<>();
+        int start = 0;
+        while (start < content.length()) {
+            int end = Math.min(content.length(), start + CHILD_CHUNK_SIZE);
+            children.add(content.substring(start, end).trim());
+            if (end >= content.length()) {
+                break;
+            }
+            start = Math.max(end - CHILD_CHUNK_OVERLAP, start + 1);
+        }
+        return children;
     }
 
     private void addVectorDocuments(AssistantDocumentEntity entity, List<AssistantKnowledgeChunkEntity> chunks) {
@@ -286,9 +425,29 @@ class AssistantKnowledgeIndexer {
             return;
         }
         List<Document> vectorDocuments = new ArrayList<>();
+        String permissionTag = resolvePermissionTag(entity);
+        Map<String, Object> documentMetadata = new HashMap<>();
+        putMetadata(documentMetadata, "indexLevel", "DOCUMENT");
+        putMetadata(documentMetadata, "doc_id", entity.getId());
+        putMetadata(documentMetadata, "sourceType", entity.getSourceType());
+        putMetadata(documentMetadata, "sourceKey", entity.getSourceKey());
+        putMetadata(documentMetadata, "sourceId", entity.getSourceId());
+        putMetadata(documentMetadata, "publishedVersion", entity.getPublishVersionId());
+        putMetadata(documentMetadata, "title", entity.getName());
+        putMetadata(documentMetadata, "version", INDEX_SCHEMA_VERSION);
+        putMetadata(documentMetadata, "updated_at", LocalDateTime.now().toString());
+        putMetadata(documentMetadata, "source_url", entity.getFilePath());
+        putMetadata(documentMetadata, "permission_tag", permissionTag);
+        vectorDocuments.add(Document.builder()
+                .id("assistant-doc-" + entity.getId() + "-" + entity.getPublishVersionId())
+                .text(limit(entity.getName() + "\n" + (entity.getSummary() == null ? "" : entity.getSummary()) + "\n" + (entity.getContentText() == null ? "" : entity.getContentText()), 4000))
+                .metadata(documentMetadata)
+                .build());
         for (AssistantKnowledgeChunkEntity chunk : chunks) {
             Map<String, Object> metadata = new HashMap<>();
+            putMetadata(metadata, "indexLevel", "CHUNK");
             putMetadata(metadata, "chunkUid", chunk.getChunkUid());
+            putMetadata(metadata, "doc_id", chunk.getDocumentId());
             putMetadata(metadata, "sourceType", chunk.getSourceType());
             putMetadata(metadata, "sourceKey", chunk.getSourceKey());
             putMetadata(metadata, "sourceId", entity.getSourceId());
@@ -298,6 +457,13 @@ class AssistantKnowledgeIndexer {
             putMetadata(metadata, "subjectKey", chunk.getSubjectKey());
             putMetadata(metadata, "subjectName", chunk.getSubjectName());
             putMetadata(metadata, "chunkKind", chunk.getChunkKind());
+            putMetadata(metadata, "section_path", chunk.getSectionPath());
+            putMetadata(metadata, "chunk_type", chunk.getChunkType());
+            putMetadata(metadata, "version", chunk.getChunkVersion());
+            putMetadata(metadata, "updated_at", chunk.getUpdatedAt() == null ? null : chunk.getUpdatedAt().toString());
+            putMetadata(metadata, "source_url", chunk.getSourceUrl());
+            putMetadata(metadata, "permission_tag", chunk.getPermissionTag());
+            putMetadata(metadata, "parent_chunk_uid", chunk.getParentChunkUid());
             vectorDocuments.add(Document.builder()
                     .id(chunk.getChunkUid())
                     .text(chunk.getEmbeddingText())
@@ -311,6 +477,9 @@ class AssistantKnowledgeIndexer {
         List<String> parts = new ArrayList<>();
         if (draft.subject() != null) {
             parts.add(draft.subject().name());
+        }
+        if (draft.sectionPath() != null && !draft.sectionPath().isBlank()) {
+            parts.add(draft.sectionPath());
         }
         if (draft.sectionTitle() != null && !draft.sectionTitle().isBlank()) {
             parts.add(draft.sectionTitle());
@@ -394,7 +563,7 @@ class AssistantKnowledgeIndexer {
     }
 
     private boolean isTableLike(String line) {
-        return line.contains("|");
+        return line.contains("|") && MARKDOWN_TABLE_PATTERN.matcher(line).matches();
     }
 
     private boolean isCatalogLike(String line) {
@@ -413,11 +582,11 @@ class AssistantKnowledgeIndexer {
                 .trim();
     }
 
-    private void addDraft(List<ChunkDraft> drafts, String sectionTitle, String chunkKind, String fieldName, AssistantSubject subject, String content) {
+    private void addDraft(List<ChunkDraft> drafts, String sectionTitle, String sectionPath, String chunkType, String chunkKind, String fieldName, AssistantSubject subject, String content) {
         if (content == null || content.isBlank()) {
             return;
         }
-        drafts.add(new ChunkDraft(sectionTitle, chunkKind, fieldName, subject, content.trim()));
+        drafts.add(new ChunkDraft(sectionTitle, sectionPath, chunkType, chunkKind, fieldName, subject, content.trim()));
     }
 
     private String buildChunkUid(AssistantDocumentEntity document, AssistantKnowledgeChunkEntity chunk) {
@@ -450,6 +619,22 @@ class AssistantKnowledgeIndexer {
         }
     }
 
+    private String resolvePermissionTag(AssistantDocumentEntity document) {
+        if (document == null || document.getMetadataJson() == null || document.getMetadataJson().isBlank()) {
+            return "internal";
+        }
+        try {
+            Map<?, ?> metadata = objectMapper.readValue(document.getMetadataJson(), Map.class);
+            Object permission = metadata.get("permissionTag");
+            if (permission == null || String.valueOf(permission).isBlank()) {
+                permission = metadata.get("权限标签");
+            }
+            return permission == null || String.valueOf(permission).isBlank() ? "internal" : String.valueOf(permission);
+        } catch (Exception ignored) {
+            return "internal";
+        }
+    }
+
     private String limit(String value, int maxLength) {
         if (value == null) {
             return "";
@@ -463,6 +648,8 @@ class AssistantKnowledgeIndexer {
 
     private record ChunkDraft(
             String sectionTitle,
+            String sectionPath,
+            String chunkType,
             String chunkKind,
             String fieldName,
             AssistantSubject subject,

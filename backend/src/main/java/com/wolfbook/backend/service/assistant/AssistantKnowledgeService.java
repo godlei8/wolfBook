@@ -64,6 +64,7 @@ public class AssistantKnowledgeService {
     };
     private static final Logger log = LoggerFactory.getLogger(AssistantKnowledgeService.class);
     private static final int KEYWORD_SEGMENT_MAX_LENGTH = 900;
+    private static final int DOCUMENT_RECALL_LIMIT = 20;
     private static final double MIN_KEYWORD_SCORE = 8.0d;
     private static final Pattern MARKDOWN_HEADING_PATTERN = Pattern.compile("^(#{1,6}\\s+.+|\\d{1,3}[.、．]\\s*.+|第[一二三四五六七八九十百0-9]{1,4}[章节].*)$");
 
@@ -172,7 +173,7 @@ public class AssistantKnowledgeService {
             String content = readFileContent(fileBytes, extension);
             entity.setContentText(content);
             entity.setSummary(buildSummary(content));
-            entity.setChunkCount(chunkText(content).size());
+            entity.setChunkCount(assistantKnowledgeIndexer.buildChunks(entity).size());
             entity.setMetadataJson(write(Map.of("sourceType", AssistantConstants.SOURCE_DOCUMENT)));
             assistantDocumentMapper.insert(entity);
             indexDocument(entity);
@@ -337,22 +338,31 @@ public class AssistantKnowledgeService {
         Map<Integer, AssistantDocumentEntity> byDocumentId = searchableDocuments.stream()
                 .filter(document -> document.getId() != null)
                 .collect(Collectors.toMap(AssistantDocumentEntity::getId, item -> item, (left, right) -> left));
-        List<AssistantKnowledgeChunkEntity> searchableChunks = loadSearchableChunks(currentVersionId, queryPlan, byDocumentId, true);
+        Set<Integer> candidateDocumentIds = coarseRecallDocumentIds(query, queryPlan, searchableDocuments, topK, similarityThreshold);
+        Map<Integer, AssistantDocumentEntity> candidateDocumentsById = candidateDocumentIds.isEmpty()
+                ? byDocumentId
+                : byDocumentId.entrySet().stream()
+                .filter(entry -> candidateDocumentIds.contains(entry.getKey()))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        List<AssistantKnowledgeChunkEntity> searchableChunks = loadSearchableChunks(currentVersionId, queryPlan, candidateDocumentsById, true);
         boolean unscopedTermFallback = false;
         if (searchableChunks.isEmpty() && isStrictTermQuery(queryPlan)) {
             // 老资料可能还没有被识别成 TERM:金水 这类主体。这里只放宽 chunk 的 subjectKey 过滤，
             // 后面的关键词检索仍必须命中术语本身，避免退回到“狼人杀”里的“狼人”泛检索。
-            searchableChunks = loadSearchableChunks(currentVersionId, queryPlan, byDocumentId, false);
+            searchableChunks = loadSearchableChunks(currentVersionId, queryPlan, candidateDocumentsById, false);
             unscopedTermFallback = true;
         }
         Map<String, AssistantKnowledgeChunkEntity> chunksByUid = searchableChunks.stream()
+                .collect(Collectors.toMap(AssistantKnowledgeChunkEntity::getChunkUid, item -> item, (left, right) -> left, LinkedHashMap::new));
+        Map<String, AssistantKnowledgeChunkEntity> parentChunksByUid = searchableChunks.stream()
+                .filter(chunk -> chunk.getChunkUid() != null)
                 .collect(Collectors.toMap(AssistantKnowledgeChunkEntity::getChunkUid, item -> item, (left, right) -> left, LinkedHashMap::new));
 
         if (!chunksByUid.isEmpty()) {
             List<KnowledgeHit> vectorHits = unscopedTermFallback
                     ? List.of()
-                    : searchChunksViaVectorStore(query, queryPlan, currentVersionId, chunksByUid, byDocumentId, topK, similarityThreshold);
-            List<KnowledgeHit> keywordHits = searchChunksViaKeyword(query, queryPlan, new ArrayList<>(chunksByUid.values()), byDocumentId, unscopedTermFallback);
+                    : searchChunksViaVectorStore(query, queryPlan, currentVersionId, chunksByUid, parentChunksByUid, byDocumentId, topK, similarityThreshold);
+            List<KnowledgeHit> keywordHits = searchChunksViaKeyword(query, queryPlan, new ArrayList<>(chunksByUid.values()), parentChunksByUid, byDocumentId, unscopedTermFallback);
             List<KnowledgeHit> mergedHits = new ArrayList<>(keywordHits);
             mergedHits.addAll(vectorHits);
             return new KnowledgeSearchResult(pruneHits(mergedHits, topK), System.currentTimeMillis() - startAt, 0L, !vectorHits.isEmpty());
@@ -412,11 +422,84 @@ public class AssistantKnowledgeService {
         return assistantKnowledgeChunkMapper.selectList(wrapper);
     }
 
+    private Set<Integer> coarseRecallDocumentIds(
+            String query,
+            AssistantQueryPlan queryPlan,
+            List<AssistantDocumentEntity> searchableDocuments,
+            int topK,
+            double similarityThreshold
+    ) {
+        Set<Integer> recalled = new java.util.LinkedHashSet<>();
+        recalled.addAll(searchDocumentsViaVectorStore(query, queryPlan, topK, similarityThreshold));
+        recalled.addAll(searchDocumentsViaKeyword(queryPlan == null ? query : queryPlan.effectiveQuery(), searchableDocuments, topK));
+        return recalled;
+    }
+
+    private Set<Integer> searchDocumentsViaVectorStore(
+            String query,
+            AssistantQueryPlan queryPlan,
+            int topK,
+            double similarityThreshold
+    ) {
+        Integer currentVersionId = assistantPublishService.getCurrentVersionId();
+        if (currentVersionId == null) {
+            return Set.of();
+        }
+        VectorStore vectorStore = vectorStoreProvider.getIfAvailable();
+        if (vectorStore == null) {
+            return Set.of();
+        }
+        List<Document> documents = vectorStore.similaritySearch(SearchRequest.builder()
+                .query(queryPlan == null ? query : queryPlan.effectiveQuery())
+                .topK(Math.max(topK * 2, DOCUMENT_RECALL_LIMIT))
+                .similarityThreshold(similarityThreshold)
+                .filterExpression("publishedVersion == " + currentVersionId + " && indexLevel == 'DOCUMENT'")
+                .build());
+        if (documents == null || documents.isEmpty()) {
+            return Set.of();
+        }
+        return documents.stream()
+                .map(item -> item.getMetadata().get("doc_id"))
+                .filter(Objects::nonNull)
+                .map(String::valueOf)
+                .map(value -> {
+                    try {
+                        return Integer.valueOf(value);
+                    } catch (NumberFormatException ignored) {
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(java.util.LinkedHashSet::new));
+    }
+
+    private Set<Integer> searchDocumentsViaKeyword(String query, List<AssistantDocumentEntity> documents, int topK) {
+        if (documents == null || documents.isEmpty()) {
+            return Set.of();
+        }
+        return documents.stream()
+                .map(document -> Map.entry(document, AssistantKeywordMatcher.match(
+                        query,
+                        document.getName(),
+                        document.getFileName(),
+                        document.getSummary(),
+                        document.getContentText(),
+                        document.getSourceType()
+                )))
+                .filter(entry -> entry.getValue().score() >= MIN_KEYWORD_SCORE)
+                .sorted((left, right) -> Double.compare(right.getValue().score(), left.getValue().score()))
+                .limit(Math.max(topK, DOCUMENT_RECALL_LIMIT))
+                .map(entry -> entry.getKey().getId())
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(java.util.LinkedHashSet::new));
+    }
+
     private List<KnowledgeHit> searchChunksViaVectorStore(
             String query,
             AssistantQueryPlan queryPlan,
             Integer currentVersionId,
             Map<String, AssistantKnowledgeChunkEntity> chunksByUid,
+            Map<String, AssistantKnowledgeChunkEntity> parentChunksByUid,
             Map<Integer, AssistantDocumentEntity> documentsById,
             int topK,
             double similarityThreshold
@@ -453,7 +536,7 @@ public class AssistantKnowledgeService {
             if (queryPlan != null && queryPlan.subjectKey() != null && queryPlan.subjectKey().equals(chunk.getSubjectKey())) {
                 score += 150;
             }
-            hits.add(toKnowledgeHit(source, chunk, score));
+            hits.add(toKnowledgeHit(source, chunk, parentChunksByUid.get(chunk.getParentChunkUid()), score));
         }
         return hits;
     }
@@ -462,6 +545,7 @@ public class AssistantKnowledgeService {
             String query,
             AssistantQueryPlan queryPlan,
             List<AssistantKnowledgeChunkEntity> chunks,
+            Map<String, AssistantKnowledgeChunkEntity> parentChunksByUid,
             Map<Integer, AssistantDocumentEntity> documentsById,
             boolean allowUnscopedTermFallback
     ) {
@@ -496,7 +580,7 @@ public class AssistantKnowledgeService {
             if (queryPlan != null && queryPlan.subjectKey() != null && queryPlan.subjectKey().equals(chunk.getSubjectKey())) {
                 score += 150;
             }
-            hits.add(toKnowledgeHit(source, chunk, score));
+            hits.add(toKnowledgeHit(source, chunk, parentChunksByUid.get(chunk.getParentChunkUid()), score));
         }
         return hits.stream()
                 .sorted((left, right) -> Double.compare(right.score(), left.score()))
@@ -544,20 +628,35 @@ public class AssistantKnowledgeService {
         return queryPlan.tokens() == null ? List.of() : queryPlan.tokens();
     }
 
-    private KnowledgeHit toKnowledgeHit(AssistantDocumentEntity source, AssistantKnowledgeChunkEntity chunk, double score) {
+    private KnowledgeHit toKnowledgeHit(
+            AssistantDocumentEntity source,
+            AssistantKnowledgeChunkEntity chunk,
+            AssistantKnowledgeChunkEntity parentChunk,
+            double score
+    ) {
         String content = chunk.getContentText() == null ? "" : chunk.getContentText();
+        if ("CHILD".equalsIgnoreCase(chunk.getChunkType())) {
+            score += 30;
+        }
+        String parentContext = parentChunk == null ? "" : compactContext(parentChunk.getContentText());
+        String contextText = compactContext(content);
+        if (!parentContext.isBlank()) {
+            contextText = contextText + "\n\n上文上下文：" + parentContext;
+        }
         return new KnowledgeHit(
                 source,
                 chunkTitle(source, chunk),
                 chunk.getSourceType() == null ? source.getSourceType() : chunk.getSourceType(),
                 trimSnippet(content),
-                compactContext(content),
+                contextText,
                 score,
                 source.getSourceId(),
                 chunk.getChunkUid(),
                 chunk.getSubjectKey(),
                 chunk.getSubjectName(),
-                chunk.getChunkKind()
+                chunk.getChunkKind(),
+                chunk.getChunkType(),
+                chunk.getParentChunkUid()
         );
     }
 
@@ -1004,7 +1103,7 @@ public class AssistantKnowledgeService {
         entity.setSummary(buildSummary(content));
         entity.setContentText(content);
         entity.setMetadataJson(write(Map.of("sourceType", AssistantConstants.SOURCE_STRUCTURED, "sourceKey", sourceKey)));
-        entity.setChunkCount(chunkText(content).size());
+        entity.setChunkCount(assistantKnowledgeIndexer.buildChunks(entity).size());
         entity.setProcessingStatus(AssistantConstants.STATUS_READY);
         entity.setReviewStatus(AssistantConstants.REVIEW_APPROVED);
         if (publishVersionId != null) {
@@ -1033,6 +1132,44 @@ public class AssistantKnowledgeService {
         int indexedCount = assistantKnowledgeIndexer.indexDocument(entity);
         entity.setChunkCount(indexedCount);
         markCurrentChunkSchema(entity);
+        appendChunkQualityReport(entity);
+    }
+
+    private void appendChunkQualityReport(AssistantDocumentEntity document) {
+        if (document == null || document.getId() == null) {
+            return;
+        }
+        List<AssistantKnowledgeChunkEntity> chunks = assistantKnowledgeChunkMapper.selectList(
+                new LambdaQueryWrapper<AssistantKnowledgeChunkEntity>()
+                        .eq(AssistantKnowledgeChunkEntity::getDocumentId, document.getId())
+        );
+        if (chunks.isEmpty()) {
+            return;
+        }
+        double avgLength = chunks.stream()
+                .map(AssistantKnowledgeChunkEntity::getContentText)
+                .filter(Objects::nonNull)
+                .mapToInt(String::length)
+                .average()
+                .orElse(0d);
+        long headingCovered = chunks.stream()
+                .filter(chunk -> chunk.getSectionPath() != null && !chunk.getSectionPath().isBlank())
+                .count();
+        double headingCoverage = headingCovered * 1.0d / chunks.size();
+        long truncationCount = chunks.stream()
+                .map(AssistantKnowledgeChunkEntity::getContentText)
+                .filter(Objects::nonNull)
+                .filter(text -> !text.isBlank() && !text.matches(".*[。！？.!?]$"))
+                .count();
+        double sentenceTruncationRate = truncationCount * 1.0d / chunks.size();
+        Map<String, Object> metadata = new LinkedHashMap<>(readMetadata(document.getMetadataJson()));
+        Map<String, Object> quality = new LinkedHashMap<>();
+        quality.put("avg_chunk_length", avgLength);
+        quality.put("heading_coverage", headingCoverage);
+        quality.put("sentence_truncation_rate", sentenceTruncationRate);
+        quality.put("gate_pass", avgLength >= 120 && avgLength <= 900 && headingCoverage >= 0.7d && sentenceTruncationRate <= 0.35d);
+        metadata.put("quality_report", quality);
+        document.setMetadataJson(write(metadata));
     }
 
     private void deleteIndexedChunks(AssistantDocumentEntity entity, Integer chunkCount) {
@@ -1146,26 +1283,6 @@ public class AssistantKnowledgeService {
         return new String(contentBytes, StandardCharsets.UTF_8);
     }
 
-    private List<String> chunkText(String rawText) {
-        String text = rawText == null ? "" : rawText.trim();
-        if (text.isEmpty()) {
-            return List.of();
-        }
-        int chunkSize = 600;
-        int overlap = 80;
-        List<String> chunks = new ArrayList<>();
-        int start = 0;
-        while (start < text.length()) {
-            int end = Math.min(start + chunkSize, text.length());
-            chunks.add(text.substring(start, end));
-            if (end == text.length()) {
-                break;
-            }
-            start = Math.max(end - overlap, start + 1);
-        }
-        return chunks;
-    }
-
     private String buildSummary(String content) {
         String normalized = content == null ? "" : content.replaceAll("\\s+", " ").trim();
         if (normalized.length() <= 120) {
@@ -1262,7 +1379,9 @@ public class AssistantKnowledgeService {
             String chunkUid,
             String subjectKey,
             String subjectName,
-            String chunkKind
+            String chunkKind,
+            String chunkType,
+            String parentChunkUid
     ) {
         KnowledgeHit(
                 AssistantDocumentEntity document,
@@ -1273,7 +1392,7 @@ public class AssistantKnowledgeService {
                 double score,
                 String sourceId
         ) {
-            this(document, title, sourceType, snippet, contextText, score, sourceId, null, null, null, null);
+            this(document, title, sourceType, snippet, contextText, score, sourceId, null, null, null, null, null, null);
         }
 
         AssistantDtos.AssistantCitation toCitation() {
