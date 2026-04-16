@@ -19,6 +19,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * AI 助手会话和消息服务。
+ *
+ * <p>负责创建/恢复会话、保存用户消息和助手消息、读取历史上下文、重置会话。
+ * 这里不调用模型，只管理聊天记录和消息元数据。</p>
+ */
 @Service
 public class AssistantConversationService {
 

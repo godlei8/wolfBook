@@ -2,6 +2,7 @@
 import { reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api, setStoredToken } from '../services/api'
+import { resolveErrorMessage } from '../utils/errors'
 import type { LoginResponse } from '../types'
 
 const emit = defineEmits<{
@@ -22,7 +23,7 @@ async function submit() {
     emit('loggedIn', result)
     ElMessage.success('登录成功')
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '登录失败')
+    ElMessage.error(resolveErrorMessage(error, '登录失败'))
   } finally {
     loading.value = false
   }

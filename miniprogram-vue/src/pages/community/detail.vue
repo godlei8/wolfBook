@@ -3,8 +3,8 @@ import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import AssistantDock from '../../components/assistant/AssistantDock.vue'
 import api from '../../services/api'
-import storage from '../../services/storage'
 import { formatDateTime, fromNow } from '../../utils/format'
+import { requireAuth } from '../../utils/auth'
 
 const typeLabelMap = {
   general: '分享',
@@ -45,11 +45,7 @@ async function loadDetail() {
 }
 
 function ensureLogin() {
-  if (!storage.getAuthToken()) {
-    uni.showToast({ title: '请先登录', icon: 'none' })
-    return false
-  }
-  return true
+  return requireAuth()
 }
 
 function confirmDialog(title, content) {

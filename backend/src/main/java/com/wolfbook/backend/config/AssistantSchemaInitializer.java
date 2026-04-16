@@ -63,6 +63,30 @@ public class AssistantSchemaInitializer implements ApplicationRunner {
                 """);
 
         jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS assistant_knowledge_chunks (
+                  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                  chunk_uid VARCHAR(64) NOT NULL,
+                  document_id INT NOT NULL,
+                  publish_version_id INT,
+                  source_type VARCHAR(30) NOT NULL,
+                  source_key VARCHAR(100) NOT NULL,
+                  subject_type VARCHAR(30),
+                  subject_key VARCHAR(100),
+                  subject_name VARCHAR(150),
+                  section_title VARCHAR(200),
+                  chunk_kind VARCHAR(40),
+                  field_name VARCHAR(80),
+                  content_text TEXT,
+                  embedding_text TEXT,
+                  content_hash VARCHAR(64),
+                  ordinal INT DEFAULT 0,
+                  create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+                  update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  UNIQUE KEY uk_assistant_knowledge_chunks_uid (chunk_uid)
+                )
+                """);
+
+        jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS assistant_publish_versions (
                   id INT PRIMARY KEY AUTO_INCREMENT,
                   version_name VARCHAR(100) NOT NULL,
@@ -137,11 +161,16 @@ public class AssistantSchemaInitializer implements ApplicationRunner {
         addColumnIfMissing("assistant_query_logs", "cache_hit", "ALTER TABLE assistant_query_logs ADD COLUMN cache_hit TINYINT DEFAULT 0");
         addColumnIfMissing("assistant_query_logs", "fallback_mode", "ALTER TABLE assistant_query_logs ADD COLUMN fallback_mode VARCHAR(40)");
         addColumnIfMissing("assistant_query_logs", "stream_mode", "ALTER TABLE assistant_query_logs ADD COLUMN stream_mode VARCHAR(30)");
+        addColumnIfMissing("assistant_query_logs", "retrieval_meta_json", "ALTER TABLE assistant_query_logs ADD COLUMN retrieval_meta_json JSON");
     }
 
     private void createAssistantIndexes() {
         createIndexIfMissing("assistant_documents", "idx_assistant_documents_publish",
                 "CREATE INDEX idx_assistant_documents_publish ON assistant_documents (publish_version_id, review_status)");
+        createIndexIfMissing("assistant_knowledge_chunks", "idx_assistant_chunks_subject",
+                "CREATE INDEX idx_assistant_chunks_subject ON assistant_knowledge_chunks (publish_version_id, subject_key, source_type)");
+        createIndexIfMissing("assistant_knowledge_chunks", "idx_assistant_chunks_document",
+                "CREATE INDEX idx_assistant_chunks_document ON assistant_knowledge_chunks (document_id, ordinal)");
         createIndexIfMissing("assistant_sessions", "idx_assistant_sessions_openid",
                 "CREATE INDEX idx_assistant_sessions_openid ON assistant_sessions (openid, update_time)");
         createIndexIfMissing("assistant_messages", "idx_assistant_messages_session",

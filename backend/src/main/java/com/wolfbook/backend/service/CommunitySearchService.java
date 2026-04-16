@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.wolfbook.backend.config.CommunityProperties;
 import com.wolfbook.backend.entity.PostEntity;
+import com.wolfbook.backend.support.CommunityStatuses;
 import com.wolfbook.backend.support.DomainConverter;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.MediaType;
@@ -217,7 +218,7 @@ public class CommunitySearchService {
 
     private String buildFilter(String postType, Integer boardId, Integer excludeId) {
         List<String> filters = new ArrayList<>();
-        filters.add("status = " + quote("PUBLISHED"));
+        filters.add("status = " + quote(CommunityStatuses.POST_PUBLISHED));
         if (StringUtils.hasText(postType)) {
             filters.add("postType = " + quote(postType.trim()));
         }

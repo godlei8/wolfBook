@@ -10,7 +10,9 @@ import com.wolfbook.backend.dto.WolfbookDtos;
 import com.wolfbook.backend.entity.*;
 import com.wolfbook.backend.mapper.*;
 import com.wolfbook.backend.service.assistant.AssistantKnowledgeService;
+import com.wolfbook.backend.support.CommunityStatuses;
 import com.wolfbook.backend.support.DomainConverter;
+import com.wolfbook.backend.support.JudgeSupportLevels;
 import com.wolfbook.backend.support.TokenService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -18,9 +20,14 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 
+/**
+ * 管理后台聚合服务。
+ *
+ * <p>后台页面的大部分操作都会到这里：管理员登录、板子和角色维护、社区内容审核、
+ * 举报处理、AI 知识库重建触发等。它偏“后台编排层”，会协调多个业务 Service 和 Mapper。</p>
+ */
 @Service
 public class AdminService {
 
@@ -90,7 +97,7 @@ public class AdminService {
 
     public WolfbookDtos.DashboardSummary summary() {
         long openReports = reportMapper.selectCount(
-                new LambdaQueryWrapper<ReportEntity>().eq(ReportEntity::getProcessStatus, "OPEN")
+                new LambdaQueryWrapper<ReportEntity>().eq(ReportEntity::getProcessStatus, CommunityStatuses.REPORT_OPEN)
         );
         return new WolfbookDtos.DashboardSummary(
                 boardMapper.selectCount(null),
@@ -125,7 +132,7 @@ public class AdminService {
         entity.setWinCondition(request.winCondition() == null || request.winCondition().isBlank() ? "屠边" : request.winCondition());
         entity.setRuleType(request.ruleType() == null || request.ruleType().isBlank() ? "标准板" : request.ruleType());
         entity.setStatus(id == null ? 1 : entity.getStatus());
-        entity.setJudgeSupportLevel(normalizeJudgeSupportLevel(request.judgeSupportLevel(), entity.getJudgeSupportLevel()));
+        entity.setJudgeSupportLevel(JudgeSupportLevels.resolve(request.judgeSupportLevel(), entity.getJudgeSupportLevel()));
         entity.setCreateTime(id == null ? LocalDateTime.now() : entity.getCreateTime());
         entity.setUpdateTime(LocalDateTime.now());
 
@@ -268,14 +275,6 @@ public class AdminService {
 
     private String normalizeText(String value) {
         return value == null || value.isBlank() ? null : value.trim();
-    }
-
-    private String normalizeJudgeSupportLevel(String requested, String current) {
-        String candidate = requested == null || requested.isBlank() ? current : requested.trim();
-        if ("full".equalsIgnoreCase(candidate) || "partial".equalsIgnoreCase(candidate)) {
-            return candidate.toLowerCase(Locale.ROOT);
-        }
-        return "manual_only";
     }
 
     private List<FaqItem> defaultFaqs(List<WolfbookDtos.FaqInput> faqs) {

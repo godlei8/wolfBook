@@ -15,6 +15,12 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * AI 知识库发布服务。
+ *
+ * <p>管理员审核通过的文档不会立即成为线上知识；发布服务负责把一组文档固化成当前发布版本，
+ * 让小程序问答只检索稳定版本，避免后台编辑中的草稿影响用户。</p>
+ */
 @Service
 public class AssistantPublishService {
 

@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import AdminInfoStack from './shared/AdminInfoStack.vue'
+import { usePagedItems, useResetPageOnChange } from '../composables/pagination'
+import { FILTER_ALL, PAGE_SIZES_COMPACT, PAGE_SIZES_STANDARD } from '../constants/filters'
 import { api } from '../services/api'
+import { resolveErrorMessage } from '../utils/errors'
 import type { CommentView, PostSummary, ReportItem } from '../types'
 
 const emit = defineEmits<{ changed: [] }>()
@@ -13,10 +17,10 @@ const reports = ref<ReportItem[]>([])
 const loading = ref(false)
 
 const postKeyword = ref('')
-const postStatusFilter = ref('ALL')
+const postStatusFilter = ref<string | typeof FILTER_ALL>(FILTER_ALL)
 const commentKeyword = ref('')
 const reportKeyword = ref('')
-const reportStatusFilter = ref('ALL')
+const reportStatusFilter = ref<string | typeof FILTER_ALL>(FILTER_ALL)
 
 const postPage = ref(1)
 const postPageSize = ref(8)
@@ -79,7 +83,7 @@ const filteredPosts = computed(() =>
       .join(' ')
       .toLowerCase()
     const matchesKeyword = !normalizedKeyword || searchableText.includes(normalizedKeyword)
-    const matchesStatus = postStatusFilter.value === 'ALL' || post.status === postStatusFilter.value
+    const matchesStatus = postStatusFilter.value === FILTER_ALL || post.status === postStatusFilter.value
     return matchesKeyword && matchesStatus
   }),
 )
@@ -109,41 +113,22 @@ const filteredReports = computed(() =>
       .join(' ')
       .toLowerCase()
     const matchesKeyword = !normalizedKeyword || searchableText.includes(normalizedKeyword)
-    const matchesStatus = reportStatusFilter.value === 'ALL' || report.processStatus === reportStatusFilter.value
+    const matchesStatus = reportStatusFilter.value === FILTER_ALL || report.processStatus === reportStatusFilter.value
     return matchesKeyword && matchesStatus
   }),
 )
 
-const pagedPosts = computed(() => {
-  const start = (postPage.value - 1) * postPageSize.value
-  return filteredPosts.value.slice(start, start + postPageSize.value)
-})
+const pagedPosts = usePagedItems(filteredPosts, postPage, postPageSize)
+const pagedComments = usePagedItems(filteredComments, commentPage, commentPageSize)
+const pagedReports = usePagedItems(filteredReports, reportPage, reportPageSize)
 
-const pagedComments = computed(() => {
-  const start = (commentPage.value - 1) * commentPageSize.value
-  return filteredComments.value.slice(start, start + commentPageSize.value)
-})
-
-const pagedReports = computed(() => {
-  const start = (reportPage.value - 1) * reportPageSize.value
-  return filteredReports.value.slice(start, start + reportPageSize.value)
-})
-
-watch([postKeyword, postStatusFilter, postPageSize], () => {
-  postPage.value = 1
-})
-
-watch([commentKeyword, commentPageSize], () => {
-  commentPage.value = 1
-})
-
-watch([reportKeyword, reportStatusFilter, reportPageSize], () => {
-  reportPage.value = 1
-})
+useResetPageOnChange(postPage, [postKeyword, postStatusFilter, postPageSize])
+useResetPageOnChange(commentPage, [commentKeyword, commentPageSize])
+useResetPageOnChange(reportPage, [reportKeyword, reportStatusFilter, reportPageSize])
 
 function resetPostFilters() {
   postKeyword.value = ''
-  postStatusFilter.value = 'ALL'
+  postStatusFilter.value = FILTER_ALL
   postPage.value = 1
 }
 
@@ -154,7 +139,7 @@ function resetCommentFilters() {
 
 function resetReportFilters() {
   reportKeyword.value = ''
-  reportStatusFilter.value = 'ALL'
+  reportStatusFilter.value = FILTER_ALL
   reportPage.value = 1
 }
 
@@ -170,7 +155,7 @@ async function load() {
     comments.value = commentData.list
     reports.value = reportData.list
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '社区数据加载失败')
+    ElMessage.error(resolveErrorMessage(error, '社区数据加载失败'))
   } finally {
     loading.value = false
   }
@@ -183,7 +168,7 @@ async function toggleStatus(post: PostSummary) {
     await load()
     emit('changed')
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '状态更新失败')
+    ElMessage.error(resolveErrorMessage(error, '状态更新失败'))
   }
 }
 
@@ -194,7 +179,7 @@ async function toggleFeatured(post: PostSummary) {
     await load()
     emit('changed')
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '精选状态更新失败')
+    ElMessage.error(resolveErrorMessage(error, '精选状态更新失败'))
   }
 }
 
@@ -205,7 +190,7 @@ async function togglePinned(post: PostSummary) {
     await load()
     emit('changed')
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '置顶状态更新失败')
+    ElMessage.error(resolveErrorMessage(error, '置顶状态更新失败'))
   }
 }
 
@@ -216,7 +201,7 @@ async function removePost(id: number) {
     await load()
     emit('changed')
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '帖子删除失败')
+    ElMessage.error(resolveErrorMessage(error, '帖子删除失败'))
   }
 }
 
@@ -227,7 +212,7 @@ async function removeComment(id: number) {
     await load()
     emit('changed')
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '评论删除失败')
+    ElMessage.error(resolveErrorMessage(error, '评论删除失败'))
   }
 }
 
@@ -238,7 +223,7 @@ async function processReport(id: number, status: string) {
     await load()
     emit('changed')
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '举报处理失败')
+    ElMessage.error(resolveErrorMessage(error, '举报处理失败'))
   }
 }
 
@@ -306,15 +291,15 @@ onMounted(load)
       <el-tab-pane label="帖子治理" name="posts">
         <div class="toolbar">
           <el-input v-model="postKeyword" clearable placeholder="搜索标题、作者、板子、标签或内容" />
-          <el-select v-model="postStatusFilter" class="filter-select">
-            <el-option label="全部状态" value="ALL" />
+          <el-select v-model="postStatusFilter" class="filter-select admin-filter-select">
+            <el-option label="全部状态" :value="FILTER_ALL" />
             <el-option label="已发布" value="PUBLISHED" />
             <el-option label="已下线" value="OFFLINE" />
             <el-option label="待审核" value="PENDING_REVIEW" />
             <el-option label="已拒绝" value="REJECTED" />
           </el-select>
           <el-button @click="resetPostFilters">重置</el-button>
-          <div class="toolbar-summary">当前 {{ filteredPosts.length }} 条</div>
+          <div class="admin-toolbar-summary">当前 {{ filteredPosts.length }} 条</div>
         </div>
 
         <div class="post-overview-grid">
@@ -344,18 +329,9 @@ onMounted(load)
                 <div class="post-title-cell">{{ row.title || '未命名帖子' }}</div>
                 <div class="post-summary-block">{{ row.summary || row.content || '暂无正文摘要' }}</div>
                 <div class="post-meta-grid">
-                  <div class="meta-pill">
-                    <span class="meta-pill__label">作者</span>
-                    <span class="meta-pill__value">{{ postAuthorLabel(row) }}</span>
-                  </div>
-                  <div class="meta-pill">
-                    <span class="meta-pill__label">板子</span>
-                    <span class="meta-pill__value">{{ row.boardName || '未关联板子' }}</span>
-                  </div>
-                  <div class="meta-pill">
-                    <span class="meta-pill__label">更新</span>
-                    <span class="meta-pill__value">{{ formatDateTime(row.updateTime) }}</span>
-                  </div>
+                  <AdminInfoStack class="meta-pill" eyebrow="作者" :title="postAuthorLabel(row)" />
+                  <AdminInfoStack class="meta-pill" eyebrow="板子" :title="row.boardName || '未关联板子'" />
+                  <AdminInfoStack class="meta-pill" eyebrow="更新" :title="formatDateTime(row.updateTime)" />
                 </div>
                 <div v-if="row.tagList?.length" class="inline-tags">
                   <span v-for="tag in row.tagList.slice(0, 6)" :key="tag" class="inline-tag"># {{ tag }}</span>
@@ -404,8 +380,8 @@ onMounted(load)
 
         <el-empty v-else description="暂无符合条件的帖子" class="posts-empty" />
 
-        <div class="table-footer">
-          <div class="table-total">共 {{ filteredPosts.length }} 条帖子</div>
+        <div class="admin-table-footer">
+          <div class="admin-table-total">共 {{ filteredPosts.length }} 条帖子</div>
           <el-pagination
             v-model:current-page="postPage"
             v-model:page-size="postPageSize"
@@ -413,7 +389,7 @@ onMounted(load)
             size="small"
             layout="sizes, prev, pager, next"
             :pager-count="5"
-            :page-sizes="[6, 8, 10, 20]"
+            :page-sizes="PAGE_SIZES_COMPACT"
             :total="filteredPosts.length"
           />
         </div>
@@ -423,7 +399,7 @@ onMounted(load)
         <div class="toolbar toolbar--compact">
           <el-input v-model="commentKeyword" clearable placeholder="搜索评论内容、评论人、回复对象或帖子 ID" />
           <el-button @click="resetCommentFilters">重置</el-button>
-          <div class="toolbar-summary">当前 {{ filteredComments.length }} 条</div>
+          <div class="admin-toolbar-summary">当前 {{ filteredComments.length }} 条</div>
         </div>
 
         <el-table
@@ -434,10 +410,11 @@ onMounted(load)
         >
           <el-table-column label="评论人" min-width="150">
             <template #default="{ row }">
-              <div class="compact-user">
-                <div class="compact-user-name">{{ row.nickname || formatOpenid(row.openid) }}</div>
-                <div class="table-subcopy">{{ formatOpenid(row.openid) }}</div>
-              </div>
+              <AdminInfoStack
+                class="compact-user"
+                :title="row.nickname || formatOpenid(row.openid)"
+                :subtitle="formatOpenid(row.openid)"
+              />
             </template>
           </el-table-column>
           <el-table-column prop="postId" label="帖子 ID" width="92" align="center" />
@@ -474,8 +451,8 @@ onMounted(load)
           </el-table-column>
         </el-table>
 
-        <div class="table-footer">
-          <div class="table-total">共 {{ filteredComments.length }} 条评论</div>
+        <div class="admin-table-footer">
+          <div class="admin-table-total">共 {{ filteredComments.length }} 条评论</div>
           <el-pagination
             v-model:current-page="commentPage"
             v-model:page-size="commentPageSize"
@@ -483,7 +460,7 @@ onMounted(load)
             size="small"
             layout="sizes, prev, pager, next"
             :pager-count="5"
-            :page-sizes="[8, 10, 20, 30]"
+            :page-sizes="PAGE_SIZES_STANDARD"
             :total="filteredComments.length"
           />
         </div>
@@ -492,14 +469,14 @@ onMounted(load)
       <el-tab-pane label="举报处理" name="reports">
         <div class="toolbar">
           <el-input v-model="reportKeyword" clearable placeholder="搜索举报原因、举报人或目标 ID" />
-          <el-select v-model="reportStatusFilter" class="filter-select">
-            <el-option label="全部状态" value="ALL" />
+          <el-select v-model="reportStatusFilter" class="filter-select admin-filter-select">
+            <el-option label="全部状态" :value="FILTER_ALL" />
             <el-option label="待处理" value="OPEN" />
             <el-option label="已处理" value="RESOLVED" />
             <el-option label="已驳回" value="DISMISSED" />
           </el-select>
           <el-button @click="resetReportFilters">重置</el-button>
-          <div class="toolbar-summary">当前 {{ filteredReports.length }} 条</div>
+          <div class="admin-toolbar-summary">当前 {{ filteredReports.length }} 条</div>
         </div>
 
         <el-table
@@ -510,10 +487,7 @@ onMounted(load)
         >
           <el-table-column label="目标" min-width="150">
             <template #default="{ row }">
-              <div class="compact-user">
-                <div class="compact-user-name">{{ row.targetType }}</div>
-                <div class="table-subcopy">ID {{ row.targetId }}</div>
-              </div>
+              <AdminInfoStack class="compact-user" :title="row.targetType" :subtitle="`ID ${row.targetId}`" />
             </template>
           </el-table-column>
           <el-table-column label="举报人" min-width="180">
@@ -535,10 +509,11 @@ onMounted(load)
           </el-table-column>
           <el-table-column label="处理信息" min-width="170">
             <template #default="{ row }">
-              <div class="compact-user">
-                <div class="compact-user-name">{{ row.processBy || '-' }}</div>
-                <div class="table-subcopy">{{ formatDateTime(row.processTime) }}</div>
-              </div>
+              <AdminInfoStack
+                class="compact-user"
+                :title="row.processBy || '-'"
+                :subtitle="formatDateTime(row.processTime)"
+              />
             </template>
           </el-table-column>
           <el-table-column label="操作" width="198" fixed="right">
@@ -553,8 +528,8 @@ onMounted(load)
           </el-table-column>
         </el-table>
 
-        <div class="table-footer">
-          <div class="table-total">共 {{ filteredReports.length }} 条举报</div>
+        <div class="admin-table-footer">
+          <div class="admin-table-total">共 {{ filteredReports.length }} 条举报</div>
           <el-pagination
             v-model:current-page="reportPage"
             v-model:page-size="reportPageSize"
@@ -562,7 +537,7 @@ onMounted(load)
             size="small"
             layout="sizes, prev, pager, next"
             :pager-count="5"
-            :page-sizes="[6, 8, 10, 20]"
+            :page-sizes="PAGE_SIZES_COMPACT"
             :total="filteredReports.length"
           />
         </div>
@@ -590,17 +565,6 @@ onMounted(load)
 
 .toolbar--compact {
   grid-template-columns: minmax(280px, 1fr) auto auto;
-}
-
-.filter-select {
-  width: 160px;
-}
-
-.toolbar-summary {
-  margin-left: auto;
-  color: #8d8d8d;
-  font-size: 13px;
-  white-space: nowrap;
 }
 
 .post-overview-grid {
@@ -734,24 +698,10 @@ onMounted(load)
   padding: 12px 14px;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.03);
-  display: grid;
-  gap: 6px;
   min-width: 0;
-}
-
-.meta-pill__label {
-  color: #8d8d8d;
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.meta-pill__value {
-  color: #f0f0f0;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.5;
-  word-break: break-word;
+  --admin-info-stack-gap: 6px;
+  --admin-info-stack-title-size: 13px;
+  --admin-info-stack-title-weight: 600;
 }
 
 .post-side-panel {
@@ -812,17 +762,19 @@ onMounted(load)
 
 .post-main,
 .status-stack,
-.compact-user,
 .comment-cell {
   display: grid;
   gap: 8px;
 }
 
-.post-title-cell,
-.compact-user-name {
+.post-title-cell {
   font-size: 15px;
   font-weight: 700;
   line-height: 1.45;
+}
+
+.compact-user {
+  --admin-info-stack-gap: 8px;
 }
 
 .table-subcopy {
@@ -932,25 +884,6 @@ onMounted(load)
   line-height: 1.6;
 }
 
-.table-footer {
-  margin-top: 14px;
-  padding-top: 14px;
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.table-total {
-  color: #8d8d8d;
-  font-size: 13px;
-}
-
-.table-footer :deep(.el-pagination) {
-  margin-left: auto;
-}
-
 @media (max-width: 1280px) {
   .toolbar {
     grid-template-columns: minmax(240px, 1fr) 150px auto auto;
@@ -971,14 +904,6 @@ onMounted(load)
     grid-template-columns: 1fr;
   }
 
-  .filter-select {
-    width: 100%;
-  }
-
-  .toolbar-summary {
-    margin-left: 0;
-  }
-
   .post-meta-grid,
   .action-grid,
   .post-overview-grid {
@@ -996,11 +921,6 @@ onMounted(load)
   .post-entry__score {
     width: 100%;
     justify-items: start;
-  }
-
-  .table-footer {
-    flex-direction: column;
-    align-items: flex-start;
   }
 }
 </style>

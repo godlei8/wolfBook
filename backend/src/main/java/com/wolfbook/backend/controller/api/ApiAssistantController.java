@@ -11,6 +11,11 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 
+/**
+ * 小程序 AI 助手接口。
+ *
+ * <p>提供初始化、会话列表、历史消息、普通问答、SSE 流式问答和会话重置。</p>
+ */
 @RestController
 @RequestMapping("/api/assistant")
 public class ApiAssistantController {

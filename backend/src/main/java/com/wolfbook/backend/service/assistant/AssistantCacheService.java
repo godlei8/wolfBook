@@ -13,12 +13,19 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 
+/**
+ * AI 助手缓存服务。
+ *
+ * <p>封装 Redis 读写，缓存启动页配置、结构化推荐和知识库问答。
+ * 缓存 key 会带上配置版本、知识库版本和回答管线版本，保证后台改配置或检索逻辑后旧答案自动失效。</p>
+ */
 @Service
 public class AssistantCacheService {
 
     private static final Duration BOOTSTRAP_TTL = Duration.ofMinutes(10);
     private static final Duration STRUCTURED_TTL = Duration.ofHours(6);
     private static final Duration KNOWLEDGE_TTL = Duration.ofHours(24);
+    private static final String ANSWER_CACHE_SCHEMA = "rag-grounded-v3";
 
     private final ObjectProvider<StringRedisTemplate> redisTemplateProvider;
     private final ObjectMapper objectMapper;
@@ -43,7 +50,7 @@ public class AssistantCacheService {
     public String buildAnswerCacheKey(String question, String scene, String configVersion) {
         String normalizedQuestion = normalizeQuestion(question);
         String normalizedScene = scene == null ? "general" : scene.trim().toLowerCase(Locale.ROOT);
-        return key("answer", configVersion, normalizedScene, digest(normalizedQuestion));
+        return key("answer", ANSWER_CACHE_SCHEMA, configVersion, normalizedScene, digest(normalizedQuestion));
     }
 
     public CachedAnswer getAnswer(String cacheKey) {

@@ -134,6 +134,25 @@ function shouldFallbackToNonStreaming(response, rawChunkText) {
   return !rawChunkText.includes('event:') && !rawChunkText.includes('data:')
 }
 
+function findTextOverlap(left = '', right = '') {
+  const maxLength = Math.min(left.length, right.length)
+  for (let length = maxLength; length > 0; length -= 1) {
+    if (left.slice(left.length - length) === right.slice(0, length)) {
+      return length
+    }
+  }
+  return 0
+}
+
+export function appendNonOverlappingText(base = '', next = '') {
+  if (!next) return base || ''
+  if (!base) return next
+  if (next.startsWith(base)) return next
+  if (base.endsWith(next)) return base
+  const overlap = findTextOverlap(base, next)
+  return `${base}${next.slice(overlap)}`
+}
+
 function streamAsk(payload, handlers = {}) {
   return new Promise((resolve, reject) => {
     let eventBuffer = ''
@@ -141,6 +160,7 @@ function streamAsk(payload, handlers = {}) {
     let settled = false
     let requestTask = null
     let streamWatchdog = null
+    let receivedChunkData = false
     const textDecoder = typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8') : null
     const requestApi = resolveStreamingRequestApi()
 
@@ -202,6 +222,7 @@ function streamAsk(payload, handlers = {}) {
         }
 
         if (parsed.event === 'done') {
+          if (finalResponse) return
           finalResponse = parsed.data
           handlers.onDone?.(parsed.data)
           return
@@ -232,7 +253,7 @@ function streamAsk(payload, handlers = {}) {
       success: (response) => {
         if (settled) return
         clearWatchdog()
-        const rawChunkText = decodeChunkData(response.data, textDecoder, false)
+        const rawChunkText = receivedChunkData ? '' : decodeChunkData(response.data, textDecoder, false)
         const flushText = textDecoder ? textDecoder.decode() : ''
 
         if (shouldFallbackToNonStreaming(response, rawChunkText)) {
@@ -246,7 +267,7 @@ function streamAsk(payload, handlers = {}) {
         if (flushText) {
           eventBuffer += flushText
         }
-        if (rawChunkText || flushText) {
+        if (rawChunkText || flushText || eventBuffer) {
           consumeEvents(true)
         }
 
@@ -282,7 +303,10 @@ function streamAsk(payload, handlers = {}) {
     requestTask.onChunkReceived((chunk) => {
       if (settled) return
       scheduleWatchdog()
-      eventBuffer += decodeChunkData(chunk.data, textDecoder, true)
+      const chunkText = decodeChunkData(chunk.data, textDecoder, true)
+      if (!chunkText) return
+      receivedChunkData = true
+      eventBuffer += chunkText
       consumeEvents(false)
     })
   })

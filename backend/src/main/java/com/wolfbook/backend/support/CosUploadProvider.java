@@ -15,6 +15,12 @@ import java.time.LocalDate;
 import java.util.Locale;
 import java.util.UUID;
 
+/**
+ * 腾讯云 COS 上传实现。
+ *
+ * <p>当 {@code wolfbook.upload.provider=cos} 时启用，负责把社区图片、知识库文件等对象上传到 COS，
+ * 并返回可访问 URL。开发环境通常会使用 {@code LocalUploadProvider}。</p>
+ */
 @Component
 @ConditionalOnProperty(prefix = "wolfbook.upload", name = "provider", havingValue = "cos")
 public class CosUploadProvider implements UploadProvider {

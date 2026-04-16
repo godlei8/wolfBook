@@ -1,8 +1,11 @@
 ﻿<script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { UploadRequestOptions } from 'element-plus'
+import { clampPageToTotal, usePagedItems, useResetPageOnChange } from '../composables/pagination'
 import { api } from '../services/api'
+import { FILTER_ALL, PAGE_SIZES_COMPACT } from '../constants/filters'
+import { resolveErrorMessage } from '../utils/errors'
 import type { Board, Role } from '../types'
 
 const emit = defineEmits<{ changed: [] }>()
@@ -13,12 +16,12 @@ const boards = ref<Board[]>([])
 const roles = ref<Role[]>([])
 
 const keyword = ref('')
-const difficultyFilter = ref('ALL')
-const playerCountFilter = ref<number | 'ALL'>('ALL')
+const difficultyFilter = ref<typeof FILTER_ALL | '入门' | '进阶' | '烧脑'>(FILTER_ALL)
+const playerCountFilter = ref<number | typeof FILTER_ALL>(FILTER_ALL)
 const currentPage = ref(1)
 const pageSize = ref(8)
 
-const difficultyOptions = ['ALL', '入门', '进阶', '烧脑']
+const difficultyOptions = [FILTER_ALL, '入门', '进阶', '烧脑'] as const
 
 const emptyBoard = (): Board => ({
   id: 0,
@@ -95,20 +98,15 @@ const filteredBoards = computed(() => {
       .toLowerCase()
 
     const matchesKeyword = !normalizedKeyword || searchableText.includes(normalizedKeyword)
-    const matchesDifficulty = difficultyFilter.value === 'ALL' || board.difficulty === difficultyFilter.value
-    const matchesPlayerCount = playerCountFilter.value === 'ALL' || board.playerCount === playerCountFilter.value
+    const matchesDifficulty = difficultyFilter.value === FILTER_ALL || board.difficulty === difficultyFilter.value
+    const matchesPlayerCount = playerCountFilter.value === FILTER_ALL || board.playerCount === playerCountFilter.value
     return matchesKeyword && matchesDifficulty && matchesPlayerCount
   })
 })
 
-const pagedBoards = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  return filteredBoards.value.slice(start, start + pageSize.value)
-})
+const pagedBoards = usePagedItems(filteredBoards, currentPage, pageSize)
 
-watch([keyword, difficultyFilter, playerCountFilter, pageSize], () => {
-  currentPage.value = 1
-})
+useResetPageOnChange(currentPage, [keyword, difficultyFilter, playerCountFilter, pageSize])
 
 function normalizeBoard(board?: Board): Board {
   if (!board) {
@@ -140,8 +138,8 @@ function resetForm(board?: Board) {
 
 function resetFilters() {
   keyword.value = ''
-  difficultyFilter.value = 'ALL'
-  playerCountFilter.value = 'ALL'
+  difficultyFilter.value = FILTER_ALL
+  playerCountFilter.value = FILTER_ALL
   currentPage.value = 1
 }
 
@@ -161,11 +159,9 @@ async function load() {
     const [boardData, roleData] = await Promise.all([api.getBoards(), api.getRoles()])
     boards.value = boardData
     roles.value = roleData
-    if ((currentPage.value - 1) * pageSize.value >= filteredBoards.value.length) {
-      currentPage.value = 1
-    }
+    clampPageToTotal(currentPage, pageSize, filteredBoards.value.length)
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '板子数据加载失败')
+    ElMessage.error(resolveErrorMessage(error, '板子数据加载失败'))
   } finally {
     loading.value = false
   }
@@ -219,7 +215,7 @@ async function submit() {
     await load()
     emit('changed')
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '板子保存失败')
+    ElMessage.error(resolveErrorMessage(error, '板子保存失败'))
   }
 }
 
@@ -230,7 +226,7 @@ async function removeBoard(id: number) {
     await load()
     emit('changed')
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '板子删除失败')
+    ElMessage.error(resolveErrorMessage(error, '板子删除失败'))
   }
 }
 
@@ -241,7 +237,7 @@ async function uploadCover(options: UploadRequestOptions) {
     ElMessage.success('封面已上传')
     options.onSuccess?.(result)
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '封面上传失败')
+    ElMessage.error(resolveErrorMessage(error, '封面上传失败'))
     options.onError?.(Object.assign(new Error('upload failed'), { status: 0, method: 'post', url: '' }) as never)
   }
 }
@@ -251,23 +247,23 @@ onMounted(load)
 
 <template>
   <el-card class="panel-card">
-    <div class="table-toolbar">
-      <el-input v-model="keyword" clearable placeholder="搜索板子名称、标签、规则或列表简介" />
-      <el-select v-model="difficultyFilter">
+    <div class="admin-management-toolbar">
+      <el-input v-model="keyword" class="admin-management-toolbar__search" clearable placeholder="搜索板子名称、标签、规则或列表简介" />
+      <el-select v-model="difficultyFilter" class="admin-management-toolbar__select">
         <el-option
           v-for="item in difficultyOptions"
           :key="item"
-          :label="item === 'ALL' ? '全部难度' : item"
+          :label="item === FILTER_ALL ? '全部难度' : item"
           :value="item"
         />
       </el-select>
-      <el-select v-model="playerCountFilter">
-        <el-option label="全部人数" value="ALL" />
+      <el-select v-model="playerCountFilter" class="admin-management-toolbar__select">
+        <el-option label="全部人数" :value="FILTER_ALL" />
         <el-option v-for="count in playerCountOptions" :key="count" :label="`${count} 人`" :value="count" />
       </el-select>
-      <el-button @click="resetFilters">重置</el-button>
-      <div class="toolbar-summary">当前 {{ filteredBoards.length }} 条</div>
-      <el-button type="primary" @click="openCreate">新建板子</el-button>
+      <el-button class="admin-management-toolbar__action" @click="resetFilters">重置</el-button>
+      <div class="admin-toolbar-summary">当前 {{ filteredBoards.length }} 条</div>
+      <el-button class="admin-management-toolbar__primary" type="primary" @click="openCreate">新建板子</el-button>
     </div>
 
     <el-table :data="pagedBoards" v-loading="loading" empty-text="暂无符合条件的板子">
@@ -296,8 +292,8 @@ onMounted(load)
       </el-table-column>
     </el-table>
 
-    <div class="table-footer">
-      <div class="table-total">共 {{ filteredBoards.length }} 条板子</div>
+    <div class="admin-table-footer">
+      <div class="admin-table-total">共 {{ filteredBoards.length }} 条板子</div>
       <el-pagination
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
@@ -305,13 +301,13 @@ onMounted(load)
         size="small"
         layout="sizes, prev, pager, next"
         :pager-count="5"
-        :page-sizes="[6, 8, 10, 20]"
+        :page-sizes="PAGE_SIZES_COMPACT"
         :total="filteredBoards.length"
       />
     </div>
   </el-card>
 
-  <el-dialog v-model="dialogVisible" width="1040px" :title="form.id ? '编辑板子' : '新建板子'">
+  <el-dialog v-model="dialogVisible" class="admin-scroll-dialog" width="1040px" :title="form.id ? '编辑板子' : '新建板子'">
     <div class="preview-card">
       <div class="preview-layout">
         <div>
@@ -471,83 +467,8 @@ onMounted(load)
 </template>
 
 <style scoped>
-:deep(.el-dialog) {
-  max-height: calc(100vh - 40px);
-  display: flex;
-  flex-direction: column;
-}
-
-:deep(.el-dialog__header),
-:deep(.el-dialog__footer) {
-  flex: 0 0 auto;
-}
-
-:deep(.el-dialog__body) {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 192, 0, 0.42) rgba(255, 255, 255, 0.05);
-}
-
-:deep(.el-dialog__body::-webkit-scrollbar) {
-  width: 8px;
-}
-
-:deep(.el-dialog__body::-webkit-scrollbar-track) {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 999px;
-}
-
-:deep(.el-dialog__body::-webkit-scrollbar-thumb) {
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(255, 211, 92, 0.72), rgba(182, 126, 12, 0.74));
-}
-
 .panel-card {
   border-radius: 18px;
-}
-
-.table-toolbar {
-  margin-bottom: 14px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.table-toolbar > :nth-child(1) {
-  flex: 1 1 360px;
-  min-width: 280px;
-}
-
-.table-toolbar > :nth-child(2),
-.table-toolbar > :nth-child(3) {
-  flex: 0 0 150px;
-}
-
-.table-toolbar > :nth-child(4) {
-  flex: 0 0 90px;
-}
-
-.table-toolbar > :nth-child(5) {
-  margin-left: auto;
-  flex: 0 0 auto;
-}
-
-.table-toolbar > :nth-child(6) {
-  flex: 0 0 auto;
-}
-
-.toolbar-summary {
-  color: #8d8d8d;
-  font-size: 13px;
-  white-space: nowrap;
 }
 
 .description-cell {
@@ -557,25 +478,6 @@ onMounted(load)
   -webkit-box-orient: vertical;
   color: #cfcfcf;
   line-height: 1.65;
-}
-
-.table-footer {
-  margin-top: 14px;
-  padding-top: 14px;
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.table-total {
-  color: #8d8d8d;
-  font-size: 13px;
-}
-
-.table-footer :deep(.el-pagination) {
-  margin-left: auto;
 }
 
 .tag-row {
@@ -825,21 +727,6 @@ onMounted(load)
   gap: 12px;
 }
 
-@media (max-width: 1080px) {
-  .table-toolbar > :nth-child(1) {
-    flex-basis: 100%;
-  }
-
-  .table-toolbar > :nth-child(5) {
-    margin-left: 0;
-  }
-
-  .table-footer {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
-
 @media (max-width: 900px) {
   .preview-layout,
   .form-grid,
@@ -850,24 +737,6 @@ onMounted(load)
   .role-config-row {
     grid-template-columns: 1fr;
   }
-
-  .table-toolbar {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
-
-  .table-toolbar > :nth-child(1),
-  .table-toolbar > :nth-child(2),
-  .table-toolbar > :nth-child(3),
-  .table-toolbar > :nth-child(4),
-  .table-toolbar > :nth-child(5),
-  .table-toolbar > :nth-child(6),
-  .toolbar-summary {
-    flex: initial;
-    min-width: 0;
-    margin-left: 0;
-  }
-
   .upload-stack {
     flex-direction: column;
   }

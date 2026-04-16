@@ -5,6 +5,7 @@ import com.wolfbook.backend.common.ApiException;
 import com.wolfbook.backend.config.AssistantProperties;
 import com.wolfbook.backend.domain.Board;
 import com.wolfbook.backend.dto.AssistantDtos;
+import com.wolfbook.backend.dto.WolfbookDtos;
 import com.wolfbook.backend.entity.AssistantMessageEntity;
 import com.wolfbook.backend.entity.AssistantQueryLogEntity;
 import com.wolfbook.backend.entity.AssistantSessionEntity;
@@ -37,16 +38,29 @@ import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * AI 助手回答编排服务。
+ *
+ * <p>这是 AI 助手的主入口，负责鉴权、会话落库、意图分类、缓存命中、知识库检索、
+ * 板子推荐、模型调用、流式输出、回答持久化和查询日志。读 AI 助手后端时建议先看
+ * {@link #prepareAsk(String, AssistantDtos.AssistantAskRequest)}、{@link #answerKnowledge(PreparedAsk, AssistantDtos.AssistantAskRequest, ExecutionMetrics)}
+ * 和 {@link #streamPromptAnswer(Prompt, String, SseEmitter, ExecutionMetrics)}。</p>
+ */
 @Service
 public class AssistantAnswerService {
 
     private static final Pattern PLAYER_COUNT_PATTERN = Pattern.compile("(\\d{1,2})\\s*人");
     private static final Pattern MULTI_BLANK_LINES = Pattern.compile("\\n{3,}");
+    private static final String ANSWER_PIPELINE_VERSION = "rag-v5-entity-first-v4";
 
     private final UserService userService;
     private final AssistantConfigService assistantConfigService;
     private final AssistantConversationService assistantConversationService;
     private final AssistantKnowledgeService assistantKnowledgeService;
+    private final AssistantQueryPlanner assistantQueryPlanner;
+    private final AssistantRetrievalService assistantRetrievalService;
+    private final AssistantAnswerGenerationService assistantAnswerGenerationService;
+    private final AssistantAnswerValidator assistantAnswerValidator;
     private final AssistantSearchService assistantSearchService;
     private final AssistantCacheService assistantCacheService;
     private final AssistantQueryLogMapper assistantQueryLogMapper;
@@ -61,6 +75,10 @@ public class AssistantAnswerService {
             AssistantConfigService assistantConfigService,
             AssistantConversationService assistantConversationService,
             AssistantKnowledgeService assistantKnowledgeService,
+            AssistantQueryPlanner assistantQueryPlanner,
+            AssistantRetrievalService assistantRetrievalService,
+            AssistantAnswerGenerationService assistantAnswerGenerationService,
+            AssistantAnswerValidator assistantAnswerValidator,
             AssistantSearchService assistantSearchService,
             AssistantCacheService assistantCacheService,
             AssistantQueryLogMapper assistantQueryLogMapper,
@@ -73,6 +91,10 @@ public class AssistantAnswerService {
         this.assistantConfigService = assistantConfigService;
         this.assistantConversationService = assistantConversationService;
         this.assistantKnowledgeService = assistantKnowledgeService;
+        this.assistantQueryPlanner = assistantQueryPlanner;
+        this.assistantRetrievalService = assistantRetrievalService;
+        this.assistantAnswerGenerationService = assistantAnswerGenerationService;
+        this.assistantAnswerValidator = assistantAnswerValidator;
         this.assistantSearchService = assistantSearchService;
         this.assistantCacheService = assistantCacheService;
         this.assistantQueryLogMapper = assistantQueryLogMapper;
@@ -136,7 +158,12 @@ public class AssistantAnswerService {
                 request.message()
         );
         assistantConversationService.saveUserMessage(session.getSessionId(), request.message());
+        AssistantQueryPlan queryPlan = assistantQueryPlanner.plan(
+                request.message(),
+                assistantConversationService.recentContextMessages(openid, session.getSessionId())
+        );
 
+        // 缓存版本同时包含后台配置、知识库版本和回答管线版本，避免改了检索/提示词后继续命中旧答案。
         QueryIntent intent = classifyIntent(request.message(), config.safety().blockedKeywords());
         return new PreparedAsk(
                 openid,
@@ -144,7 +171,11 @@ public class AssistantAnswerService {
                 config,
                 traceId,
                 intent,
-                assistantCacheService.buildConfigVersion(config),
+                assistantCacheService.buildConfigVersion(config)
+                        + ":" + assistantKnowledgeService.buildKnowledgeCacheVersion()
+                        + ":" + queryPlan.cacheToken()
+                        + ":" + ANSWER_PIPELINE_VERSION,
+                queryPlan,
                 System.currentTimeMillis()
         );
     }
@@ -154,6 +185,7 @@ public class AssistantAnswerService {
         ExecutionMetrics metrics = ExecutionMetrics.sync(prepared.startAtMs());
         AssistantDtos.AssistantAskResponse response;
         try {
+            // 同步接口和流式接口共享同一套编排：先查缓存，再按意图进入板子推荐/知识问答/拒答分支。
             AssistantCacheService.CachedAnswer cachedAnswer = findCachedAnswer(prepared, request, metrics);
             if (cachedAnswer != null) {
                 response = persistCachedAnswer(prepared, cachedAnswer);
@@ -194,6 +226,7 @@ public class AssistantAnswerService {
             StreamExecution execution;
             AssistantCacheService.CachedAnswer cachedAnswer = findCachedAnswer(prepared, request, metrics);
             if (cachedAnswer != null) {
+                // 缓存答案也按 SSE delta 分片吐给前端，前端无需区分真实模型流和兜底流。
                 emitStaticAnswer(cachedAnswer.answer(), emitter, metrics);
                 execution = new StreamExecution(persistCachedAnswer(prepared, cachedAnswer), null);
             } else {
@@ -298,10 +331,17 @@ public class AssistantAnswerService {
             SseEmitter emitter,
             ExecutionMetrics metrics
     ) throws IOException {
-        AssistantKnowledgeService.KnowledgeSearchResult searchResult = assistantKnowledgeService.searchPublishedKnowledgeResult(request.message());
-        List<AssistantKnowledgeService.KnowledgeHit> hits = searchResult.hits();
-        metrics.setRetrievalMs(searchResult.retrievalMs());
-        metrics.setEmbeddingMs(searchResult.embeddingMs());
+        // 站内知识优先：先检索和裁剪知识库，再按需要补联网搜索。
+        AssistantRetrievalResult retrievalResult = assistantRetrievalService.retrieve(
+                request.message(),
+                prepared.queryPlan(),
+                resolveTopK(prepared.config()),
+                resolveSimilarityThreshold(prepared.config())
+        );
+        List<AssistantKnowledgeService.KnowledgeHit> hits = distinctKnowledgeHits(retrievalResult.hits());
+        metrics.setRetrievalMs(retrievalResult.retrievalMs());
+        metrics.setEmbeddingMs(retrievalResult.embeddingMs());
+        metrics.setRetrievalMeta(retrievalResult.meta());
         boolean usedWebSearch = false;
         String answerType = AssistantConstants.ANSWER_RAG;
         List<AssistantDtos.AssistantCitation> citations;
@@ -311,12 +351,18 @@ public class AssistantAnswerService {
 
         if (!hits.isEmpty()) {
             citations = hits.stream()
-                    .limit(assistantProperties.getTopK())
+                    .limit(resolveTopK(prepared.config()))
                     .map(AssistantKnowledgeService.KnowledgeHit::toCitation)
                     .toList();
-            suggestedQuestions = nextQuestions(prepared.config().base().quickQuestions(), request.message());
+            suggestedQuestions = List.of();
             if (hasWebAnswer(webSearchResult)) {
-                GeneratedAnswer knowledgeAnswer = synthesizeKnowledgeMarkdown(prepared, request.message(), hits);
+                // 有站内资料且问题又需要时效性时，把站内结论和联网补充合并；来源去重在 mergeCitations。
+                AssistantGeneratedAnswer knowledgeAnswer = assistantAnswerGenerationService.generateKnowledge(
+                        prepared.config(),
+                        prepared.queryPlan(),
+                        hits,
+                        recentContextMessages(prepared, request.message())
+                );
                 metrics.setModelMs(knowledgeAnswer.modelMs());
                 metrics.setFallbackModeIfBlank(knowledgeAnswer.fallbackMode());
                 usedWebSearch = true;
@@ -327,18 +373,42 @@ public class AssistantAnswerService {
                         suggestedQuestions
                 );
                 metrics.setStreamMode("FALLBACK");
-                streamedAnswer = emitStaticAnswer(
+                String mergedAnswer = sanitizeSubjectDrift(
                         mergeKnowledgeAndWebAnswer(knowledgeAnswer.answer(), webSearchResult),
+                        request.message()
+                );
+                streamedAnswer = emitStaticAnswer(
+                        mergedAnswer,
                         emitter,
                         metrics
                 );
             } else {
-                streamedAnswer = streamPromptAnswer(
-                        buildKnowledgePrompt(prepared, request.message(), hits),
-                        fallbackKnowledgeAnswer(hits),
-                        emitter,
-                        metrics
+                // 常规 RAG 路径先生成并校验完整答案，再按静态分片输出，避免 SSE 先吐出未校验的错误内容。
+                AssistantGeneratedAnswer generatedAnswer = assistantAnswerGenerationService.generateKnowledge(
+                        prepared.config(),
+                        prepared.queryPlan(),
+                        hits,
+                        recentContextMessages(prepared, request.message())
                 );
+                metrics.setModelMs(generatedAnswer.modelMs());
+                metrics.setFallbackModeIfBlank(generatedAnswer.fallbackMode());
+                String checkedAnswer = sanitizeSubjectDrift(generatedAnswer.answer(), request.message());
+                AssistantAnswerValidation validation = assistantAnswerValidator.validate(checkedAnswer, prepared.queryPlan(), hits);
+                if (!validation.valid()) {
+                    metrics.setFallbackMode("VALIDATION_" + validation.reason());
+                    checkedAnswer = sanitizeSubjectDrift(
+                            assistantAnswerGenerationService.templateKnowledgeAnswer(prepared.queryPlan(), hits),
+                            request.message()
+                    );
+                    validation = assistantAnswerValidator.validate(checkedAnswer, prepared.queryPlan(), hits);
+                }
+                if (!validation.valid()) {
+                    metrics.setFallbackMode("VALIDATION_REFUSAL_" + validation.reason());
+                    checkedAnswer = buildRefusalMarkdown("现有资料未直接说明这个问题，我先不根据相邻角色或相邻条目猜测。");
+                    answerType = AssistantConstants.ANSWER_REFUSAL;
+                    citations = List.of();
+                }
+                streamedAnswer = emitStaticAnswer(checkedAnswer, emitter, metrics);
             }
         } else if (shouldAugmentWithWebSearch(prepared, request.message(), hits)) {
             if (hasWebAnswer(webSearchResult)) {
@@ -351,7 +421,11 @@ public class AssistantAnswerService {
                         .limit(assistantProperties.getMaxSuggestions())
                         .toList();
                 metrics.setStreamMode("FALLBACK");
-                streamedAnswer = emitStaticAnswer(buildWebMarkdownAnswer(webSearchResult.answer(), citations), emitter, metrics);
+                streamedAnswer = emitStaticAnswer(
+                        sanitizeSubjectDrift(buildWebMarkdownAnswer(webSearchResult.answer(), citations), request.message()),
+                        emitter,
+                        metrics
+                );
             } else {
                 citations = List.of();
                 suggestedQuestions = prepared.config().base().quickQuestions().stream()
@@ -415,10 +489,16 @@ public class AssistantAnswerService {
             AssistantDtos.AssistantAskRequest request,
             ExecutionMetrics metrics
     ) {
-        AssistantKnowledgeService.KnowledgeSearchResult searchResult = assistantKnowledgeService.searchPublishedKnowledgeResult(request.message());
-        List<AssistantKnowledgeService.KnowledgeHit> hits = searchResult.hits();
-        metrics.setRetrievalMs(searchResult.retrievalMs());
-        metrics.setEmbeddingMs(searchResult.embeddingMs());
+        AssistantRetrievalResult retrievalResult = assistantRetrievalService.retrieve(
+                request.message(),
+                prepared.queryPlan(),
+                resolveTopK(prepared.config()),
+                resolveSimilarityThreshold(prepared.config())
+        );
+        List<AssistantKnowledgeService.KnowledgeHit> hits = distinctKnowledgeHits(retrievalResult.hits());
+        metrics.setRetrievalMs(retrievalResult.retrievalMs());
+        metrics.setEmbeddingMs(retrievalResult.embeddingMs());
+        metrics.setRetrievalMeta(retrievalResult.meta());
         boolean usedWebSearch = false;
         String answerType = AssistantConstants.ANSWER_RAG;
         String answer;
@@ -429,19 +509,37 @@ public class AssistantAnswerService {
 
         if (!hits.isEmpty()) {
             citations = hits.stream()
-                    .limit(assistantProperties.getTopK())
+                    .limit(resolveTopK(prepared.config()))
                     .map(AssistantKnowledgeService.KnowledgeHit::toCitation)
                     .toList();
-            GeneratedAnswer generatedAnswer = synthesizeKnowledgeMarkdown(prepared, request.message(), hits);
+            AssistantGeneratedAnswer generatedAnswer = assistantAnswerGenerationService.generateKnowledge(
+                    prepared.config(),
+                    prepared.queryPlan(),
+                    hits,
+                    recentContextMessages(prepared, request.message())
+            );
             metrics.setModelMs(generatedAnswer.modelMs());
             metrics.setFallbackModeIfBlank(generatedAnswer.fallbackMode());
-            answer = generatedAnswer.answer();
-            suggestedQuestions = nextQuestions(prepared.config().base().quickQuestions(), request.message());
+            answer = sanitizeSubjectDrift(generatedAnswer.answer(), request.message());
+            AssistantAnswerValidation validation = assistantAnswerValidator.validate(answer, prepared.queryPlan(), hits);
+            if (!validation.valid()) {
+                metrics.setFallbackMode("VALIDATION_" + validation.reason());
+                answer = sanitizeSubjectDrift(
+                        assistantAnswerGenerationService.templateKnowledgeAnswer(prepared.queryPlan(), hits),
+                        request.message()
+                );
+                validation = assistantAnswerValidator.validate(answer, prepared.queryPlan(), hits);
+                if (!validation.valid()) {
+                    metrics.setFallbackMode("VALIDATION_REFUSAL_" + validation.reason());
+                    return refusal(prepared.session(), prepared.config(), prepared.traceId(), "现有资料未直接说明这个问题，我先不根据相邻角色或相邻条目猜测。");
+                }
+            }
+            suggestedQuestions = List.of();
             if (hasWebAnswer(webSearchResult)) {
                 usedWebSearch = true;
                 answerType = AssistantConstants.ANSWER_WEB;
                 citations = mergeCitations(citations, webSearchResult.citations());
-                answer = mergeKnowledgeAndWebAnswer(answer, webSearchResult);
+                answer = sanitizeSubjectDrift(mergeKnowledgeAndWebAnswer(answer, webSearchResult), request.message());
                 suggestedQuestions = mergeSuggestedQuestions(
                         webSearchResult.suggestedQuestions(),
                         suggestedQuestions
@@ -458,6 +556,7 @@ public class AssistantAnswerService {
                         : webSearchResult.suggestedQuestions().stream()
                         .limit(assistantProperties.getMaxSuggestions())
                         .toList();
+                answer = sanitizeSubjectDrift(answer, request.message());
             } else {
                 metrics.setFallbackModeIfBlank("WEB_EMPTY");
                 return refusal(prepared.session(), prepared.config(), prepared.traceId(), prepared.config().prompt().refusalPrompt());
@@ -601,6 +700,22 @@ public class AssistantAnswerService {
                 && message.length() <= 120;
     }
 
+    private int resolveTopK(AssistantDtos.AdminAiConfig config) {
+        Integer configured = config == null || config.retrieval() == null ? null : config.retrieval().topK();
+        if (configured == null || configured <= 0) {
+            return Math.max(assistantProperties.getTopK(), 1);
+        }
+        return Math.min(Math.max(configured, 1), 8);
+    }
+
+    private double resolveSimilarityThreshold(AssistantDtos.AdminAiConfig config) {
+        Double configured = config == null || config.retrieval() == null ? null : config.retrieval().similarityThreshold();
+        if (configured == null || configured <= 0 || configured >= 1) {
+            return assistantProperties.getSimilarityThreshold();
+        }
+        return configured;
+    }
+
     private boolean shouldUseWebSearch(
             PreparedAsk prepared,
             String query,
@@ -609,15 +724,7 @@ public class AssistantAnswerService {
         if (!hits.isEmpty() || !prepared.config().search().webSearchEnabled() || !assistantProperties.isWebSearchEnabled()) {
             return false;
         }
-        String normalized = query == null ? "" : query.toLowerCase(Locale.ROOT);
-        return normalized.contains("联网")
-                || normalized.contains("最新")
-                || normalized.contains("今天")
-                || normalized.contains("近期")
-                || normalized.contains("版本")
-                || normalized.contains("更新")
-                || normalized.contains("新闻")
-                || normalized.contains("赛事");
+        return prepared.queryPlan() != null ? prepared.queryPlan().timeSensitive() : isTimeSensitiveQuery(query);
     }
 
     private boolean shouldAugmentWithWebSearch(
@@ -629,9 +736,9 @@ public class AssistantAnswerService {
             return false;
         }
         if (hits == null || hits.isEmpty()) {
-            return true;
+            return prepared.queryPlan() != null && prepared.queryPlan().timeSensitive();
         }
-        return isTimeSensitiveQuery(query);
+        return prepared.queryPlan() != null ? prepared.queryPlan().timeSensitive() : isTimeSensitiveQuery(query);
     }
 
     private boolean isTimeSensitiveQuery(String query) {
@@ -659,13 +766,19 @@ public class AssistantAnswerService {
             return AssistantSearchService.SearchResult.empty();
         }
         long webSearchStartAt = System.currentTimeMillis();
-        AssistantSearchService.SearchResult searchResult = assistantSearchService.searchWeb(
-                query,
-                prepared.config().base().chatModel(),
-                prepared.config().base().temperature()
-        );
-        metrics.setWebSearchMs(System.currentTimeMillis() - webSearchStartAt);
-        return searchResult;
+        try {
+            AssistantSearchService.SearchResult searchResult = assistantSearchService.searchWeb(
+                    query,
+                    prepared.config().base().chatModel(),
+                    prepared.config().base().temperature()
+            );
+            metrics.setWebSearchMs(System.currentTimeMillis() - webSearchStartAt);
+            return searchResult;
+        } catch (Exception exception) {
+            metrics.setWebSearchMs(System.currentTimeMillis() - webSearchStartAt);
+            metrics.setFallbackModeIfBlank("WEB_EXCEPTION");
+            return AssistantSearchService.SearchResult.empty();
+        }
     }
 
     private boolean hasWebAnswer(AssistantSearchService.SearchResult searchResult) {
@@ -729,12 +842,28 @@ public class AssistantAnswerService {
     }
 
     private QueryIntent classifyIntent(String message, List<String> blockedKeywords) {
-        String normalized = message.toLowerCase(Locale.ROOT);
-        boolean blocked = blockedKeywords.stream().filter(keyword -> keyword != null && !keyword.isBlank()).anyMatch(normalized::contains);
+        String normalized = message == null ? "" : message.toLowerCase(Locale.ROOT);
+        List<String> blockedWords = blockedKeywords == null ? List.of() : blockedKeywords;
+        boolean blocked = blockedWords.stream().filter(keyword -> keyword != null && !keyword.isBlank()).anyMatch(normalized::contains);
         if (blocked) {
             return QueryIntent.UNSUPPORTED;
         }
-        if (normalized.contains("推荐") || normalized.contains("板子") || normalized.contains("适合") || PLAYER_COUNT_PATTERN.matcher(normalized).find()) {
+        boolean hasPlayerCount = PLAYER_COUNT_PATTERN.matcher(normalized).find();
+        boolean hasBoardContext = normalized.contains("板子")
+                || normalized.contains("局")
+                || normalized.contains("配置")
+                || hasPlayerCount;
+        boolean asksForRecommendation = normalized.contains("推荐")
+                || normalized.contains("适合")
+                || normalized.contains("选")
+                || normalized.contains("找")
+                || normalized.contains("玩什么")
+                || normalized.contains("什么板")
+                || normalized.contains("哪张")
+                || normalized.contains("来一套");
+        boolean onlyBoardProfile = hasPlayerCount
+                && (parseDifficulty(normalized) != null || !extractTagHints(normalized).isEmpty() || normalized.contains("板"));
+        if (hasBoardContext && (asksForRecommendation || onlyBoardProfile)) {
             return QueryIntent.BOARD_RECOMMENDATION;
         }
         return QueryIntent.KNOWLEDGE;
@@ -870,18 +999,22 @@ public class AssistantAnswerService {
 
     private GeneratedAnswer synthesizeKnowledgeMarkdown(PreparedAsk prepared, String query, List<AssistantKnowledgeService.KnowledgeHit> hits) {
         MiniMaxChatModel chatModel = miniMaxChatModelProvider.getIfAvailable();
+        List<AssistantKnowledgeService.KnowledgeHit> contextHits = distinctKnowledgeHits(hits);
         StringBuilder context = new StringBuilder();
-        for (AssistantKnowledgeService.KnowledgeHit hit : hits) {
-            context.append("来源类型：").append(describeKnowledgeSource(hit.sourceType())).append('\n')
+        int contextIndex = 1;
+        for (AssistantKnowledgeService.KnowledgeHit hit : contextHits) {
+            context.append("资料 ").append(contextIndex++).append("（相关度 ").append(String.format(Locale.ROOT, "%.1f", hit.score())).append("）\n")
+                    .append("来源类型：").append(describeKnowledgeSource(hit.sourceType())).append('\n')
                     .append("来源：").append(hit.title()).append('\n')
-                    .append(hit.snippet()).append("\n\n");
+                    .append(contextForPrompt(hit)).append("\n\n");
         }
 
         if (chatModel == null) {
-            return new GeneratedAnswer(fallbackKnowledgeAnswer(hits), "NO_MODEL", 0L);
+            return new GeneratedAnswer(fallbackKnowledgeAnswer(query, contextHits), "NO_MODEL", 0L);
         }
 
-        List<String> recentMessages = assistantConversationService.recentContextMessages(prepared.openid(), prepared.session().getSessionId());
+        // 最近上下文只用于理解追问，不把本轮用户问题重复塞进去，减少模型复读和跑题。
+        List<String> recentMessages = recentContextMessages(prepared, query);
         String history = recentMessages.isEmpty() ? "无" : String.join("\n", recentMessages);
 
         Prompt prompt = new Prompt(
@@ -893,9 +1026,16 @@ public class AssistantAnswerService {
                                 2. 如需拆解规则，再输出 `### 规则拆解`
                                 3. 如需给操作建议，再输出 `### 你可以怎么做`
                                 4. 只能依据给定资料，不要编造
-                                5. 如果资料里同时有“上传知识库文档”和“结构化板子/角色资料”，优先采用上传知识库文档的说法，结构化资料只作为补充
-                                6. 不要把原始字段整段照抄成“板子名称/人数/难度/标签”的数据清单，除非用户明确要基础资料卡
-                                7. 句子尽量短，优先用项目符号
+                                5. 回答必须完整覆盖资料中与问题直接相关的技能、限制、触发时机和结算结果，不要只截取半句
+                                6. 优先使用排在最前面的资料；只有当它不能直接回答时，才参考后续资料
+                                7. 如果资料没有直接回答用户问题，明确说明“现有资料未直接说明”，不要用相邻角色或相邻 FAQ 猜测
+                                8. 不要把原始字段整段照抄成“板子名称/人数/难度/标签”的数据清单，除非用户明确要基础资料卡
+                                9. 不要输出文档里的题号、章节号、A:/Q: 前缀或无关 FAQ
+                                10. 句子尽量短，优先用项目符号
+                                11. 每个要点必须独占一行，严禁在同一行里连续写 `- 技能： - 面具： - 接刀：`
+                                12. 小标题用 `### 技能` 这类独立行；小标题后面的内容另起项目符号行
+                                13. 如果用户问的是某个具体角色、板子或术语，只回答这个主体；同一资料里的其他角色/板子不得混入答案
+                                14. 如果命中资料标题和用户主体不一致，但资料片段内有用户主体，只能使用片段内的用户主体内容
                                 """),
                         new UserMessage("""
                                 当前问题：
@@ -920,11 +1060,11 @@ public class AssistantAnswerService {
             String content = response.getResult().getOutput().getText();
             long modelMs = System.currentTimeMillis() - modelStartAt;
             if (content == null || content.isBlank()) {
-                return new GeneratedAnswer(fallbackKnowledgeAnswer(hits), "MODEL_EMPTY", modelMs);
+                return new GeneratedAnswer(fallbackKnowledgeAnswer(query, contextHits), "MODEL_EMPTY", modelMs);
             }
             return new GeneratedAnswer(normalizeMarkdown(content), "NONE", modelMs);
         } catch (Exception exception) {
-            return new GeneratedAnswer(fallbackKnowledgeAnswer(hits), "MODEL_EXCEPTION", System.currentTimeMillis() - modelStartAt);
+            return new GeneratedAnswer(fallbackKnowledgeAnswer(query, contextHits), "MODEL_EXCEPTION", System.currentTimeMillis() - modelStartAt);
         }
     }
 
@@ -985,14 +1125,17 @@ public class AssistantAnswerService {
             String query,
             List<AssistantKnowledgeService.KnowledgeHit> hits
     ) {
+        List<AssistantKnowledgeService.KnowledgeHit> contextHits = distinctKnowledgeHits(hits);
         StringBuilder context = new StringBuilder();
-        for (AssistantKnowledgeService.KnowledgeHit hit : hits) {
-            context.append("来源类型: ").append(describeKnowledgeSource(hit.sourceType())).append('\n')
+        int contextIndex = 1;
+        for (AssistantKnowledgeService.KnowledgeHit hit : contextHits) {
+            context.append("资料 ").append(contextIndex++).append("（相关度 ").append(String.format(Locale.ROOT, "%.1f", hit.score())).append("）\n")
+                    .append("来源类型: ").append(describeKnowledgeSource(hit.sourceType())).append('\n')
                     .append("来源: ").append(hit.title()).append('\n')
-                    .append(hit.snippet()).append("\n\n");
+                    .append(contextForPrompt(hit)).append("\n\n");
         }
 
-        List<String> recentMessages = assistantConversationService.recentContextMessages(prepared.openid(), prepared.session().getSessionId());
+        List<String> recentMessages = recentContextMessages(prepared, query);
         String history = recentMessages.isEmpty() ? "无" : String.join("\n", recentMessages);
 
         return new Prompt(
@@ -1004,9 +1147,16 @@ public class AssistantAnswerService {
                                 2. 如需拆解规则，再输出 `### 规则拆解`
                                 3. 如需给操作建议，再输出 `### 你可以怎么做`
                                 4. 只能依据给定资料，不要编造
-                                5. 如果资料里同时有“上传知识库文档”和“结构化板子/角色资料”，优先采用上传知识库文档的说法，结构化资料只作为补充
-                                6. 不要把原始字段整段照抄成“板子名称/人数/难度/标签”的数据清单，除非用户明确要基础资料卡
-                                7. 句子尽量短，优先用项目符号
+                                5. 回答必须完整覆盖资料中与问题直接相关的技能、限制、触发时机和结算结果，不要只截取半句
+                                6. 优先使用排在最前面的资料；只有当它不能直接回答时，才参考后续资料
+                                7. 如果资料没有直接回答用户问题，明确说明“现有资料未直接说明”，不要用相邻角色或相邻 FAQ 猜测
+                                8. 不要把原始字段整段照抄成“板子名称/人数/难度/标签”的数据清单，除非用户明确要基础资料卡
+                                9. 不要输出文档里的题号、章节号、A:/Q: 前缀或无关 FAQ
+                                10. 句子尽量短，优先用项目符号
+                                11. 每个要点必须独占一行，严禁在同一行里连续写 `- 技能： - 面具： - 接刀：`
+                                12. 小标题用 `### 技能` 这类独立行；小标题后面的内容另起项目符号行
+                                13. 如果用户问的是某个具体角色、板子或术语，只回答这个主体；同一资料里的其他角色/板子不得混入答案
+                                14. 如果命中资料标题和用户主体不一致，但资料片段内有用户主体，只能使用片段内的用户主体内容
                                 """),
                         new UserMessage("""
                                 当前问题：
@@ -1046,6 +1196,7 @@ public class AssistantAnswerService {
         try {
             for (ChatResponse chunkResponse : chatModel.stream(prompt).toIterable()) {
                 String chunkText = extractResponseText(chunkResponse);
+                // 不同模型/SDK 可能返回“增量文本”或“累计全文”，这里统一转成真正增量再发给前端。
                 String delta = resolveStreamDelta(chunkText, answer.toString());
                 if (delta == null || delta.isBlank()) {
                     continue;
@@ -1108,10 +1259,30 @@ public class AssistantAnswerService {
         if (chunkText == null || chunkText.isBlank()) {
             return "";
         }
-        if (currentAnswer != null && !currentAnswer.isEmpty() && chunkText.startsWith(currentAnswer)) {
+        if (currentAnswer == null || currentAnswer.isEmpty()) {
+            return chunkText;
+        }
+        if (chunkText.startsWith(currentAnswer)) {
             return chunkText.substring(currentAnswer.length());
         }
+        if (currentAnswer.endsWith(chunkText)) {
+            return "";
+        }
+        int overlap = textOverlapLength(currentAnswer, chunkText);
+        if (overlap > 0) {
+            return chunkText.substring(overlap);
+        }
         return chunkText;
+    }
+
+    private int textOverlapLength(String left, String right) {
+        int maxLength = Math.min(left.length(), right.length());
+        for (int length = maxLength; length > 0; length--) {
+            if (left.regionMatches(left.length() - length, right, 0, length)) {
+                return length;
+            }
+        }
+        return 0;
     }
 
     private String fallbackBoardAnswer(List<AssistantDtos.RecommendedBoardCard> boards) {
@@ -1133,23 +1304,425 @@ public class AssistantAnswerService {
         return builder.toString().trim();
     }
 
-    private String fallbackKnowledgeAnswer(List<AssistantKnowledgeService.KnowledgeHit> hits) {
-        AssistantKnowledgeService.KnowledgeHit first = hits.stream()
-                .filter(hit -> AssistantConstants.SOURCE_DOCUMENT.equals(hit.sourceType()))
-                .findFirst()
-                .orElseGet(hits::getFirst);
+    private String fallbackKnowledgeAnswer(String query, List<AssistantKnowledgeService.KnowledgeHit> hits) {
+        if (hits == null || hits.isEmpty()) {
+            return buildRefusalMarkdown("现有知识库暂时没有找到能直接回答这个问题的资料。");
+        }
+        hits = distinctKnowledgeHits(hits);
+        if (hits.isEmpty()) {
+            return buildRefusalMarkdown("现有知识库暂时没有找到能直接回答这个问题的资料。");
+        }
+        AssistantKnowledgeService.KnowledgeHit first = hits.getFirst();
+        String structuredAnswer = buildStructuredFallbackAnswer(query, first);
+        if (structuredAnswer != null && !structuredAnswer.isBlank()) {
+            return structuredAnswer;
+        }
         String sourceHint = AssistantConstants.SOURCE_DOCUMENT.equals(first.sourceType())
                 ? "这条回答优先依据你上传并已发布的知识库文档"
                 : "这条回答优先依据站内已发布知识整理";
-        return """
-                ## 结论
+        StringBuilder builder = new StringBuilder("## 结论\n\n");
+        List<String> excerpts = distinctKnowledgeExcerpts(hits);
+        if (excerpts.isEmpty()) {
+            excerpts = List.of(cleanKnowledgeExcerpt(first));
+        }
+        excerpts.stream()
+                .limit(2)
+                .map(excerpt -> "- " + excerpt)
+                .forEach(line -> builder.append(line).append('\n'));
+        builder.append("\n### 依据\n")
+                .append("- 来源：**").append(first.title()).append("**\n")
+                .append("- ").append(sourceHint);
+        return builder.toString().trim();
+    }
 
-                %s
+    private List<String> distinctKnowledgeExcerpts(List<AssistantKnowledgeService.KnowledgeHit> hits) {
+        if (hits == null || hits.isEmpty()) {
+            return List.of();
+        }
+        List<String> excerpts = new ArrayList<>();
+        List<String> fingerprints = new ArrayList<>();
+        for (AssistantKnowledgeService.KnowledgeHit hit : distinctKnowledgeHits(hits)) {
+            String excerpt = cleanKnowledgeExcerpt(hit);
+            String fingerprint = textFingerprint(excerpt);
+            if (excerpt.isBlank() || hasSimilarFingerprint(fingerprint, fingerprints)) {
+                continue;
+            }
+            excerpts.add(excerpt);
+            rememberFingerprint(fingerprints, fingerprint, 12);
+        }
+        return excerpts;
+    }
 
-                ### 依据
-                - 来源：**%s**
-                - %s
-                """.formatted(first.snippet(), first.title(), sourceHint).trim();
+    private String sanitizeSubjectDrift(String answer, String query) {
+        if (answer == null || answer.isBlank()) {
+            return "";
+        }
+        SubjectGuard guard = buildSubjectGuard(query);
+        if (!guard.enabled()) {
+            return answer;
+        }
+
+        List<String> keptLines = new ArrayList<>();
+        for (String line : answer.replace("\r\n", "\n").split("\n", -1)) {
+            if (shouldDropSubjectDriftLine(line, guard)) {
+                continue;
+            }
+            keptLines.add(line);
+        }
+        if (keptLines.isEmpty()) {
+            return answer;
+        }
+        return MULTI_BLANK_LINES.matcher(String.join("\n", keptLines).trim()).replaceAll("\n\n");
+    }
+
+    private SubjectGuard buildSubjectGuard(String query) {
+        String normalizedQuery = textFingerprint(query);
+        if (normalizedQuery.isBlank()) {
+            return SubjectGuard.disabled();
+        }
+
+        List<SubjectCandidate> candidates = new ArrayList<>();
+        List<String> allTerms = new ArrayList<>();
+        int roleBoost = containsAny(query, List.of("技能", "能力", "身份", "角色", "信息", "介绍", "发动", "怎么用")) ? 30 : 0;
+        int boardBoost = containsAny(query, List.of("板子", "局", "配置", "人数", "阵容", "规则", "流程")) ? 30 : 0;
+
+        for (WolfbookDtos.RoleListItemView role : boardService.listRoles(null)) {
+            addSubjectCandidate(candidates, allTerms, normalizedQuery, "ROLE", role.name(), role.name(), roleBoost);
+            for (String alias : splitAliases(role.alias())) {
+                addSubjectCandidate(candidates, allTerms, normalizedQuery, "ROLE", role.name(), alias, roleBoost - 5);
+            }
+        }
+        for (Board board : boardService.listAllBoards()) {
+            addSubjectCandidate(candidates, allTerms, normalizedQuery, "BOARD", board.name(), board.name(), boardBoost);
+        }
+
+        return candidates.stream()
+                .max(Comparator.comparingInt(SubjectCandidate::score)
+                        .thenComparingInt(candidate -> textFingerprint(candidate.term()).length()))
+                .map(candidate -> {
+                    String selected = textFingerprint(candidate.displayName());
+                    List<String> otherTerms = allTerms.stream()
+                            .filter(term -> !textFingerprint(term).isBlank())
+                            .filter(term -> !selected.equals(textFingerprint(term)))
+                            .filter(term -> !selected.contains(textFingerprint(term)))
+                            .distinct()
+                            .toList();
+                    return new SubjectGuard(
+                            List.of(candidate.displayName(), candidate.term()).stream()
+                                    .filter(term -> term != null && !term.isBlank())
+                                    .distinct()
+                                    .toList(),
+                            otherTerms
+                    );
+                })
+                .orElseGet(SubjectGuard::disabled);
+    }
+
+    private void addSubjectCandidate(
+            List<SubjectCandidate> candidates,
+            List<String> allTerms,
+            String normalizedQuery,
+            String type,
+            String displayName,
+            String term,
+            int boost
+    ) {
+        if (term == null || term.isBlank()) {
+            return;
+        }
+        allTerms.add(term);
+        String normalizedTerm = textFingerprint(term);
+        if (normalizedTerm.length() < 2 || !normalizedQuery.contains(normalizedTerm)) {
+            return;
+        }
+        candidates.add(new SubjectCandidate(type, displayName, term, normalizedTerm.length() * 10 + Math.max(boost, 0)));
+    }
+
+    private boolean shouldDropSubjectDriftLine(String line, SubjectGuard guard) {
+        String trimmed = line == null ? "" : line.trim();
+        if (trimmed.isBlank()) {
+            return false;
+        }
+        if (startsWithOtherSubject(trimmed, guard)) {
+            return true;
+        }
+        int otherCount = countOtherTerms(trimmed, guard);
+        if (otherCount >= 3 && isCatalogLikeLine(trimmed)) {
+            return true;
+        }
+        return otherCount >= 2 && !containsSubject(trimmed, guard) && isListLikeLine(trimmed);
+    }
+
+    private boolean startsWithOtherSubject(String line, SubjectGuard guard) {
+        String stripped = line
+                .replaceFirst("^\\s*[-*•>]+\\s*", "")
+                .replaceFirst("^\\s*\\d+[.、．]\\s*", "")
+                .replaceFirst("^\\s*\\|+\\s*", "")
+                .replace("**", "")
+                .trim();
+        String normalized = textFingerprint(stripped);
+        if (normalized.isBlank()) {
+            return false;
+        }
+        for (String term : guard.otherTerms()) {
+            String normalizedTerm = textFingerprint(term);
+            if (normalizedTerm.length() >= 2 && normalized.startsWith(normalizedTerm)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int countOtherTerms(String line, SubjectGuard guard) {
+        String normalized = textFingerprint(line);
+        int count = 0;
+        for (String term : guard.otherTerms()) {
+            String normalizedTerm = textFingerprint(term);
+            if (normalizedTerm.length() >= 2 && normalized.contains(normalizedTerm)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private boolean containsSubject(String line, SubjectGuard guard) {
+        String normalized = textFingerprint(line);
+        for (String term : guard.subjectTerms()) {
+            String normalizedTerm = textFingerprint(term);
+            if (normalizedTerm.length() >= 2 && normalized.contains(normalizedTerm)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isCatalogLikeLine(String line) {
+        long pipeCount = line.chars().filter(character -> character == '|').count();
+        return line.contains("||")
+                || pipeCount >= 4
+                || line.length() > 80 && (line.contains(" | ") || line.contains("、") || line.contains("；"));
+    }
+
+    private boolean isListLikeLine(String line) {
+        return line.startsWith("-")
+                || line.startsWith("*")
+                || line.startsWith("|")
+                || line.matches("^\\d+[.、．].*");
+    }
+
+    private List<String> splitAliases(String alias) {
+        if (alias == null || alias.isBlank()) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(alias.split("[,，、/|\\s]+"))
+                .map(String::trim)
+                .filter(item -> item.length() >= 2)
+                .toList();
+    }
+
+    private boolean containsAny(String value, List<String> keywords) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        for (String keyword : keywords) {
+            if (value.contains(keyword)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String buildStructuredFallbackAnswer(String query, AssistantKnowledgeService.KnowledgeHit hit) {
+        if (hit == null || hit.document() == null || !AssistantConstants.SOURCE_STRUCTURED.equals(hit.sourceType())) {
+            return null;
+        }
+        Map<String, String> fields = parseStructuredFields(hit.document().getContentText());
+        String sourceKey = hit.document().getSourceKey() == null ? "" : hit.document().getSourceKey();
+        if (sourceKey.startsWith("ROLE:")) {
+            String name = fields.getOrDefault("角色名称", hit.title());
+            StringBuilder builder = new StringBuilder("## 结论\n\n");
+            if (asksForSkill(query) && fields.containsKey("技能")) {
+                builder.append("- **").append(name).append("的技能**：").append(fields.get("技能")).append('\n');
+            } else {
+                appendFieldBullet(builder, "角色", name);
+                appendFieldBullet(builder, "阵营", fields.get("阵营"));
+                appendFieldBullet(builder, "类型", fields.get("类型"));
+                appendFieldBullet(builder, "技能", fields.get("技能"));
+            }
+            appendFieldBullet(builder, "补充", fields.get("FAQ"));
+            builder.append("\n### 依据\n")
+                    .append("- 来源：**").append(hit.title()).append("**\n")
+                    .append("- 站内结构化角色资料");
+            return builder.toString().trim();
+        }
+        if (sourceKey.startsWith("BOARD:")) {
+            String name = fields.getOrDefault("板子名称", hit.title());
+            StringBuilder builder = new StringBuilder("## 结论\n\n");
+            appendFieldBullet(builder, "板子", name);
+            appendFieldBullet(builder, "人数", fields.get("人数"));
+            appendFieldBullet(builder, "难度", fields.get("难度"));
+            appendFieldBullet(builder, "规则类型", fields.get("规则类型"));
+            appendFieldBullet(builder, "胜利条件", fields.get("胜利条件"));
+            appendFieldBullet(builder, "规则", fields.get("规则"));
+            appendFieldBullet(builder, "提示", fields.get("提示"));
+            builder.append("\n### 依据\n")
+                    .append("- 来源：**").append(hit.title()).append("**\n")
+                    .append("- 站内结构化板子资料");
+            return builder.toString().trim();
+        }
+        return null;
+    }
+
+    private Map<String, String> parseStructuredFields(String content) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        if (content == null || content.isBlank()) {
+            return fields;
+        }
+        for (String line : content.split("\\R")) {
+            int separatorIndex = line.indexOf('：');
+            if (separatorIndex <= 0) {
+                continue;
+            }
+            String key = line.substring(0, separatorIndex).trim();
+            String value = line.substring(separatorIndex + 1).trim();
+            if (!key.isBlank() && !value.isBlank()) {
+                fields.put(key, value);
+            }
+        }
+        return fields;
+    }
+
+    private boolean asksForSkill(String query) {
+        String normalized = query == null ? "" : query;
+        return normalized.contains("技能")
+                || normalized.contains("能力")
+                || normalized.contains("作用")
+                || normalized.contains("怎么用")
+                || normalized.contains("发动")
+                || normalized.contains("是什么");
+    }
+
+    private void appendFieldBullet(StringBuilder builder, String label, String value) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        builder.append("- **").append(label).append("**：").append(cleanAnswerSnippet(value)).append('\n');
+    }
+
+    private List<AssistantKnowledgeService.KnowledgeHit> distinctKnowledgeHits(List<AssistantKnowledgeService.KnowledgeHit> hits) {
+        if (hits == null || hits.isEmpty()) {
+            return List.of();
+        }
+        List<AssistantKnowledgeService.KnowledgeHit> distinct = new ArrayList<>();
+        List<String> fingerprints = new ArrayList<>();
+        for (AssistantKnowledgeService.KnowledgeHit hit : hits) {
+            if (hit == null) {
+                continue;
+            }
+            String fingerprint = textFingerprint(contextForPrompt(hit));
+            if (fingerprint.isBlank()) {
+                fingerprint = textFingerprint((hit.title() == null ? "" : hit.title()) + " " + (hit.snippet() == null ? "" : hit.snippet()));
+            }
+            if (hasSimilarFingerprint(fingerprint, fingerprints)) {
+                continue;
+            }
+            distinct.add(hit);
+            rememberFingerprint(fingerprints, fingerprint, 18);
+        }
+        return distinct;
+    }
+
+    private String contextForPrompt(AssistantKnowledgeService.KnowledgeHit hit) {
+        if (hit == null) {
+            return "";
+        }
+        String context = hit.contextText();
+        if (context == null || context.isBlank()) {
+            context = hit.snippet();
+        }
+        return limitText(cleanMarkdownNoise(context), 1200);
+    }
+
+    private String cleanKnowledgeExcerpt(AssistantKnowledgeService.KnowledgeHit hit) {
+        if (hit == null) {
+            return "";
+        }
+        String context = hit.contextText();
+        if (context == null || context.isBlank()) {
+            context = hit.snippet();
+        }
+        return limitText(cleanMarkdownNoise(context), 700);
+    }
+
+    private String cleanAnswerSnippet(String snippet) {
+        if (snippet == null) {
+            return "";
+        }
+        return limitText(cleanMarkdownNoise(snippet), 220);
+    }
+
+    private String cleanMarkdownNoise(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value
+                .replaceAll("(?m)^#{1,6}\\s*", "")
+                .replaceAll("(?m)^[-*]\\s+", "")
+                .replaceAll("(?m)^\\d+[.、．]\\s*", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private String textFingerprint(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return value.toLowerCase(Locale.ROOT)
+                .replaceAll("https?://\\S+", "")
+                .replaceAll("(?m)^#{1,6}\\s*", "")
+                .replaceAll("(?m)^[-*]\\s+", "")
+                .replaceAll("(?m)^\\d+[.、．]\\s*", "")
+                .replaceAll("\\*\\*|`|_", "")
+                .replaceAll("[\\p{P}\\s]+", "")
+                .trim();
+    }
+
+    private boolean hasSimilarFingerprint(String fingerprint, List<String> fingerprints) {
+        if (fingerprint == null || fingerprint.length() < 12) {
+            return false;
+        }
+        for (String existing : fingerprints) {
+            if (fingerprint.equals(existing)) {
+                return true;
+            }
+            String shorter = fingerprint.length() <= existing.length() ? fingerprint : existing;
+            String longer = fingerprint.length() > existing.length() ? fingerprint : existing;
+            if (shorter.length() >= 28 && longer.contains(shorter)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void rememberFingerprint(List<String> fingerprints, String fingerprint, int maxSize) {
+        if (fingerprint == null || fingerprint.length() < 12) {
+            return;
+        }
+        fingerprints.add(fingerprint);
+        while (fingerprints.size() > maxSize) {
+            fingerprints.removeFirst();
+        }
+    }
+
+    private String limitText(String value, int maxLength) {
+        if (value == null) {
+            return "";
+        }
+        String cleaned = value.trim();
+        if (cleaned.length() <= maxLength) {
+            return cleaned;
+        }
+        return cleaned.substring(0, Math.max(0, maxLength));
     }
 
     private String describeKnowledgeSource(String sourceType) {
@@ -1190,10 +1763,28 @@ public class AssistantAnswerService {
     }
 
     private List<String> nextQuestions(List<String> quickQuestions, String currentQuestion) {
+        if (quickQuestions == null || quickQuestions.isEmpty()) {
+            return List.of();
+        }
         return quickQuestions.stream()
-                .filter(item -> !item.equalsIgnoreCase(currentQuestion))
+                .filter(item -> item != null && !item.equalsIgnoreCase(currentQuestion))
                 .limit(assistantProperties.getMaxSuggestions())
                 .toList();
+    }
+
+    private List<String> recentContextMessages(PreparedAsk prepared, String currentQuestion) {
+        List<String> recentMessages = assistantConversationService.recentContextMessages(
+                prepared.openid(),
+                prepared.session().getSessionId()
+        );
+        if (recentMessages.isEmpty() || currentQuestion == null) {
+            return recentMessages;
+        }
+        String currentLine = "USER: " + currentQuestion;
+        if (currentLine.equals(recentMessages.getLast())) {
+            return recentMessages.subList(0, recentMessages.size() - 1);
+        }
+        return recentMessages;
     }
 
     private Integer parsePlayerCount(String query) {
@@ -1257,11 +1848,46 @@ public class AssistantAnswerService {
             return "";
         }
         String normalized = content.replace("\r\n", "\n").trim();
+        // 模型偶尔把多个 Markdown 要点挤在同一行，这里先拆行，再做重复行过滤。
+        normalized = normalized.replaceAll("\\h+-\\h+(?=(?:#{1,6}\\h*)?[\\p{IsAlphabetic}\\p{IsDigit}\\u4e00-\\u9fa5]{1,12}[：:])", "\n- ");
+        normalized = normalized.replaceAll("\\h+-\\h+(?=(若|如果|当|可|可以|不|在|被|否则|同时|然后|接刀|小贴士|注意))", "\n- ");
+        normalized = normalized.replaceAll("(?m)^\\s*[-*]\\s+(#{1,6}\\s+)", "$1");
+        normalized = normalized.replaceAll("(?m)^\\s*[-*]\\s+(\\d+[.、．]\\s*)", "$1");
+        normalized = normalized.replaceAll("(?m)^\\s*[-*]\\s*(结论|技能|规则拆解|你可以怎么做|小贴士|注意事项|常见问题)[：:]?\\s*$", "### $1");
+        normalized = deduplicateMarkdownLines(normalized);
         normalized = MULTI_BLANK_LINES.matcher(normalized).replaceAll("\n\n");
         if (normalized.startsWith("#") || normalized.startsWith("-") || normalized.startsWith(">") || normalized.matches("^\\d+\\..*")) {
             return normalized;
         }
         return "## 回答\n\n" + normalized;
+    }
+
+    private String deduplicateMarkdownLines(String markdown) {
+        if (markdown == null || markdown.isBlank()) {
+            return "";
+        }
+        List<String> lines = new ArrayList<>();
+        List<String> fingerprints = new ArrayList<>();
+        boolean inCodeBlock = false;
+        for (String line : markdown.split("\n", -1)) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("```")) {
+                inCodeBlock = !inCodeBlock;
+                lines.add(line);
+                continue;
+            }
+            if (inCodeBlock || trimmed.isBlank()) {
+                lines.add(line);
+                continue;
+            }
+            String fingerprint = textFingerprint(trimmed);
+            if (hasSimilarFingerprint(fingerprint, fingerprints)) {
+                continue;
+            }
+            lines.add(line);
+            rememberFingerprint(fingerprints, fingerprint, 24);
+        }
+        return String.join("\n", lines).trim();
     }
 
     private void emit(SseEmitter emitter, String eventName, Object payload) throws IOException {
@@ -1307,6 +1933,7 @@ public class AssistantAnswerService {
         entity.setCacheHit(metrics.cacheHit() ? 1 : 0);
         entity.setFallbackMode(metrics.fallbackMode());
         entity.setStreamMode(metrics.streamMode());
+        entity.setRetrievalMetaJson(write(metrics.retrievalMeta()));
         entity.setSuccess(failureType == null ? 1 : 0);
         entity.setFailureType(failureType);
         entity.setTraceId(response.traceId());
@@ -1333,6 +1960,27 @@ public class AssistantAnswerService {
         UNSUPPORTED
     }
 
+    private record SubjectGuard(
+            List<String> subjectTerms,
+            List<String> otherTerms
+    ) {
+        static SubjectGuard disabled() {
+            return new SubjectGuard(List.of(), List.of());
+        }
+
+        boolean enabled() {
+            return subjectTerms != null && !subjectTerms.isEmpty();
+        }
+    }
+
+    private record SubjectCandidate(
+            String type,
+            String displayName,
+            String term,
+            int score
+    ) {
+    }
+
     private record PreparedAsk(
             String openid,
             AssistantSessionEntity session,
@@ -1340,6 +1988,7 @@ public class AssistantAnswerService {
             String traceId,
             QueryIntent intent,
             String cacheVersion,
+            AssistantQueryPlan queryPlan,
             long startAtMs
     ) {
     }
@@ -1383,6 +2032,7 @@ public class AssistantAnswerService {
         private boolean cacheHit = false;
         private String fallbackMode = "NONE";
         private String streamMode;
+        private Map<String, Object> retrievalMeta = Map.of();
 
         private ExecutionMetrics(long startAtMs, String streamMode) {
             this.startAtMs = startAtMs;
@@ -1462,12 +2112,26 @@ public class AssistantAnswerService {
             }
         }
 
+        void setFallbackMode(String fallbackMode) {
+            if (fallbackMode != null && !fallbackMode.isBlank()) {
+                this.fallbackMode = fallbackMode;
+            }
+        }
+
         String streamMode() {
             return streamMode == null || streamMode.isBlank() ? "STREAM" : streamMode;
         }
 
         void setStreamMode(String streamMode) {
             this.streamMode = streamMode;
+        }
+
+        Map<String, Object> retrievalMeta() {
+            return retrievalMeta == null ? Map.of() : retrievalMeta;
+        }
+
+        void setRetrievalMeta(Map<String, Object> retrievalMeta) {
+            this.retrievalMeta = retrievalMeta == null ? Map.of() : retrievalMeta;
         }
     }
 }

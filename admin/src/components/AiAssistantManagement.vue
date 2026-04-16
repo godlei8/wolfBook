@@ -2,7 +2,10 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadRequestOptions } from 'element-plus'
+import { clampPageToTotal, usePagedItems, useResetPageOnChange } from '../composables/pagination'
+import { PAGE_SIZES_LOGS, PAGE_SIZES_RICH } from '../constants/filters'
 import { api } from '../services/api'
+import { resolveErrorMessage } from '../utils/errors'
 import type { AdminAiConfig, AdminAiDocument, AdminAiLog, AdminAiPerformanceView, AdminAiVersion } from '../types'
 
 const loading = ref(false)
@@ -99,54 +102,36 @@ const uploadedDocumentCount = computed(() =>
   documents.value.filter((item) => item.sourceType === 'DOCUMENT').length,
 )
 
-const pagedDocuments = computed(() => paginate(documents.value, documentPage.value, documentPageSize.value))
-const pagedVersions = computed(() => paginate(versions.value, versionPage.value, versionPageSize.value))
-const pagedLogs = computed(() => paginate(logs.value, logPage.value, logPageSize.value))
+const pagedDocuments = usePagedItems(documents, documentPage, documentPageSize)
+const pagedVersions = usePagedItems(versions, versionPage, versionPageSize)
+const pagedLogs = usePagedItems(logs, logPage, logPageSize)
 
-function paginate<T>(items: T[], page: number, size: number) {
-  const safePage = Math.max(page, 1)
-  const safeSize = Math.max(size, 1)
-  const start = (safePage - 1) * safeSize
-  return items.slice(start, start + safeSize)
+useResetPageOnChange(documentPage, [documentPageSize])
+useResetPageOnChange(versionPage, [versionPageSize])
+useResetPageOnChange(logPage, [logPageSize])
+
+function showAiError(error: unknown, fallback = 'AI 助手后台操作失败') {
+  ElMessage.error(resolveErrorMessage(error, fallback))
 }
-
-function clampPage(pageRef: { value: number }, pageSize: number, total: number) {
-  const maxPage = Math.max(1, Math.ceil(total / Math.max(pageSize, 1)))
-  if (pageRef.value > maxPage) {
-    pageRef.value = maxPage
-  }
-}
-
-watch(documentPageSize, () => {
-  documentPage.value = 1
-})
-
-watch(versionPageSize, () => {
-  versionPage.value = 1
-})
-
-watch(logPageSize, () => {
-  logPage.value = 1
-})
 
 watch(
   () => documents.value.length,
   (total) => {
-    clampPage(documentPage, documentPageSize.value, total)
+    clampPageToTotal(documentPage, documentPageSize, total)
   },
 )
 
 watch(
   () => versions.value.length,
   (total) => {
-    clampPage(versionPage, versionPageSize.value, total)
+    clampPageToTotal(versionPage, versionPageSize, total)
   },
 )
 
 watch(
   () => logs.value.length,
   (total) => {
-    clampPage(logPage, logPageSize.value, total)
+    clampPageToTotal(logPage, logPageSize, total)
   },
 )
 
@@ -226,7 +211,7 @@ async function loadAll() {
     logs.value = logData
     performance.value = summaryData
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : 'AI 助手数据加载失败')
+    showAiError(error, 'AI 助手后台数据加载失败')
   } finally {
     loading.value = false
   }
@@ -276,7 +261,7 @@ async function saveConfig() {
     assignConfig(saved)
     ElMessage.success('AI 助手配置已保存')
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : 'AI 助手配置保存失败')
+    showAiError(error, 'AI 助手配置保存失败')
   } finally {
     savingConfig.value = false
   }
@@ -290,7 +275,7 @@ async function uploadKnowledge(options: UploadRequestOptions) {
     ElMessage.success('知识文档已上传')
     options.onSuccess?.(result)
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '知识文档上传失败')
+    showAiError(error, '知识文档上传失败')
     options.onError?.(Object.assign(new Error('upload failed'), { status: 0, method: 'post', url: '' }) as never)
   }
 }
@@ -301,7 +286,7 @@ async function updateReview(document: AdminAiDocument, reviewStatus: string) {
     documents.value = documents.value.map((item) => (item.id === result.id ? result : item))
     ElMessage.success(`文档状态已更新为${reviewStatusLabel(reviewStatus)}`)
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '审核状态更新失败')
+    showAiError(error, '文档审核状态更新失败')
   }
 }
 
@@ -311,7 +296,7 @@ async function reindex(document: AdminAiDocument) {
     documents.value = documents.value.map((item) => (item.id === result.id ? result : item))
     ElMessage.success('索引已重建')
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '重建索引失败')
+    showAiError(error, '知识索引重建失败')
   }
 }
 
@@ -332,7 +317,7 @@ async function clearDocuments() {
     await loadAll()
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') {
-      ElMessage.error(error instanceof Error ? error.message : '清空文档失败')
+      showAiError(error, '清空上传文档失败')
     }
   } finally {
     clearingDocuments.value = false
@@ -356,7 +341,7 @@ async function clearLogs() {
     await loadAll()
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') {
-      ElMessage.error(error instanceof Error ? error.message : '清空日志失败')
+      showAiError(error, '清空问答日志失败')
     }
   } finally {
     clearingLogs.value = false
@@ -371,7 +356,7 @@ async function publishVersion() {
     ElMessage.success('新的知识版本已发布')
     await loadAll()
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '发布失败')
+    showAiError(error, '知识版本发布失败')
   } finally {
     publishing.value = false
   }
@@ -383,7 +368,7 @@ async function rollback(versionId: number) {
     ElMessage.success('已回滚到所选版本')
     await loadAll()
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '回滚失败')
+    showAiError(error, '知识版本回滚失败')
   }
 }
 
@@ -629,8 +614,8 @@ onMounted(loadAll)
                 </el-table>
               </div>
 
-              <div class="table-footer">
-                <div class="table-total">共 {{ documents.length }} 条知识资产</div>
+              <div class="admin-table-footer">
+                <div class="admin-table-total">共 {{ documents.length }} 条知识资产</div>
                 <el-pagination
                   v-model:current-page="documentPage"
                   v-model:page-size="documentPageSize"
@@ -638,7 +623,7 @@ onMounted(loadAll)
                   size="small"
                   layout="sizes, prev, pager, next"
                   :pager-count="5"
-                  :page-sizes="[6, 8, 12, 20]"
+                  :page-sizes="PAGE_SIZES_RICH"
                   :total="documents.length"
                 />
               </div>
@@ -695,8 +680,8 @@ onMounted(loadAll)
           </el-table>
         </div>
 
-        <div v-if="versions.length" class="table-footer">
-          <div class="table-total">共 {{ versions.length }} 个版本</div>
+        <div v-if="versions.length" class="admin-table-footer">
+          <div class="admin-table-total">共 {{ versions.length }} 个版本</div>
           <el-pagination
             v-model:current-page="versionPage"
             v-model:page-size="versionPageSize"
@@ -704,7 +689,7 @@ onMounted(loadAll)
             size="small"
             layout="sizes, prev, pager, next"
             :pager-count="5"
-            :page-sizes="[6, 8, 12, 20]"
+            :page-sizes="PAGE_SIZES_RICH"
             :total="versions.length"
           />
         </div>
@@ -787,8 +772,8 @@ onMounted(loadAll)
           </el-table>
         </div>
 
-        <div v-if="logs.length" class="table-footer">
-          <div class="table-total">共 {{ logs.length }} 条问答日志</div>
+        <div v-if="logs.length" class="admin-table-footer">
+          <div class="admin-table-total">共 {{ logs.length }} 条问答日志</div>
           <el-pagination
             v-model:current-page="logPage"
             v-model:page-size="logPageSize"
@@ -796,7 +781,7 @@ onMounted(loadAll)
             size="small"
             layout="sizes, prev, pager, next"
             :pager-count="5"
-            :page-sizes="[10, 20, 30, 50]"
+            :page-sizes="PAGE_SIZES_LOGS"
             :total="logs.length"
           />
         </div>
@@ -1213,25 +1198,6 @@ onMounted(loadAll)
   min-width: 1980px;
 }
 
-.table-footer {
-  margin-top: 14px;
-  padding-top: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.table-total {
-  color: #9d9d9d;
-  font-size: 13px;
-}
-
-.table-footer :deep(.el-pagination) {
-  margin-left: auto;
-}
-
 .knowledge-empty-state {
   min-height: 280px;
   display: grid;
@@ -1336,14 +1302,9 @@ onMounted(loadAll)
 
   .knowledge-section-header,
   .knowledge-section-actions,
-  .logs-toolbar,
-  .table-footer {
+  .logs-toolbar {
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .table-footer :deep(.el-pagination) {
-    margin-left: 0;
   }
 
   .publish-box :deep(.el-button) {
@@ -1352,3 +1313,4 @@ onMounted(loadAll)
   }
 }
 </style>
+

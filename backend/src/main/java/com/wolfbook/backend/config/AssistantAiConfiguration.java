@@ -29,6 +29,12 @@ import com.wolfbook.backend.support.SafeMiniMaxEmbeddingModel;
 
 import javax.sql.DataSource;
 
+/**
+ * AI 模型和向量库 Bean 配置。
+ *
+ * <p>这里把 MiniMax/Ollama embedding、MiniMax chat model、PgVector 等能力注册进 Spring。
+ * 业务代码通过 {@code ObjectProvider} 获取这些 Bean，所以缺少配置时 AI 助手可以降级运行。</p>
+ */
 @Configuration
 public class AssistantAiConfiguration {
 

@@ -1,5 +1,6 @@
 import api from './api'
 import storage from './storage'
+import { getAuthToken } from '../utils/auth'
 import { normalizeSession, normalizeSessions } from '../utils/session/normalizer'
 
 let favoriteCache = null
@@ -8,7 +9,7 @@ let favoriteCacheToken = ''
 let sessionCacheToken = ''
 
 function currentAuthToken() {
-  return storage.getAuthToken() || ''
+  return getAuthToken()
 }
 
 function syncCacheScope() {
@@ -24,7 +25,7 @@ function syncCacheScope() {
   return token
 }
 
-function hasAuthToken() {
+function hasSyncedAuthToken() {
   return !!syncCacheScope()
 }
 
@@ -63,7 +64,7 @@ function mergeSessions(remoteSessions = [], localSessions = []) {
 
 async function migrateFavoritesIfNeeded() {
   syncCacheScope()
-  if (!hasAuthToken()) {
+  if (!hasSyncedAuthToken()) {
     return {
       boardIds: storage.getFavorites(),
       boards: [],
@@ -90,7 +91,7 @@ async function migrateFavoritesIfNeeded() {
 
 async function migrateSessionsIfNeeded() {
   syncCacheScope()
-  if (!hasAuthToken()) {
+  if (!hasSyncedAuthToken()) {
     return sortSessions(storage.getSessions())
   }
 
@@ -115,13 +116,13 @@ async function migrateSessionsIfNeeded() {
 }
 
 export default {
-  hasAuthToken,
+  hasAuthToken: hasSyncedAuthToken,
   async loadFavoriteBoards() {
     return migrateFavoritesIfNeeded()
   },
   async toggleFavorite(boardId) {
     syncCacheScope()
-    if (!hasAuthToken()) {
+    if (!hasSyncedAuthToken()) {
       const boardIds = storage.toggleFavorite(boardId)
       favoriteCache = {
         boardIds,
@@ -145,7 +146,7 @@ export default {
   },
   async getSessionById(sessionId) {
     syncCacheScope()
-    if (!hasAuthToken()) {
+    if (!hasSyncedAuthToken()) {
       return normalizeSession(storage.getSessionById(sessionId))
     }
     const session = normalizeSession(await api.getUserSessionDetail(sessionId))
@@ -164,7 +165,7 @@ export default {
   async saveSession(session) {
     syncCacheScope()
     const normalized = normalizeSession(session)
-    if (!hasAuthToken()) {
+    if (!hasSyncedAuthToken()) {
       return storage.upsertSession(normalized)
     }
     const saved = normalizeSession(await api.saveUserSession(normalized))
@@ -181,7 +182,7 @@ export default {
   },
   async deleteSession(sessionId) {
     syncCacheScope()
-    if (!hasAuthToken()) {
+    if (!hasSyncedAuthToken()) {
       return storage.deleteSession(sessionId)
     }
     await api.deleteUserSession(sessionId)

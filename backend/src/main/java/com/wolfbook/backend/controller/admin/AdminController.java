@@ -13,6 +13,12 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
+/**
+ * 管理后台通用接口。
+ *
+ * <p>覆盖后台登录、板子/角色维护、社区审核、举报处理和通用上传。
+ * AI 助手专项管理接口在 {@link AdminAiController}。</p>
+ */
 @RestController
 @RequestMapping("/admin")
 public class AdminController {

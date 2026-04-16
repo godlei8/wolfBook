@@ -28,6 +28,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * MiniMax embedding 的安全封装。
+ *
+ * <p>Spring AI 默认实现和 MiniMax 返回结构可能不完全匹配，本类直接解析响应，
+ * 并把错误转换成可控异常，避免知识库索引时因为单次 embedding 失败把服务打崩。</p>
+ */
 public class SafeMiniMaxEmbeddingModel extends AbstractEmbeddingModel {
 
     private static final Logger log = LoggerFactory.getLogger(SafeMiniMaxEmbeddingModel.class);

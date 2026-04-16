@@ -1,9 +1,9 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue'
 import { onLoad, onUnload } from '@dcloudio/uni-app'
-import assistant from '../../services/assistant'
+import assistant, { appendNonOverlappingText } from '../../services/assistant'
 import { markdownToRichText, plainTextToRichText } from '../../services/markdown'
-import storage from '../../services/storage'
+import { requireAuth } from '../../utils/auth'
 
 const bootstrap = ref(null)
 const messages = ref([])
@@ -169,7 +169,7 @@ function flushStreamingDeltas() {
   streamingBuffers.forEach((delta, messageId) => {
     patchMessage(messageId, (current) => ({
       ...current,
-      content: `${current.content || ''}${delta}`,
+      content: appendNonOverlappingText(current.content || '', delta),
       isStreaming: true,
     }))
   })
@@ -179,7 +179,7 @@ function flushStreamingDeltas() {
 
 function queueStreamingDelta(messageId, delta) {
   if (!delta) return
-  streamingBuffers.set(messageId, `${streamingBuffers.get(messageId) || ''}${delta}`)
+  streamingBuffers.set(messageId, appendNonOverlappingText(streamingBuffers.get(messageId) || '', delta))
   if (deltaFlushTimer) return
   deltaFlushTimer = setTimeout(() => {
     flushStreamingDeltas()
@@ -243,8 +243,7 @@ async function loadMessages() {
 }
 
 async function loadAll() {
-  if (!storage.getAuthToken()) {
-    uni.showToast({ title: '请先登录', icon: 'none' })
+  if (!requireAuth()) {
     return
   }
   loading.value = true
@@ -568,7 +567,7 @@ onUnload(() => {
                 </view>
               </view>
 
-              <view v-if="item.citations && item.citations.length" class="citation-stack">
+              <view v-if="false && item.citations && item.citations.length" class="citation-stack">
                 <view class="citation-toolbar">
                   <view class="section-meta">参考来源</view>
                   <view
@@ -596,7 +595,7 @@ onUnload(() => {
                 </view>
               </view>
 
-              <view v-if="item.suggestedQuestions && item.suggestedQuestions.length && !item.isStreaming" class="followup-stack">
+              <view v-if="false && item.suggestedQuestions && item.suggestedQuestions.length && !item.isStreaming" class="followup-stack">
                 <view class="section-meta">继续追问</view>
                 <view class="followup-grid">
                   <view
@@ -793,8 +792,8 @@ onUnload(() => {
 .message-row {
   margin-top: 24rpx;
   display: grid;
-  grid-template-columns: 72rpx 1fr;
-  gap: 16rpx;
+  grid-template-columns: 56rpx minmax(0, 1fr);
+  gap: 12rpx;
   align-items: start;
 }
 
@@ -803,9 +802,9 @@ onUnload(() => {
 }
 
 .message-avatar {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 22rpx;
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 18rpx;
   background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
   display: flex;
@@ -821,7 +820,9 @@ onUnload(() => {
 }
 
 .message-bubble {
-  padding: 20rpx;
+  min-width: 0;
+  overflow: hidden;
+  padding: 22rpx;
 }
 
 .message-bubble--assistant {
@@ -862,12 +863,14 @@ onUnload(() => {
 
 .message-content {
   margin-top: 12rpx;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .message-content--plain {
   white-space: pre-wrap;
-  line-height: 1.7;
-  font-size: 24rpx;
+  line-height: 1.55;
+  font-size: 12px;
 }
 
 .message-content--streaming {
@@ -876,6 +879,7 @@ onUnload(() => {
 
 .message-content--markdown {
   display: block;
+  word-break: break-word;
 }
 
 .board-stack,
@@ -928,7 +932,7 @@ onUnload(() => {
 .citation-snippet {
   margin-top: 8rpx;
   line-height: 1.65;
-  font-size: 22rpx;
+  font-size: 20rpx;
 }
 
 .board-reason {

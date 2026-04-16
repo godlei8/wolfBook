@@ -1,5 +1,6 @@
 package com.wolfbook.backend.config;
 
+import com.wolfbook.backend.support.JudgeSupportLevels;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -28,16 +29,22 @@ public class JudgeSchemaInitializer implements ApplicationRunner {
         createColumnIfMissing(
                 "boards",
                 "judge_support_level",
-                "ALTER TABLE boards ADD COLUMN judge_support_level VARCHAR(20) NOT NULL DEFAULT 'manual_only' AFTER rule_type"
+                "ALTER TABLE boards ADD COLUMN judge_support_level VARCHAR(20) NOT NULL DEFAULT '%s' AFTER rule_type"
+                        .formatted(JudgeSupportLevels.MANUAL_ONLY)
         );
         jdbcTemplate.execute("""
                 UPDATE boards
                 SET judge_support_level = CASE
-                  WHEN judge_support_level IS NULL OR TRIM(judge_support_level) = '' THEN 'manual_only'
-                  WHEN LOWER(TRIM(judge_support_level)) IN ('full', 'partial') THEN LOWER(TRIM(judge_support_level))
-                  ELSE 'manual_only'
+                  WHEN judge_support_level IS NULL OR TRIM(judge_support_level) = '' THEN '%s'
+                  WHEN LOWER(TRIM(judge_support_level)) IN ('%s', '%s') THEN LOWER(TRIM(judge_support_level))
+                  ELSE '%s'
                 END
-                """);
+                """.formatted(
+                JudgeSupportLevels.MANUAL_ONLY,
+                JudgeSupportLevels.FULL,
+                JudgeSupportLevels.PARTIAL,
+                JudgeSupportLevels.MANUAL_ONLY
+        ));
     }
 
     private void createJudgeTables() {
@@ -48,7 +55,7 @@ public class JudgeSchemaInitializer implements ApplicationRunner {
                   board_name VARCHAR(100) NOT NULL,
                   player_count TINYINT NOT NULL,
                   judge_mode VARCHAR(20) NOT NULL DEFAULT 'observer',
-                  judge_support_level VARCHAR(20) NOT NULL DEFAULT 'manual_only',
+                  judge_support_level VARCHAR(20) NOT NULL DEFAULT '%s',
                   owner_user_id VARCHAR(100) NOT NULL,
                   owner_player_id VARCHAR(64),
                   owner_seat_no TINYINT,
@@ -62,7 +69,7 @@ public class JudgeSchemaInitializer implements ApplicationRunner {
                   create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
                   update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                 )
-                """);
+                """.formatted(JudgeSupportLevels.MANUAL_ONLY));
 
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS judge_room_players (

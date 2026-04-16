@@ -8,6 +8,7 @@ import RoleManagement from './components/RoleManagement.vue'
 import CommunityManagement from './components/CommunityManagement.vue'
 import AiAssistantManagement from './components/AiAssistantManagement.vue'
 import { api, clearStoredToken, getStoredToken } from './services/api'
+import { resolveErrorMessage } from './utils/errors'
 import type { DashboardSummary, LoginResponse } from './types'
 
 const activeMenu = ref<'overview' | 'boards' | 'roles' | 'community' | 'ai'>('overview')
@@ -64,7 +65,7 @@ async function loadSummary() {
     clearStoredToken()
     authenticated.value = false
     summary.value = null
-    ElMessage.error(error instanceof Error ? error.message : '后台连接失败，请重新登录')
+    ElMessage.error(resolveErrorMessage(error, '后台连接失败，请重新登录'))
   } finally {
     loadingSummary.value = false
   }

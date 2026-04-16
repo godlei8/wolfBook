@@ -20,6 +20,7 @@ import com.wolfbook.backend.mapper.PostMapper;
 import com.wolfbook.backend.mapper.ReportMapper;
 import com.wolfbook.backend.mapper.UserFavoritePostMapper;
 import com.wolfbook.backend.mapper.UserMapper;
+import com.wolfbook.backend.support.CommunityStatuses;
 import com.wolfbook.backend.support.ContentSafetyProvider;
 import com.wolfbook.backend.support.DomainConverter;
 import com.wolfbook.backend.support.TokenService;
@@ -42,16 +43,22 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * 社区内容服务。
+ *
+ * <p>负责帖子、评论、点赞、收藏、举报、审核状态和内容安全检查。
+ * 用户侧发布/互动和后台审核最终都会落到这里，因此状态判断和权限校验集中在本类。</p>
+ */
 @Service
 public class CommunityService {
 
-    public static final String POST_STATUS_PUBLISHED = "PUBLISHED";
-    public static final String POST_STATUS_OFFLINE = "OFFLINE";
-    public static final String POST_STATUS_PENDING = "PENDING_REVIEW";
-    public static final String POST_STATUS_REJECTED = "REJECTED";
+    public static final String POST_STATUS_PUBLISHED = CommunityStatuses.POST_PUBLISHED;
+    public static final String POST_STATUS_OFFLINE = CommunityStatuses.POST_OFFLINE;
+    public static final String POST_STATUS_PENDING = CommunityStatuses.POST_PENDING_REVIEW;
+    public static final String POST_STATUS_REJECTED = CommunityStatuses.POST_REJECTED;
 
-    public static final String COMMENT_STATUS_VISIBLE = "VISIBLE";
-    public static final String COMMENT_STATUS_HIDDEN = "HIDDEN";
+    public static final String COMMENT_STATUS_VISIBLE = CommunityStatuses.COMMENT_VISIBLE;
+    public static final String COMMENT_STATUS_HIDDEN = CommunityStatuses.COMMENT_HIDDEN;
 
     private static final String LEGACY_UNTITLED_POST = "Untitled post";
     private static final String DEFAULT_POST_TITLE = "未命名帖子";
@@ -307,7 +314,7 @@ public class CommunityService {
         entity.setTargetId(request.targetId());
         entity.setOpenid(openid);
         entity.setReason(normalizeOptionalText(request.reason(), 200));
-        entity.setProcessStatus("OPEN");
+        entity.setProcessStatus(CommunityStatuses.REPORT_OPEN);
         entity.setCreateTime(LocalDateTime.now());
         reportMapper.insert(entity);
     }

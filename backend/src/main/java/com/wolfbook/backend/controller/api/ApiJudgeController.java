@@ -15,6 +15,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+/**
+ * 小程序法官局接口。
+ *
+ * <p>对外暴露创建房间、加入房间、读取房间状态、开始游戏、提交行动等实时房间操作。</p>
+ */
 @RestController
 @RequestMapping("/api/judge")
 @Validated

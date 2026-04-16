@@ -18,6 +18,12 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+/**
+ * 小程序社区接口。
+ *
+ * <p>负责帖子浏览、发布、评论、点赞、收藏、举报和图片上传。
+ * 具体审核、计数和权限逻辑在 {@code CommunityService}。</p>
+ */
 @RestController
 @RequestMapping("/api")
 @Validated

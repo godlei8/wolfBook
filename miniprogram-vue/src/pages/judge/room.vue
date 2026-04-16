@@ -7,6 +7,7 @@ import storage from '../../services/storage'
 import { formatDateTime } from '../../utils/format'
 import { getJudgePhaseLabel, getJudgeRoomStatusLabel, getJudgeSupportMeta } from '../../utils/judge/meta'
 import { buildJudgeVoiceScript, createJudgeVoicePlayer } from '../../utils/judge/voice'
+import { goToUserTab, hasAuthToken } from '../../utils/auth'
 
 const roomId = ref('')
 const snapshot = ref(null)
@@ -54,7 +55,7 @@ function redirectInviteToLogin() {
   })
   uni.showToast({ title: '登录后可继续进入法官房', icon: 'none' })
   setTimeout(() => {
-    uni.switchTab({ url: '/pages/user/index' })
+    goToUserTab()
   }, 240)
 }
 
@@ -74,7 +75,7 @@ function stopPolling() {
 
 async function refreshRoom(showError = false) {
   if (!roomId.value) return
-  if (!storage.getAuthToken()) {
+  if (!hasAuthToken()) {
     redirectInviteToLogin()
     return
   }

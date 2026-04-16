@@ -16,6 +16,7 @@ import com.wolfbook.backend.mapper.JudgeActionEventMapper;
 import com.wolfbook.backend.mapper.JudgeRoomMapper;
 import com.wolfbook.backend.mapper.JudgeRoomPlayerMapper;
 import com.wolfbook.backend.mapper.RoleMapper;
+import com.wolfbook.backend.support.JudgeSupportLevels;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -35,6 +36,12 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+/**
+ * 法官房间服务。
+ *
+ * <p>负责从板子创建房间、玩家座位、身份分配、夜晚/白天流程、事件记录和房间快照。
+ * 这是交互最重的服务，读代码时可先找“创建房间、加入房间、开始游戏、提交行动”几个入口方法。</p>
+ */
 @Service
 public class JudgeService {
 
@@ -133,7 +140,7 @@ public class JudgeService {
     public WolfbookDtos.JudgeRoomSnapshotView createRoom(String authorization, WolfbookDtos.JudgeRoomCreateRequest request) {
         UserProfile user = userService.requireUser(authorization);
         WolfbookDtos.BoardDetailView board = boardService.getBoardDetail(request.boardId());
-        String judgeSupportLevel = normalizeJudgeSupportLevel(board.judgeSupportLevel());
+        String judgeSupportLevel = JudgeSupportLevels.normalize(board.judgeSupportLevel());
         String judgeMode = normalizeJudgeMode(request.judgeMode(), judgeSupportLevel);
         LocalDateTime now = LocalDateTime.now(APP_ZONE);
 
@@ -468,7 +475,7 @@ public class JudgeService {
                 room.getBoardName(),
                 room.getPlayerCount(),
                 room.getJudgeMode(),
-                normalizeJudgeSupportLevel(room.getJudgeSupportLevel()),
+                JudgeSupportLevels.normalize(room.getJudgeSupportLevel()),
                 room.getRoomStatus(),
                 safeInt(room.getCurrentDay(), 1),
                 safeText(room.getCurrentPhase(), PHASE_LOBBY),
@@ -833,7 +840,7 @@ public class JudgeService {
                 room.getBoardName(),
                 room.getPlayerCount(),
                 room.getJudgeMode(),
-                normalizeJudgeSupportLevel(room.getJudgeSupportLevel()),
+                JudgeSupportLevels.normalize(room.getJudgeSupportLevel()),
                 safeText(room.getRoomStatus(), ROOM_STATUS_LOBBY),
                 safeInt(room.getCurrentDay(), 1),
                 safeText(room.getCurrentPhase(), PHASE_LOBBY),
@@ -1234,20 +1241,13 @@ public class JudgeService {
         if (!JUDGE_MODE_OBSERVER.equals(normalized) && !JUDGE_MODE_JOINED.equals(normalized)) {
             throw new ApiException(4000, "无效的法官模式");
         }
-        if (JUDGE_MODE_JOINED.equals(normalized) && "manual_only".equals(judgeSupportLevel)) {
+        if (JUDGE_MODE_JOINED.equals(normalized) && JudgeSupportLevels.isManualOnly(judgeSupportLevel)) {
             throw new ApiException(4002, "当前板型仅支持主持人模式");
         }
         if (JUDGE_MODE_JOINED.equals(normalized)) {
             throw new ApiException(4002, "系统执法模式将在二期开放");
         }
         return JUDGE_MODE_OBSERVER;
-    }
-
-    private String normalizeJudgeSupportLevel(String judgeSupportLevel) {
-        if ("full".equalsIgnoreCase(judgeSupportLevel) || "partial".equalsIgnoreCase(judgeSupportLevel)) {
-            return judgeSupportLevel.toLowerCase(Locale.ROOT);
-        }
-        return "manual_only";
     }
 
     private String normalizeAction(String action) {

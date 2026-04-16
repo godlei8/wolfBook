@@ -1,5 +1,7 @@
 package com.wolfbook.backend.domain;
 
+import com.wolfbook.backend.support.JudgeSupportLevels;
+
 import java.util.List;
 
 public record Board(
@@ -36,7 +38,7 @@ public record Board(
             Integer status,
             List<BoardRoleRef> roles
     ) {
-        this(id, name, playerCount, difficulty, tags, coverImage, null, briefConfig, specialRules, tips, faqs, winCondition, ruleType, "manual_only", status, roles);
+        this(id, name, playerCount, difficulty, tags, coverImage, null, briefConfig, specialRules, tips, faqs, winCondition, ruleType, JudgeSupportLevels.MANUAL_ONLY, status, roles);
     }
 
     public Board(

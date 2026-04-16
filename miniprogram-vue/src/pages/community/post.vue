@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import api from '../../services/api'
-import storage from '../../services/storage'
+import { requireAuth } from '../../utils/auth'
 
 const DRAFT_KEY = 'community_post_draft_v2'
 
@@ -51,11 +51,7 @@ const publishMeta = computed(() => [
 ].join(' · '))
 
 function ensureLogin() {
-  if (!storage.getAuthToken()) {
-    uni.showToast({ title: '请先登录', icon: 'none' })
-    return false
-  }
-  return true
+  return requireAuth()
 }
 
 async function loadBoards() {

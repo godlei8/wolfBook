@@ -308,7 +308,7 @@ public class DatabaseSeeder {
         report.setTargetId(2);
         report.setOpenid("wx_judge");
         report.setReason("怀疑带有外站引流倾向，需人工复核。");
-        report.setProcessStatus("OPEN");
+        report.setProcessStatus(CommunityStatuses.REPORT_OPEN);
         report.setCreateTime(now.minusHours(4));
         reportMapper.insert(report);
     }
@@ -426,7 +426,7 @@ public class DatabaseSeeder {
         board.setFaqs(converter.writeFaqList(faqs));
         board.setWinCondition(winCondition);
         board.setRuleType(ruleType);
-        board.setJudgeSupportLevel("manual_only");
+        board.setJudgeSupportLevel(JudgeSupportLevels.MANUAL_ONLY);
         board.setStatus(1);
         board.setCreateTime(LocalDateTime.now().minusDays(6));
         board.setUpdateTime(LocalDateTime.now().minusHours(12));
@@ -453,7 +453,7 @@ public class DatabaseSeeder {
         board.setFaqs(converter.writeFaqList(faqs));
         board.setWinCondition(winCondition);
         board.setRuleType(ruleType);
-        board.setJudgeSupportLevel("manual_only");
+        board.setJudgeSupportLevel(JudgeSupportLevels.MANUAL_ONLY);
         board.setStatus(1);
         board.setCreateTime(LocalDateTime.now().minusDays(10));
         board.setUpdateTime(LocalDateTime.now().minusDays(1));
@@ -504,7 +504,7 @@ public class DatabaseSeeder {
         post.setLikeCount(likeCount);
         post.setCommentCount(commentCount);
         post.setFavoriteCount(0);
-        post.setStatus(status == 1 ? "PUBLISHED" : "OFFLINE");
+        post.setStatus(status == 1 ? CommunityStatuses.POST_PUBLISHED : CommunityStatuses.POST_OFFLINE);
         post.setFeatured(false);
         post.setPinned(false);
         post.setRejectReason(null);
@@ -522,7 +522,7 @@ public class DatabaseSeeder {
         comment.setReplyToOpenid(null);
         comment.setContent(content);
         comment.setLikeCount(likeCount);
-        comment.setStatus(status == 1 ? "VISIBLE" : "HIDDEN");
+        comment.setStatus(status == 1 ? CommunityStatuses.COMMENT_VISIBLE : CommunityStatuses.COMMENT_HIDDEN);
         comment.setCreateTime(createTime);
         comment.setUpdateTime(createTime);
         commentMapper.insert(comment);

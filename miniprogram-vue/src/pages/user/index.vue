@@ -5,6 +5,7 @@ import AssistantDock from '../../components/assistant/AssistantDock.vue'
 import api from '../../services/api'
 import storage from '../../services/storage'
 import userData from '../../services/user-data'
+import { requireAuth } from '../../utils/auth'
 
 const DEFAULT_NICKNAME_PREFIX = '微信用户'
 
@@ -154,8 +155,7 @@ function handleNicknameInput(event) {
 }
 
 async function saveWechatProfile() {
-  if (!storage.getAuthToken()) {
-    uni.showToast({ title: '请先登录', icon: 'none' })
+  if (!requireAuth()) {
     return
   }
   if (!profileForm.nickname.trim()) {

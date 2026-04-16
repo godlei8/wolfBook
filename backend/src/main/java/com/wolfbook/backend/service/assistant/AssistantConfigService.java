@@ -17,6 +17,12 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * AI 助手后台配置服务。
+ *
+ * <p>读取和保存管理员配置，包括基础开关、模型参数、检索参数、提示词、安全策略和搜索配置。
+ * 配置更新后会清理回答缓存，避免旧提示词或旧检索参数继续影响新回答。</p>
+ */
 @Service
 public class AssistantConfigService {
 

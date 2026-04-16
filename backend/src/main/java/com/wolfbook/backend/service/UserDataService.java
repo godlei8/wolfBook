@@ -33,6 +33,12 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+/**
+ * 用户个人数据服务。
+ *
+ * <p>管理用户收藏、笔记局、笔记记录、复盘时间线和统计摘要。
+ * 这部分数据和具体用户强绑定，所有入口都会围绕 openid 做权限隔离。</p>
+ */
 @Service
 public class UserDataService {
 

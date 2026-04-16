@@ -12,6 +12,12 @@ import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 
+/**
+ * AI 助手查询日志服务。
+ *
+ * <p>后台用它查看每次提问的耗时、命中来源、是否联网、缓存状态和失败类型，
+ * 方便排查“回答不准/检索不准/模型失败”等问题。</p>
+ */
 @Service
 public class AssistantLogService {
 

@@ -16,6 +16,12 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * AI 助手联网搜索补充服务。
+ *
+ * <p>当前通过 MiniMax 模型能力获取联网补充，并要求模型返回结构化 JSON。
+ * 站内知识仍是主答案来源，联网结果只在问题具备时效性或站内无资料时参与。</p>
+ */
 @Service
 public class AssistantSearchService {
 
@@ -59,7 +65,7 @@ public class AssistantSearchService {
             return SearchResult.empty();
         }
         try {
-            JsonNode root = objectMapper.readTree(content);
+            JsonNode root = objectMapper.readTree(extractJsonObject(content));
             List<AssistantDtos.AssistantCitation> citations = new ArrayList<>();
             for (JsonNode item : root.path("citations")) {
                 citations.add(new AssistantDtos.AssistantCitation(
@@ -78,6 +84,21 @@ public class AssistantSearchService {
         } catch (Exception exception) {
             return new SearchResult(content, List.of(), List.of());
         }
+    }
+
+    private String extractJsonObject(String content) {
+        String normalized = content == null ? "" : content.trim();
+        if (normalized.startsWith("```")) {
+            normalized = normalized.replaceFirst("^```[a-zA-Z]*\\s*", "")
+                    .replaceFirst("\\s*```$", "")
+                    .trim();
+        }
+        int start = normalized.indexOf('{');
+        int end = normalized.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+            return normalized.substring(start, end + 1);
+        }
+        return normalized;
     }
 
     public record SearchResult(String answer, List<AssistantDtos.AssistantCitation> citations, List<String> suggestedQuestions) {

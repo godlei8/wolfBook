@@ -14,6 +14,12 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
 
+/**
+ * 微信小程序登录适配器。
+ *
+ * <p>生产环境通过微信 code2session 换取 openid；开发环境缺少 appid/secret 时会抛出明确异常。
+ * 测试环境使用 {@code MockAuthProvider}，所以本类通过 {@code !test} profile 排除。</p>
+ */
 @Component
 @Profile("!test")
 public class WechatAuthProvider implements AuthProvider {

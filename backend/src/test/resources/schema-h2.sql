@@ -263,6 +263,28 @@ CREATE TABLE assistant_documents (
   CONSTRAINT uk_assistant_documents_source_key UNIQUE (source_key)
 );
 
+CREATE TABLE assistant_knowledge_chunks (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  chunk_uid VARCHAR(64) NOT NULL,
+  document_id INT NOT NULL,
+  publish_version_id INT,
+  source_type VARCHAR(30) NOT NULL,
+  source_key VARCHAR(100) NOT NULL,
+  subject_type VARCHAR(30),
+  subject_key VARCHAR(100),
+  subject_name VARCHAR(150),
+  section_title VARCHAR(200),
+  chunk_kind VARCHAR(40),
+  field_name VARCHAR(80),
+  content_text CLOB,
+  embedding_text CLOB,
+  content_hash VARCHAR(64),
+  ordinal INT DEFAULT 0,
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uk_assistant_knowledge_chunks_uid UNIQUE (chunk_uid)
+);
+
 CREATE TABLE assistant_publish_versions (
   id INT PRIMARY KEY AUTO_INCREMENT,
   version_name VARCHAR(100) NOT NULL,
@@ -314,6 +336,7 @@ CREATE TABLE assistant_query_logs (
   cache_hit TINYINT DEFAULT 0,
   fallback_mode VARCHAR(40),
   stream_mode VARCHAR(30),
+  retrieval_meta_json CLOB,
   success TINYINT DEFAULT 1,
   failure_type VARCHAR(50),
   trace_id VARCHAR(64),

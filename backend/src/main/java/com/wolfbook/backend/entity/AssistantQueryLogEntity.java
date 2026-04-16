@@ -26,6 +26,7 @@ public class AssistantQueryLogEntity {
     private Integer cacheHit;
     private String fallbackMode;
     private String streamMode;
+    private String retrievalMetaJson;
     private Integer success;
     private String failureType;
     private String traceId;
@@ -157,6 +158,14 @@ public class AssistantQueryLogEntity {
 
     public void setStreamMode(String streamMode) {
         this.streamMode = streamMode;
+    }
+
+    public String getRetrievalMetaJson() {
+        return retrievalMetaJson;
+    }
+
+    public void setRetrievalMetaJson(String retrievalMetaJson) {
+        this.retrievalMetaJson = retrievalMetaJson;
     }
 
     public Integer getSuccess() {

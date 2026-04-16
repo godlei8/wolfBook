@@ -9,6 +9,12 @@ import org.springframework.stereotype.Component;
 import java.util.Collections;
 import java.util.List;
 
+/**
+ * Entity 与领域模型之间的转换器。
+ *
+ * <p>数据库里 JSON 字符串、关联表等结构不适合直接给前端，本类负责把它们组装成
+ * {@code Board}、{@code Role}、{@code Post} 等前端更好用的对象。</p>
+ */
 @Component
 public class DomainConverter {
 

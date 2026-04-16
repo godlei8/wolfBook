@@ -5,6 +5,7 @@ import AssistantDock from '../../components/assistant/AssistantDock.vue'
 import api from '../../services/api'
 import storage from '../../services/storage'
 import { getJudgePhaseLabel, getJudgeRoomStatusLabel } from '../../utils/judge/meta'
+import { goToUserTab, hasAuthToken, requireAuth } from '../../utils/auth'
 
 const loading = ref(false)
 const rooms = ref([])
@@ -49,7 +50,7 @@ function syncPendingInvite() {
 }
 
 async function loadRooms() {
-  hasAuth.value = !!storage.getAuthToken()
+  hasAuth.value = hasAuthToken()
   if (!hasAuth.value) {
     rooms.value = []
     return
@@ -73,8 +74,7 @@ function handleInput(event) {
 }
 
 function openCreate() {
-  if (!hasAuth.value) {
-    uni.switchTab({ url: '/pages/user/index' })
+  if (!requireAuth({ redirect: true })) {
     return
   }
   uni.navigateTo({ url: '/pages/judge/create' })
@@ -113,7 +113,7 @@ function openUserLogin() {
       boardName: sharedBoardName.value,
     })
   }
-  uni.switchTab({ url: '/pages/user/index' })
+  goToUserTab()
 }
 
 function sharedInviteText() {

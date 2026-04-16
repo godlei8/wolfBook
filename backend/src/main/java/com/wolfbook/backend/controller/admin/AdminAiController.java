@@ -14,6 +14,12 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
+/**
+ * 管理后台 AI 助手接口。
+ *
+ * <p>负责 AI 配置、知识库上传审核、发布版本、查询日志和调试信息。
+ * 小程序聊天接口不走这里，而是走 {@code ApiAssistantController}。</p>
+ */
 @RestController
 @RequestMapping("/admin/ai")
 public class AdminAiController {
