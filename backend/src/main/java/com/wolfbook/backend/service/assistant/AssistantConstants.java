@@ -20,6 +20,7 @@ final class AssistantConstants {
     static final String ANSWER_RAG = "RAG_ANSWER";
     static final String ANSWER_WEB = "WEB_AUGMENTED_ANSWER";
     static final String ANSWER_REFUSAL = "REFUSAL";
+    static final String ANSWER_CLARIFY = "CLARIFICATION";
 
     private AssistantConstants() {
     }

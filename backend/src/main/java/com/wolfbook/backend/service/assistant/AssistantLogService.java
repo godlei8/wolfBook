@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 /**
  * AI 助手查询日志服务。
@@ -22,6 +23,8 @@ import java.util.List;
 public class AssistantLogService {
 
     private static final TypeReference<List<String>> STRING_LIST = new TypeReference<>() {
+    };
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
 
     private final AssistantQueryLogMapper assistantQueryLogMapper;
@@ -68,7 +71,7 @@ public class AssistantLogService {
                         .orderByDesc(AssistantQueryLogEntity::getCreateTime)
         );
         if (logs.isEmpty()) {
-            return new AssistantDtos.AdminAiPerformanceView(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+            return new AssistantDtos.AdminAiPerformanceView(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
 
         long queryCount = logs.size();
@@ -87,6 +90,13 @@ public class AssistantLogService {
         double webSearchRate = ratio(logs.stream().filter(item -> item.getUsedWebSearch() != null && item.getUsedWebSearch() == 1).count(), queryCount);
         double cacheHitRate = ratio(logs.stream().filter(item -> item.getCacheHit() != null && item.getCacheHit() == 1).count(), queryCount);
         double failureRate = ratio(logs.stream().filter(item -> item.getSuccess() == null || item.getSuccess() != 1).count(), queryCount);
+        List<AssistantQueryLogEntity> clarified = logs.stream()
+                .filter(item -> readBooleanMeta(item.getRetrievalMetaJson(), "clarificationResolved"))
+                .toList();
+        double clarifiedAccuracyRate = ratio(
+                clarified.stream().filter(item -> item.getSuccess() != null && item.getSuccess() == 1).count(),
+                clarified.size()
+        );
 
         return new AssistantDtos.AdminAiPerformanceView(
                 queryCount,
@@ -99,7 +109,8 @@ public class AssistantLogService {
                 structuredHitRate,
                 webSearchRate,
                 cacheHitRate,
-                failureRate
+                failureRate,
+                clarifiedAccuracyRate
         );
     }
 
@@ -126,6 +137,25 @@ public class AssistantLogService {
             return objectMapper.readValue(value, STRING_LIST);
         } catch (Exception exception) {
             return List.of();
+        }
+    }
+
+    private boolean readBooleanMeta(String value, String key) {
+        if (value == null || value.isBlank() || key == null || key.isBlank()) {
+            return false;
+        }
+        try {
+            Map<String, Object> data = objectMapper.readValue(value, MAP_TYPE);
+            Object result = data.get(key);
+            if (result instanceof Boolean bool) {
+                return bool;
+            }
+            if (result instanceof String string) {
+                return Boolean.parseBoolean(string);
+            }
+            return false;
+        } catch (Exception exception) {
+            return false;
         }
     }
 }

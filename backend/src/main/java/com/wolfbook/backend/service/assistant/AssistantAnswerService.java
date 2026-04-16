@@ -51,7 +51,7 @@ public class AssistantAnswerService {
 
     private static final Pattern PLAYER_COUNT_PATTERN = Pattern.compile("(\\d{1,2})\\s*人");
     private static final Pattern MULTI_BLANK_LINES = Pattern.compile("\\n{3,}");
-    private static final String ANSWER_PIPELINE_VERSION = "rag-v5-entity-first-v4";
+    private static final String ANSWER_PIPELINE_VERSION = "rag-v6-clarify-multiround-v1";
 
     private final UserService userService;
     private final AssistantConfigService assistantConfigService;
@@ -158,9 +158,11 @@ public class AssistantAnswerService {
                 request.message()
         );
         assistantConversationService.saveUserMessage(session.getSessionId(), request.message());
+        AssistantConversationService.RetrievalContext retrievalContext = assistantConversationService.getRetrievalContext(openid, session.getSessionId());
         AssistantQueryPlan queryPlan = assistantQueryPlanner.plan(
                 request.message(),
-                assistantConversationService.recentContextMessages(openid, session.getSessionId())
+                assistantConversationService.recentContextMessages(openid, session.getSessionId()),
+                retrievalContext
         );
 
         // 缓存版本同时包含后台配置、知识库版本和回答管线版本，避免改了检索/提示词后继续命中旧答案。
@@ -176,7 +178,8 @@ public class AssistantAnswerService {
                         + ":" + queryPlan.cacheToken()
                         + ":" + ANSWER_PIPELINE_VERSION,
                 queryPlan,
-                System.currentTimeMillis()
+                System.currentTimeMillis(),
+                retrievalContext
         );
     }
 
@@ -331,10 +334,34 @@ public class AssistantAnswerService {
             SseEmitter emitter,
             ExecutionMetrics metrics
     ) throws IOException {
+        ClarificationDecision clarificationDecision = decideClarification(prepared, request.message());
+        if (clarificationDecision.needClarification()) {
+            metrics.setFallbackMode("CLARIFICATION_REQUIRED");
+            metrics.setClarificationAsked(true);
+            StreamedAnswer clarificationAnswer = emitStaticAnswer(
+                    buildClarificationMarkdown(clarificationDecision.questions()),
+                    emitter,
+                    metrics
+            );
+            return new StreamExecution(
+                    persistAssistantResponse(
+                            prepared.session(),
+                            clarificationAnswer.answer(),
+                            AssistantConstants.ANSWER_CLARIFY,
+                            List.of(),
+                            List.of(),
+                            clarificationDecision.questions(),
+                            false,
+                            prepared.traceId()
+                    ),
+                    null
+            );
+        }
         // 站内知识优先：先检索和裁剪知识库，再按需要补联网搜索。
-        AssistantRetrievalResult retrievalResult = assistantRetrievalService.retrieve(
+        AssistantRetrievalResult retrievalResult = assistantRetrievalService.retrieveMultiRound(
                 request.message(),
                 prepared.queryPlan(),
+                clarificationDecision.clarificationHint(),
                 resolveTopK(prepared.config()),
                 resolveSimilarityThreshold(prepared.config())
         );
@@ -445,17 +472,20 @@ public class AssistantAnswerService {
             streamedAnswer = emitStaticAnswer(buildRefusalMarkdown(prepared.config().prompt().refusalPrompt()), emitter, metrics);
         }
 
+        AssistantDtos.AssistantAskResponse response = persistAssistantResponse(
+                prepared.session(),
+                streamedAnswer.answer(),
+                answerType,
+                citations,
+                List.of(),
+                suggestedQuestions,
+                usedWebSearch,
+                prepared.traceId()
+        );
+        updateRetrievalContextAfterAnswer(prepared, request.message());
+        metrics.setClarificationResolved(clarificationDecision.resolvedFromClarification());
         return new StreamExecution(
-                persistAssistantResponse(
-                        prepared.session(),
-                        streamedAnswer.answer(),
-                        answerType,
-                        citations,
-                        List.of(),
-                        suggestedQuestions,
-                        usedWebSearch,
-                        prepared.traceId()
-                ),
+                response,
                 streamedAnswer.failureType()
         );
     }
@@ -489,9 +519,25 @@ public class AssistantAnswerService {
             AssistantDtos.AssistantAskRequest request,
             ExecutionMetrics metrics
     ) {
-        AssistantRetrievalResult retrievalResult = assistantRetrievalService.retrieve(
+        ClarificationDecision clarificationDecision = decideClarification(prepared, request.message());
+        if (clarificationDecision.needClarification()) {
+            metrics.setFallbackMode("CLARIFICATION_REQUIRED");
+            metrics.setClarificationAsked(true);
+            return persistAssistantResponse(
+                    prepared.session(),
+                    buildClarificationMarkdown(clarificationDecision.questions()),
+                    AssistantConstants.ANSWER_CLARIFY,
+                    List.of(),
+                    List.of(),
+                    clarificationDecision.questions(),
+                    false,
+                    prepared.traceId()
+            );
+        }
+        AssistantRetrievalResult retrievalResult = assistantRetrievalService.retrieveMultiRound(
                 request.message(),
                 prepared.queryPlan(),
+                clarificationDecision.clarificationHint(),
                 resolveTopK(prepared.config()),
                 resolveSimilarityThreshold(prepared.config())
         );
@@ -566,7 +612,7 @@ public class AssistantAnswerService {
             return refusal(prepared.session(), prepared.config(), prepared.traceId(), prepared.config().prompt().refusalPrompt());
         }
 
-        return persistAssistantResponse(
+        AssistantDtos.AssistantAskResponse finalResponse = persistAssistantResponse(
                 prepared.session(),
                 answer,
                 answerType,
@@ -576,6 +622,9 @@ public class AssistantAnswerService {
                 usedWebSearch,
                 prepared.traceId()
         );
+        updateRetrievalContextAfterAnswer(prepared, request.message());
+        metrics.setClarificationResolved(clarificationDecision.resolvedFromClarification());
+        return finalResponse;
     }
 
     private AssistantDtos.AssistantAskResponse refusal(
@@ -754,6 +803,101 @@ public class AssistantAnswerService {
             }
         }
         return false;
+    }
+
+    private ClarificationDecision decideClarification(PreparedAsk prepared, String query) {
+        List<String> questions = new ArrayList<>();
+        AssistantQueryPlan queryPlan = prepared.queryPlan();
+        AssistantConversationService.RetrievalContext context = prepared.retrievalContext();
+        if ((queryPlan == null || !queryPlan.hasSubject())
+                && (context == null || context.confirmedEntity() == null || context.confirmedEntity().isBlank())) {
+            questions.add("你想问的是哪个角色/板子/术语？请给一个明确名称。");
+        }
+        boolean mentionVersion = containsAny(query, List.of("版本", "更新", "改动", "patch", "ver", "v"));
+        if (mentionVersion
+                && (context == null || context.confirmedSystemVersion() == null || context.confirmedSystemVersion().isBlank())
+                && !containsVersionLike(query)) {
+            questions.add("你关注哪个系统版本？例如“2025S3”或“v4.2”。");
+        }
+        boolean mentionRecent = containsAny(query, List.of("最近", "近期", "今天", "最新", "最近一次"));
+        if (mentionRecent
+                && (context == null || context.clarifiedTimeRange() == null || context.clarifiedTimeRange().isBlank())
+                && !containsAny(query, List.of("年", "月", "日", "周", "天"))) {
+            questions.add("时间范围是？例如“2026年3月-4月”或“近7天”。");
+        }
+        boolean resolvedFromClarification = false;
+        String clarificationHint = "";
+        if (questions.isEmpty() && context != null) {
+            clarificationHint = String.join(" ", List.of(
+                    safe(context.confirmedEntity()),
+                    safe(context.clarifiedTimeRange()),
+                    safe(context.confirmedSystemVersion())
+            )).trim();
+            resolvedFromClarification = !clarificationHint.isBlank();
+        }
+        return new ClarificationDecision(!questions.isEmpty(), questions, clarificationHint, resolvedFromClarification);
+    }
+
+    private boolean containsVersionLike(String query) {
+        if (query == null || query.isBlank()) {
+            return false;
+        }
+        return Pattern.compile("v?\\d+(\\.\\d+)?", Pattern.CASE_INSENSITIVE).matcher(query).find();
+    }
+
+    private String buildClarificationMarkdown(List<String> questions) {
+        List<String> safeQuestions = questions == null ? List.of() : questions.stream()
+                .filter(item -> item != null && !item.isBlank())
+                .toList();
+        if (safeQuestions.isEmpty()) {
+            return buildRefusalMarkdown("为保证回答准确，我需要你补充更明确的实体、时间范围或版本信息。");
+        }
+        StringBuilder builder = new StringBuilder("## 为保证回答准确，我先确认几件事\n\n");
+        for (int i = 0; i < safeQuestions.size(); i++) {
+            builder.append(i + 1).append(". ").append(safeQuestions.get(i)).append('\n');
+        }
+        builder.append("\n补充后我会进行第二轮定向检索，再给出最终答案。");
+        return builder.toString();
+    }
+
+    private void updateRetrievalContextAfterAnswer(PreparedAsk prepared, String query) {
+        AssistantQueryPlan queryPlan = prepared.queryPlan();
+        AssistantConversationService.RetrievalContext merged = prepared.retrievalContext().merge(
+                queryPlan != null && queryPlan.subject() != null ? queryPlan.subject().name() : "",
+                inferTimeRange(query, prepared.retrievalContext().clarifiedTimeRange()),
+                inferVersion(query, prepared.retrievalContext().confirmedSystemVersion())
+        );
+        assistantConversationService.saveRetrievalContext(prepared.session().getSessionId(), merged);
+    }
+
+    private String inferTimeRange(String query, String fallback) {
+        if (query == null || query.isBlank()) {
+            return safe(fallback);
+        }
+        Matcher matcher = Pattern.compile("(\\d{4}年\\d{1,2}月(?:\\d{1,2}日)?(?:\\s*[到至-]\\s*\\d{4}年\\d{1,2}月(?:\\d{1,2}日)?)?)").matcher(query);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        Matcher recent = Pattern.compile("近\\s*(\\d{1,3})\\s*(天|周|月)").matcher(query);
+        if (recent.find()) {
+            return "近" + recent.group(1) + recent.group(2);
+        }
+        return safe(fallback);
+    }
+
+    private String inferVersion(String query, String fallback) {
+        if (query == null || query.isBlank()) {
+            return safe(fallback);
+        }
+        Matcher matcher = Pattern.compile("(v\\d+(?:\\.\\d+)?)", Pattern.CASE_INSENSITIVE).matcher(query);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        return safe(fallback);
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value;
     }
 
     private AssistantSearchService.SearchResult searchWebIfEligible(
@@ -1933,7 +2077,10 @@ public class AssistantAnswerService {
         entity.setCacheHit(metrics.cacheHit() ? 1 : 0);
         entity.setFallbackMode(metrics.fallbackMode());
         entity.setStreamMode(metrics.streamMode());
-        entity.setRetrievalMetaJson(write(metrics.retrievalMeta()));
+        Map<String, Object> retrievalMeta = new LinkedHashMap<>(metrics.retrievalMeta());
+        retrievalMeta.put("clarificationAsked", metrics.clarificationAsked());
+        retrievalMeta.put("clarificationResolved", metrics.clarificationResolved());
+        entity.setRetrievalMetaJson(write(retrievalMeta));
         entity.setSuccess(failureType == null ? 1 : 0);
         entity.setFailureType(failureType);
         entity.setTraceId(response.traceId());
@@ -1989,7 +2136,16 @@ public class AssistantAnswerService {
             QueryIntent intent,
             String cacheVersion,
             AssistantQueryPlan queryPlan,
-            long startAtMs
+            long startAtMs,
+            AssistantConversationService.RetrievalContext retrievalContext
+    ) {
+    }
+
+    private record ClarificationDecision(
+            boolean needClarification,
+            List<String> questions,
+            String clarificationHint,
+            boolean resolvedFromClarification
     ) {
     }
 
@@ -2033,6 +2189,8 @@ public class AssistantAnswerService {
         private String fallbackMode = "NONE";
         private String streamMode;
         private Map<String, Object> retrievalMeta = Map.of();
+        private boolean clarificationAsked;
+        private boolean clarificationResolved;
 
         private ExecutionMetrics(long startAtMs, String streamMode) {
             this.startAtMs = startAtMs;
@@ -2132,6 +2290,22 @@ public class AssistantAnswerService {
 
         void setRetrievalMeta(Map<String, Object> retrievalMeta) {
             this.retrievalMeta = retrievalMeta == null ? Map.of() : retrievalMeta;
+        }
+
+        boolean clarificationAsked() {
+            return clarificationAsked;
+        }
+
+        void setClarificationAsked(boolean clarificationAsked) {
+            this.clarificationAsked = clarificationAsked;
+        }
+
+        boolean clarificationResolved() {
+            return clarificationResolved;
+        }
+
+        void setClarificationResolved(boolean clarificationResolved) {
+            this.clarificationResolved = clarificationResolved;
         }
     }
 }

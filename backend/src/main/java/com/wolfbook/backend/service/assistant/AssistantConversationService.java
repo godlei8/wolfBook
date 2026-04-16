@@ -143,6 +143,18 @@ public class AssistantConversationService {
                 .toList();
     }
 
+    public RetrievalContext getRetrievalContext(String openid, String sessionId) {
+        AssistantSessionEntity session = requireOwnedSession(openid, sessionId);
+        return readRetrievalContext(session.getRetrievalContext());
+    }
+
+    public void saveRetrievalContext(String sessionId, RetrievalContext context) {
+        assistantSessionMapper.update(null, new LambdaUpdateWrapper<AssistantSessionEntity>()
+                .set(AssistantSessionEntity::getRetrievalContext, write(context == null ? RetrievalContext.empty() : context))
+                .set(AssistantSessionEntity::getUpdateTime, LocalDateTime.now())
+                .eq(AssistantSessionEntity::getSessionId, sessionId));
+    }
+
     private AssistantMessageEntity saveMessage(
             String sessionId,
             String role,
@@ -260,6 +272,43 @@ public class AssistantConversationService {
             return objectMapper.readValue(value, type);
         } catch (Exception exception) {
             return List.of();
+        }
+    }
+
+    private RetrievalContext readRetrievalContext(String value) {
+        if (value == null || value.isBlank()) {
+            return RetrievalContext.empty();
+        }
+        try {
+            RetrievalContext parsed = objectMapper.readValue(value, RetrievalContext.class);
+            return parsed == null ? RetrievalContext.empty() : parsed;
+        } catch (Exception exception) {
+            return RetrievalContext.empty();
+        }
+    }
+
+    public record RetrievalContext(
+            String confirmedEntity,
+            String clarifiedTimeRange,
+            String confirmedSystemVersion
+    ) {
+        static RetrievalContext empty() {
+            return new RetrievalContext("", "", "");
+        }
+
+        RetrievalContext merge(String entity, String timeRange, String systemVersion) {
+            return new RetrievalContext(
+                    keepOrReplace(confirmedEntity, entity),
+                    keepOrReplace(clarifiedTimeRange, timeRange),
+                    keepOrReplace(confirmedSystemVersion, systemVersion)
+            );
+        }
+
+        private static String keepOrReplace(String base, String candidate) {
+            if (candidate == null || candidate.isBlank()) {
+                return base == null ? "" : base;
+            }
+            return candidate.trim();
         }
     }
 }

@@ -14,6 +14,7 @@ public class AssistantSessionEntity {
     private String title;
     private String scene;
     private String pageContext;
+    private String retrievalContext;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 
@@ -55,6 +56,14 @@ public class AssistantSessionEntity {
 
     public void setPageContext(String pageContext) {
         this.pageContext = pageContext;
+    }
+
+    public String getRetrievalContext() {
+        return retrievalContext;
+    }
+
+    public void setRetrievalContext(String retrievalContext) {
+        this.retrievalContext = retrievalContext;
     }
 
     public LocalDateTime getCreateTime() {

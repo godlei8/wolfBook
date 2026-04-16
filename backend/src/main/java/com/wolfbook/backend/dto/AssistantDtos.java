@@ -245,7 +245,8 @@ public final class AssistantDtos {
             double structuredHitRate,
             double webSearchRate,
             double cacheHitRate,
-            double failureRate
+            double failureRate,
+            double clarifiedAccuracyRate
     ) {
     }
 }
