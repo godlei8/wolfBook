@@ -252,6 +252,12 @@ CREATE TABLE `assistant_documents` (
   `file_path` VARCHAR(500),
   `summary` VARCHAR(500),
   `content_text` LONGTEXT,
+  `content_hash` VARCHAR(64),
+  `document_version` INT DEFAULT 1,
+  `archived` TINYINT DEFAULT 0,
+  `ttl_days` INT,
+  `expires_at` DATETIME,
+  `evidence_updated_at` DATETIME,
   `metadata_json` JSON,
   `chunk_count` INT DEFAULT 0,
   `processing_status` VARCHAR(20) DEFAULT 'READY',
@@ -338,6 +344,7 @@ CREATE INDEX `idx_posts_type_feed` ON `posts` (`post_type`, `status`, `create_ti
 CREATE INDEX `idx_comments_post_status` ON `comments` (`post_id`, `status`, `create_time`);
 CREATE INDEX `idx_reports_process_status` ON `reports` (`process_status`);
 CREATE INDEX `idx_assistant_documents_publish` ON `assistant_documents` (`publish_version_id`, `review_status`);
+CREATE INDEX `idx_assistant_documents_version` ON `assistant_documents` (`source_id`, `document_version`, `archived`);
 CREATE INDEX `idx_assistant_sessions_openid` ON `assistant_sessions` (`openid`, `update_time`);
 CREATE INDEX `idx_assistant_messages_session` ON `assistant_messages` (`session_id`, `create_time`);
 CREATE INDEX `idx_assistant_logs_openid` ON `assistant_query_logs` (`openid`, `create_time`);

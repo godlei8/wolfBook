@@ -73,6 +73,7 @@ public class AssistantSearchService {
                         item.path("title").asText(),
                         item.path("snippet").asText(),
                         item.path("url").asText(null),
+                        null,
                         null
                 ));
             }

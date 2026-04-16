@@ -15,6 +15,7 @@ final class AssistantConstants {
     static final String REVIEW_PENDING = "PENDING";
     static final String REVIEW_APPROVED = "APPROVED";
     static final String REVIEW_REJECTED = "REJECTED";
+    static final String REVIEW_NEEDS_REVIEW = "NEEDS_REVIEW";
 
     static final String ANSWER_STRUCTURED = "STRUCTURED_RECOMMENDATION";
     static final String ANSWER_RAG = "RAG_ANSWER";

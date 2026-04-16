@@ -50,6 +50,12 @@ public class AssistantSchemaInitializer implements ApplicationRunner {
                   file_path VARCHAR(500),
                   summary VARCHAR(500),
                   content_text LONGTEXT,
+                  content_hash VARCHAR(64),
+                  document_version INT DEFAULT 1,
+                  archived TINYINT DEFAULT 0,
+                  ttl_days INT,
+                  expires_at DATETIME,
+                  evidence_updated_at DATETIME,
                   metadata_json JSON,
                   chunk_count INT DEFAULT 0,
                   processing_status VARCHAR(20) DEFAULT 'READY',
@@ -162,11 +168,19 @@ public class AssistantSchemaInitializer implements ApplicationRunner {
         addColumnIfMissing("assistant_query_logs", "fallback_mode", "ALTER TABLE assistant_query_logs ADD COLUMN fallback_mode VARCHAR(40)");
         addColumnIfMissing("assistant_query_logs", "stream_mode", "ALTER TABLE assistant_query_logs ADD COLUMN stream_mode VARCHAR(30)");
         addColumnIfMissing("assistant_query_logs", "retrieval_meta_json", "ALTER TABLE assistant_query_logs ADD COLUMN retrieval_meta_json JSON");
+        addColumnIfMissing("assistant_documents", "content_hash", "ALTER TABLE assistant_documents ADD COLUMN content_hash VARCHAR(64)");
+        addColumnIfMissing("assistant_documents", "document_version", "ALTER TABLE assistant_documents ADD COLUMN document_version INT DEFAULT 1");
+        addColumnIfMissing("assistant_documents", "archived", "ALTER TABLE assistant_documents ADD COLUMN archived TINYINT DEFAULT 0");
+        addColumnIfMissing("assistant_documents", "ttl_days", "ALTER TABLE assistant_documents ADD COLUMN ttl_days INT");
+        addColumnIfMissing("assistant_documents", "expires_at", "ALTER TABLE assistant_documents ADD COLUMN expires_at DATETIME");
+        addColumnIfMissing("assistant_documents", "evidence_updated_at", "ALTER TABLE assistant_documents ADD COLUMN evidence_updated_at DATETIME");
     }
 
     private void createAssistantIndexes() {
         createIndexIfMissing("assistant_documents", "idx_assistant_documents_publish",
                 "CREATE INDEX idx_assistant_documents_publish ON assistant_documents (publish_version_id, review_status)");
+        createIndexIfMissing("assistant_documents", "idx_assistant_documents_version",
+                "CREATE INDEX idx_assistant_documents_version ON assistant_documents (source_id, document_version, archived)");
         createIndexIfMissing("assistant_knowledge_chunks", "idx_assistant_chunks_subject",
                 "CREATE INDEX idx_assistant_chunks_subject ON assistant_knowledge_chunks (publish_version_id, subject_key, source_type)");
         createIndexIfMissing("assistant_knowledge_chunks", "idx_assistant_chunks_document",

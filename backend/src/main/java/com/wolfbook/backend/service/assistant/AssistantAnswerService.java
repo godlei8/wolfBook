@@ -26,6 +26,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -378,7 +379,7 @@ public class AssistantAnswerService {
                         request.message()
                 );
                 streamedAnswer = emitStaticAnswer(
-                        mergedAnswer,
+                        enrichAnswerWithEvidenceFreshness(mergedAnswer, citations),
                         emitter,
                         metrics
                 );
@@ -408,7 +409,7 @@ public class AssistantAnswerService {
                     answerType = AssistantConstants.ANSWER_REFUSAL;
                     citations = List.of();
                 }
-                streamedAnswer = emitStaticAnswer(checkedAnswer, emitter, metrics);
+                streamedAnswer = emitStaticAnswer(enrichAnswerWithEvidenceFreshness(checkedAnswer, citations), emitter, metrics);
             }
         } else if (shouldAugmentWithWebSearch(prepared, request.message(), hits)) {
             if (hasWebAnswer(webSearchResult)) {
@@ -422,7 +423,10 @@ public class AssistantAnswerService {
                         .toList();
                 metrics.setStreamMode("FALLBACK");
                 streamedAnswer = emitStaticAnswer(
-                        sanitizeSubjectDrift(buildWebMarkdownAnswer(webSearchResult.answer(), citations), request.message()),
+                        enrichAnswerWithEvidenceFreshness(
+                                sanitizeSubjectDrift(buildWebMarkdownAnswer(webSearchResult.answer(), citations), request.message()),
+                                citations
+                        ),
                         emitter,
                         metrics
                 );
@@ -568,7 +572,7 @@ public class AssistantAnswerService {
 
         return persistAssistantResponse(
                 prepared.session(),
-                answer,
+                enrichAnswerWithEvidenceFreshness(answer, citations),
                 answerType,
                 citations,
                 boards,
@@ -1744,6 +1748,26 @@ public class AssistantAnswerService {
                     .append("- 下方已附上可追溯来源卡片，方便继续核对");
         }
         return normalizeMarkdown(builder.toString());
+    }
+
+    private String enrichAnswerWithEvidenceFreshness(String answer, List<AssistantDtos.AssistantCitation> citations) {
+        if (citations == null || citations.isEmpty()) {
+            return answer;
+        }
+        LocalDateTime latestEvidenceUpdate = citations.stream()
+                .map(AssistantDtos.AssistantCitation::evidenceUpdatedAt)
+                .filter(java.util.Objects::nonNull)
+                .max(LocalDateTime::compareTo)
+                .orElse(null);
+        if (latestEvidenceUpdate == null) {
+            return answer;
+        }
+        long ageDays = ChronoUnit.DAYS.between(latestEvidenceUpdate, LocalDateTime.now());
+        String hint = "\n\n> 证据更新时间：" + latestEvidenceUpdate.toLocalDate();
+        if (ageDays > 180) {
+            hint += "（证据已超过 " + ageDays + " 天，请优先复核最新规则/公告）";
+        }
+        return normalizeMarkdown((answer == null ? "" : answer) + hint);
     }
 
     private String buildRefusalMarkdown(String message) {
