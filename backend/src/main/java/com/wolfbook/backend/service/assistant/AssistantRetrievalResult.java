@@ -8,6 +8,7 @@ record AssistantRetrievalResult(
         long retrievalMs,
         long embeddingMs,
         boolean vectorSearchUsed,
-        Map<String, Object> meta
+        Map<String, Object> meta,
+        boolean minimumEvidenceMet
 ) {
 }

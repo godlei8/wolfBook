@@ -342,6 +342,29 @@ public class AssistantAnswerService {
         metrics.setRetrievalMs(retrievalResult.retrievalMs());
         metrics.setEmbeddingMs(retrievalResult.embeddingMs());
         metrics.setRetrievalMeta(retrievalResult.meta());
+        if (!retrievalResult.minimumEvidenceMet()) {
+            metrics.setFallbackModeIfBlank("LOW_EVIDENCE_CLARIFY");
+            StreamedAnswer streamedAnswer = emitStaticAnswer(
+                    buildRefusalMarkdown(buildClarificationPrompt(request.message())),
+                    emitter,
+                    metrics
+            );
+            return new StreamExecution(
+                    persistAssistantResponse(
+                            prepared.session(),
+                            streamedAnswer.answer(),
+                            AssistantConstants.ANSWER_REFUSAL,
+                            List.of(),
+                            List.of(),
+                            prepared.config().base().quickQuestions().stream()
+                                    .limit(assistantProperties.getMaxSuggestions())
+                                    .toList(),
+                            false,
+                            prepared.traceId()
+                    ),
+                    streamedAnswer.failureType()
+            );
+        }
         boolean usedWebSearch = false;
         String answerType = AssistantConstants.ANSWER_RAG;
         List<AssistantDtos.AssistantCitation> citations;
@@ -499,6 +522,15 @@ public class AssistantAnswerService {
         metrics.setRetrievalMs(retrievalResult.retrievalMs());
         metrics.setEmbeddingMs(retrievalResult.embeddingMs());
         metrics.setRetrievalMeta(retrievalResult.meta());
+        if (!retrievalResult.minimumEvidenceMet()) {
+            metrics.setFallbackModeIfBlank("LOW_EVIDENCE_CLARIFY");
+            return refusal(
+                    prepared.session(),
+                    prepared.config(),
+                    prepared.traceId(),
+                    buildClarificationPrompt(request.message())
+            );
+        }
         boolean usedWebSearch = false;
         String answerType = AssistantConstants.ANSWER_RAG;
         String answer;
@@ -705,7 +737,21 @@ public class AssistantAnswerService {
         if (configured == null || configured <= 0) {
             return Math.max(assistantProperties.getTopK(), 1);
         }
-        return Math.min(Math.max(configured, 1), 8);
+        return Math.min(Math.max(configured, 1), 10);
+    }
+
+    private String buildClarificationPrompt(String query) {
+        return """
+                我目前检索到的证据不足，先不强答。请补充一个更具体的信息点，我再精确回答：
+                - 指定主体：例如角色名、板子名或术语名
+                - 指定维度：例如“技能触发条件 / 胜负判定 / 夜间流程”
+                - 指定场景：例如“12 人标准局、首夜、有无警长”
+
+                你也可以直接这样问：
+                - “在 12 人预女猎白里，女巫首夜能否自救？”
+                - “假面舞会板子里，舞者和假面的技能冲突怎么判？”
+                - “金水与银水的区别是什么？”
+                """.trim();
     }
 
     private double resolveSimilarityThreshold(AssistantDtos.AdminAiConfig config) {
