@@ -136,122 +136,120 @@ export interface ReportItem {
   createTime: string
 }
 
-export interface AssistantAppearance {
-  mascot: string
-  accentColor: string
-  dockLabel: string
-}
+export type AiAnswerType =
+  | 'RAG_ANSWER'
+  | 'WEB_AUGMENTED_ANSWER'
+  | 'WEB_ONLY_ANSWER'
+  | 'CLARIFICATION'
+  | 'NO_EVIDENCE'
+  | 'OUT_OF_SCOPE'
+  | 'ERROR'
 
-export interface AssistantFeatureFlags {
-  webSearchEnabled: boolean
-  historyEnabled: boolean
-}
-
-export interface AssistantBootstrapResponse {
-  enabled: boolean
-  welcomeMessage: string
-  quickQuestions: string[]
-  latestSessionId: string | null
-  appearance: AssistantAppearance
-  featureFlags: AssistantFeatureFlags
-}
-
-export interface AdminAiConfig {
-  base: {
-    enabled: boolean
-    welcomeMessage: string
-    quickQuestions: string[]
-    chatModel: string
-    embeddingModel: string
-    temperature: number
-    maxSuggestions: number
-  }
-  prompt: {
-    systemPrompt: string
-    recommendationPrompt: string
-    refusalPrompt: string
-  }
-  retrieval: {
-    topK: number
-    similarityThreshold: number
-    historyWindow: number
-  }
-  search: {
-    webSearchEnabled: boolean
-    timeoutSeconds: number
-    provider: string
-  }
-  safety: {
-    unsupportedMessage: string
-    blockedKeywords: string[]
-  }
-  ui: {
-    mascot: string
-    dockLabel: string
-    accentColor: string
-  }
-}
-
-export interface AdminAiDocument {
-  id: number
-  name: string
-  fileName: string | null
+export interface AiSource {
+  chunkUid: string
+  title: string
+  sectionPath: string
+  subject: string
+  content: string
+  score: number
   sourceType: string
-  sourceKey: string
-  sourceId: string | null
-  summary: string | null
-  chunkCount: number
-  processingStatus: string
+  url?: string | null
+}
+
+export interface AiBootstrap {
+  enabled: boolean
+  knowledgeBaseEnabled: boolean
+  webSearchEnabled: boolean
+  postgresReady: boolean
+  chatReady: boolean
+  currentMode: string
+  unavailableReason: string | null
+  quickQuestions: string[]
+}
+
+export interface AiAdminConfig {
+  enabled: boolean
+  knowledgeBaseEnabled: boolean
+  webSearchEnabled: boolean
+  postgresReady: boolean
+  chatReady: boolean
+  embeddingReady: boolean
+  topK: number
+  minScore: number
+  maxEvidenceChars: number
+  chatModel: string
+  embeddingModel: string
+  chatApiKeyMasked: string | null
+  embeddingApiKeyMasked: string | null
+}
+
+export interface AiAdminConfigUpdate {
+  enabled?: boolean
+  knowledgeBaseEnabled?: boolean
+  webSearchEnabled?: boolean
+  topK?: number
+  minScore?: number
+  maxEvidenceChars?: number
+  chatModel?: string
+  embeddingModel?: string
+  chatApiKey?: string
+  embeddingApiKey?: string
+}
+
+export interface AiAdminDocument {
+  id: number
+  documentUid: string
+  domain: string
+  title: string
+  sourceType: string
   reviewStatus: string
-  publishVersionId: number | null
-  lastError: string | null
-  createTime: string
-  updateTime: string
+  parseStatus: string
+  summary: string
+  chunkCount: number
+  active: boolean
+  createdAt: string
+  updatedAt: string
 }
 
-export interface AdminAiVersion {
-  id: number
-  versionName: string
-  notes: string | null
-  documentIds: number[]
-  current: boolean
-  publishedBy: string | null
-  createTime: string
+export interface AiAdminPublish {
+  versionKey: string
+  status: string
+  active: boolean
+  documentCount: number
+  chunkCount: number
+  createdAt: string
+  activatedAt: string | null
 }
 
-export interface AdminAiLog {
-  id: number
-  openid: string | null
-  sessionId: string | null
-  userMessage: string
-  answerType: string
-  hitSources: string[]
-  usedWebSearch: boolean
-  latencyMs: number
-  firstTokenMs: number
-  embeddingMs: number
-  retrievalMs: number
-  modelMs: number
-  webSearchMs: number
-  cacheHit: boolean
-  fallbackMode: string | null
-  streamMode: string | null
-  success: boolean
-  failureType: string | null
+export interface AiAdminLog {
   traceId: string
-  createTime: string
+  sessionId: string
+  question: string
+  answerType: AiAnswerType | string
+  subject: string | null
+  retrievalMode: string
+  hitCount: number
+  webUsed: boolean
+  failureReason: string | null
+  latencyMs: number | null
+  createdAt: string
 }
 
-export interface AdminAiPerformanceView {
-  queryCount24h: number
-  avgFirstTokenMs: number
-  avgTotalLatencyMs: number
-  avgRetrievalMs: number
-  avgModelMs: number
-  p95LatencyMs: number
-  ragHitRate: number
-  structuredHitRate: number
-  webSearchRate: number
-  cacheHitRate: number
-  failureRate: number
+export interface AiAdminDebugResponse {
+  query: string
+  subject: string | null
+  intent: string
+  outOfScope: boolean
+  hits: AiSource[]
+  meta: Record<string, unknown>
+}
+
+export interface AiAdminEvalCase {
+  id: number
+  question: string
+  expectedSubject: string | null
+  expectedKeywords: string | null
+  category: string | null
+  enabled: boolean
+  createdAt: string
 }

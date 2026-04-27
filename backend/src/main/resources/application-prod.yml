@@ -2,6 +2,9 @@ server:
   port: 8110
 
 spring:
+  config:
+    activate:
+      on-profile: prod
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
@@ -18,6 +21,26 @@ springdoc:
     enabled: false
 
 wolfbook:
+  ai:
+    enabled: ${AI_ENABLED:true}
+    knowledge-base-enabled: ${AI_KB_ENABLED:true}
+    postgres:
+      enabled: ${AI_PG_ENABLED:true}
+      initialize: ${AI_PG_INITIALIZE:true}
+      url: ${AI_PG_URL:jdbc:postgresql://postgres:5432/wolfbook_ai}
+      username: ${AI_PG_USERNAME:wolfbook_ai}
+      password: ${AI_PG_PASSWORD:}
+    chat:
+      api-key: ${MINIMAX_CHAT_API_KEY:${MINIMAX_API_KEY:}}
+      base-url: ${MINIMAX_BASE_URL:https://api.minimax.chat}
+      model: ${MINIMAX_CHAT_MODEL:MiniMax-M2.7}
+    embedding:
+      api-key: ${MINIMAX_EMBEDDING_API_KEY:${MINIMAX_API_KEY:}}
+      base-url: ${MINIMAX_BASE_URL:https://api.minimax.chat}
+      model: ${MINIMAX_EMBEDDING_MODEL:embo-01}
+    web-search:
+      enabled: ${AI_WEB_SEARCH_ENABLED:true}
+      mcp-api-key: ${MINIMAX_MCP_API_KEY:${MINIMAX_API_KEY:}}
   cors:
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:https://wolfbook.godlei8.top}
   wechat:
@@ -34,28 +57,3 @@ wolfbook:
       region: ${COS_REGION}
       public-base-url: ${COS_PUBLIC_BASE_URL:https://cos.godlei8.top}
       prefix: ${COS_PREFIX:wolfbook}
-  assistant:
-    enabled: ${ASSISTANT_ENABLED:true}
-    history-window: ${ASSISTANT_HISTORY_WINDOW:4}
-    max-sessions-per-user: ${ASSISTANT_MAX_SESSIONS:20}
-    max-suggestions: ${ASSISTANT_MAX_SUGGESTIONS:3}
-    similarity-threshold: ${ASSISTANT_SIMILARITY_THRESHOLD:0.55}
-    top-k: ${ASSISTANT_TOP_K:3}
-    temperature: ${ASSISTANT_TEMPERATURE:0.25}
-    web-search-enabled: ${ASSISTANT_WEB_SEARCH_ENABLED:false}
-    web-search-timeout-seconds: ${ASSISTANT_WEB_SEARCH_TIMEOUT_SECONDS:4}
-    embedding-provider: ${ASSISTANT_EMBEDDING_PROVIDER:minimax}
-    minimax:
-      api-key: ${MINIMAX_API_KEY}
-      base-url: ${MINIMAX_BASE_URL:https://api.minimax.chat}
-      chat-model: ${MINIMAX_CHAT_MODEL:MiniMax-M2.7-highspeed}
-      embedding-model: ${MINIMAX_EMBEDDING_MODEL:embo-01}
-    ollama:
-      base-url: ${OLLAMA_BASE_URL:http://ollama:11434}
-      embedding-model: ${OLLAMA_EMBEDDING_MODEL:qwen3-embedding:0.6b}
-    pgvector:
-      enabled: ${ASSISTANT_PGVECTOR_ENABLED:true}
-      url: ${ASSISTANT_PGVECTOR_URL}
-      username: ${ASSISTANT_PGVECTOR_USERNAME}
-      password: ${ASSISTANT_PGVECTOR_PASSWORD}
-      table-name: ${ASSISTANT_PGVECTOR_TABLE:assistant_vector_store}

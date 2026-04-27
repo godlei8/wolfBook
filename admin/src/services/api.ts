@@ -1,12 +1,14 @@
 import axios from 'axios'
 import type {
-  AdminAiConfig,
-  AdminAiDocument,
-  AdminAiLog,
-  AdminAiPerformanceView,
-  AdminAiVersion,
   ApiResponse,
+  AiAdminConfigUpdate,
   Board,
+  AiAdminConfig,
+  AiAdminDebugResponse,
+  AiAdminDocument,
+  AiAdminEvalCase,
+  AiAdminLog,
+  AiAdminPublish,
   CommentView,
   DashboardSummary,
   LoginResponse,
@@ -18,8 +20,6 @@ import type {
 
 const TOKEN_KEY = 'wolfbook_admin_token'
 const DEFAULT_TIMEOUT = 15000
-const AI_UPLOAD_TIMEOUT = 120000
-const AI_LONG_TASK_TIMEOUT = 300000
 
 const http = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? 'http://localhost:8080' : '/'),
@@ -122,61 +122,55 @@ export const api = {
     )
   },
   async getAiConfig() {
-    return unwrap<AdminAiConfig>(http.get('/admin/ai/config'))
+    return unwrap<AiAdminConfig>(http.get('/admin/ai/config'))
   },
-  async saveAiConfig(payload: AdminAiConfig) {
-    return unwrap<AdminAiConfig>(http.put('/admin/ai/config', payload))
+  async updateAiConfig(payload: AiAdminConfigUpdate) {
+    return unwrap<AiAdminConfig>(http.put('/admin/ai/config', payload))
   },
   async getAiDocuments() {
-    return unwrap<AdminAiDocument[]>(http.get('/admin/ai/documents'))
+    return unwrap<AiAdminDocument[]>(http.get('/admin/ai/documents'))
   },
-  async uploadAiDocument(file: File) {
+  async uploadAiDocument(file: File, domain: string, title?: string) {
     const formData = new FormData()
     formData.append('file', file)
-    return unwrap<AdminAiDocument>(
+    formData.append('domain', domain)
+    if (title) {
+      formData.append('title', title)
+    }
+    return unwrap<AiAdminDocument>(
       http.post('/admin/ai/documents', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: AI_UPLOAD_TIMEOUT,
       }),
     )
   },
-  async updateAiDocumentReview(id: number, reviewStatus: string) {
-    return unwrap<AdminAiDocument>(http.patch(`/admin/ai/documents/${id}`, { reviewStatus }))
+  async reindexAiDocument(documentUid: string) {
+    return unwrap<AiAdminDocument>(http.post(`/admin/ai/documents/${documentUid}/reindex`))
   },
-  async reindexAiDocument(id: number) {
-    return unwrap<AdminAiDocument>(
-      http.post(`/admin/ai/documents/${id}/reindex`, undefined, {
-        timeout: AI_LONG_TASK_TIMEOUT,
-      }),
-    )
+  async importBusinessAiKnowledge() {
+    return unwrap<{ imported: number }>(http.post('/admin/ai/documents/import-business'))
   },
-  async clearAiDocuments() {
-    return unwrap<number>(http.delete('/admin/ai/documents'))
+  async publishAiVersion(description: string) {
+    return unwrap<void>(http.post('/admin/ai/publish', { description }))
   },
-  async getAiVersions() {
-    return unwrap<AdminAiVersion[]>(http.get('/admin/ai/publish'))
-  },
-  async publishAiVersion(notes: string) {
-    return unwrap<AdminAiVersion>(
-      http.post('/admin/ai/publish', { notes }, {
-        timeout: AI_LONG_TASK_TIMEOUT,
-      }),
-    )
-  },
-  async rollbackAiVersion(versionId: number) {
-    return unwrap<AdminAiVersion>(
-      http.post('/admin/ai/publish/rollback', { versionId }, {
-        timeout: AI_LONG_TASK_TIMEOUT,
-      }),
-    )
+  async getAiPublishVersions() {
+    return unwrap<AiAdminPublish[]>(http.get('/admin/ai/publish'))
   },
   async getAiLogs() {
-    return unwrap<AdminAiLog[]>(http.get('/admin/ai/logs'))
+    return unwrap<AiAdminLog[]>(http.get('/admin/ai/logs'))
   },
-  async getAiSummary() {
-    return unwrap<AdminAiPerformanceView>(http.get('/admin/ai/summary'))
+  async debugAiRetrieve(query: string, sessionId?: string, confirmedEntity?: string) {
+    return unwrap<AiAdminDebugResponse>(http.post('/admin/ai/debug/retrieve', { query, sessionId, confirmedEntity }))
   },
-  async clearAiLogs() {
-    return unwrap<number>(http.delete('/admin/ai/logs'))
+  async rebuildAi() {
+    return unwrap<Record<string, number>>(http.post('/admin/ai/rebuild'))
+  },
+  async getAiStats() {
+    return unwrap<Record<string, number>>(http.get('/admin/ai/stats'))
+  },
+  async getAiEvals() {
+    return unwrap<AiAdminEvalCase[]>(http.get('/admin/ai/evals'))
+  },
+  async createAiEval(payload: { question: string; expectedSubject?: string; expectedKeywords?: string; category?: string }) {
+    return unwrap<void>(http.post('/admin/ai/evals', payload))
   },
 }

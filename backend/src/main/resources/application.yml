@@ -50,31 +50,6 @@ wolfbook:
       region: ${COS_REGION:ap-chengdu}
       public-base-url: ${COS_PUBLIC_BASE_URL:https://cos.godlei8.top}
       prefix: ${COS_PREFIX:wolfbook}
-  assistant:
-    enabled: ${ASSISTANT_ENABLED:true}
-    history-window: ${ASSISTANT_HISTORY_WINDOW:4}
-    max-sessions-per-user: ${ASSISTANT_MAX_SESSIONS:20}
-    max-suggestions: ${ASSISTANT_MAX_SUGGESTIONS:3}
-    similarity-threshold: ${ASSISTANT_SIMILARITY_THRESHOLD:0.55}
-    top-k: ${ASSISTANT_TOP_K:3}
-    temperature: ${ASSISTANT_TEMPERATURE:0.25}
-    web-search-enabled: ${ASSISTANT_WEB_SEARCH_ENABLED:false}
-    web-search-timeout-seconds: ${ASSISTANT_WEB_SEARCH_TIMEOUT_SECONDS:4}
-    embedding-provider: ${ASSISTANT_EMBEDDING_PROVIDER:ollama}
-    minimax:
-      api-key: ${MINIMAX_API_KEY:}
-      base-url: ${MINIMAX_BASE_URL:https://api.minimax.chat}
-      chat-model: ${MINIMAX_CHAT_MODEL:MiniMax-M2.7-highspeed}
-      embedding-model: ${MINIMAX_EMBEDDING_MODEL:embo-01}
-    ollama:
-      base-url: ${OLLAMA_BASE_URL:http://127.0.0.1:11434}
-      embedding-model: ${OLLAMA_EMBEDDING_MODEL:qwen3-embedding:0.6b}
-    pgvector:
-      enabled: ${ASSISTANT_PGVECTOR_ENABLED:false}
-      url: ${ASSISTANT_PGVECTOR_URL:}
-      username: ${ASSISTANT_PGVECTOR_USERNAME:}
-      password: ${ASSISTANT_PGVECTOR_PASSWORD:}
-      table-name: ${ASSISTANT_PGVECTOR_TABLE:assistant_vector_store}
   community:
     feed-hot-candidate-limit: ${COMMUNITY_FEED_HOT_CANDIDATE_LIMIT:80}
     related-post-limit: ${COMMUNITY_RELATED_POST_LIMIT:4}
@@ -92,3 +67,32 @@ wolfbook:
       base-url: ${COMMUNITY_MEILI_BASE_URL:http://127.0.0.1:7700}
       api-key: ${COMMUNITY_MEILI_API_KEY:}
       index-name: ${COMMUNITY_MEILI_INDEX:community_posts}
+  ai:
+    enabled: ${AI_ENABLED:true}
+    knowledge-base-enabled: ${AI_KB_ENABLED:true}
+    postgres:
+      enabled: ${AI_PG_ENABLED:false}
+      initialize: ${AI_PG_INITIALIZE:true}
+      url: ${AI_PG_URL:jdbc:postgresql://127.0.0.1:5432/wolfbook_ai}
+      username: ${AI_PG_USERNAME:wolfbook_ai}
+      password: ${AI_PG_PASSWORD:}
+    chat:
+      api-key: ${MINIMAX_CHAT_API_KEY:${MINIMAX_API_KEY:}}
+      base-url: ${MINIMAX_BASE_URL:https://api.minimax.chat}
+      model: ${MINIMAX_CHAT_MODEL:MiniMax-M2.7}
+      timeout: ${MINIMAX_CHAT_TIMEOUT:45s}
+      max-tokens: ${MINIMAX_CHAT_MAX_TOKENS:1600}
+      temperature: ${MINIMAX_CHAT_TEMPERATURE:0.2}
+    embedding:
+      api-key: ${MINIMAX_EMBEDDING_API_KEY:${MINIMAX_API_KEY:}}
+      base-url: ${MINIMAX_BASE_URL:https://api.minimax.chat}
+      model: ${MINIMAX_EMBEDDING_MODEL:embo-01}
+      dimensions: ${MINIMAX_EMBEDDING_DIMENSIONS:1536}
+      timeout: ${MINIMAX_EMBEDDING_TIMEOUT:30s}
+    retrieval:
+      top-k: ${AI_RETRIEVAL_TOP_K:8}
+      min-score: ${AI_RETRIEVAL_MIN_SCORE:0.12}
+      max-evidence-chars: ${AI_MAX_EVIDENCE_CHARS:6000}
+    web-search:
+      enabled: ${AI_WEB_SEARCH_ENABLED:true}
+      mcp-api-key: ${MINIMAX_MCP_API_KEY:${MINIMAX_API_KEY:}}

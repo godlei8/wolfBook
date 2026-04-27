@@ -8,16 +8,24 @@ import com.wolfbook.backend.dto.WolfbookDtos;
 import com.wolfbook.backend.service.AdminService;
 import com.wolfbook.backend.support.UploadProvider;
 import jakarta.validation.Valid;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
 /**
- * 管理后台通用接口。
- *
- * <p>覆盖后台登录、板子/角色维护、社区审核、举报处理和通用上传。
- * AI 助手专项管理接口在 {@link AdminAiController}。</p>
+ * Admin console APIs for login, boards, roles, community moderation and uploads.
  */
 @RestController
 @RequestMapping("/admin")
@@ -49,13 +57,20 @@ public class AdminController {
     }
 
     @PostMapping("/boards")
-    public ApiResponse<Board> createBoard(@RequestHeader("Authorization") String authorization, @RequestBody @Valid WolfbookDtos.AdminBoardRequest request) {
+    public ApiResponse<Board> createBoard(
+            @RequestHeader("Authorization") String authorization,
+            @RequestBody @Valid WolfbookDtos.AdminBoardRequest request
+    ) {
         adminService.requireAdmin(authorization);
         return ApiResponse.success(adminService.saveBoard(null, request));
     }
 
     @PutMapping("/boards/{id}")
-    public ApiResponse<Board> updateBoard(@RequestHeader("Authorization") String authorization, @PathVariable Integer id, @RequestBody @Valid WolfbookDtos.AdminBoardRequest request) {
+    public ApiResponse<Board> updateBoard(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable Integer id,
+            @RequestBody @Valid WolfbookDtos.AdminBoardRequest request
+    ) {
         adminService.requireAdmin(authorization);
         return ApiResponse.success(adminService.saveBoard(id, request));
     }
@@ -74,13 +89,20 @@ public class AdminController {
     }
 
     @PostMapping("/roles")
-    public ApiResponse<WolfbookDtos.AdminRoleView> createRole(@RequestHeader("Authorization") String authorization, @RequestBody @Valid WolfbookDtos.AdminRoleRequest request) {
+    public ApiResponse<WolfbookDtos.AdminRoleView> createRole(
+            @RequestHeader("Authorization") String authorization,
+            @RequestBody @Valid WolfbookDtos.AdminRoleRequest request
+    ) {
         adminService.requireAdmin(authorization);
         return ApiResponse.success(adminService.saveRole(null, request));
     }
 
     @PutMapping("/roles/{id}")
-    public ApiResponse<WolfbookDtos.AdminRoleView> updateRole(@RequestHeader("Authorization") String authorization, @PathVariable Integer id, @RequestBody @Valid WolfbookDtos.AdminRoleRequest request) {
+    public ApiResponse<WolfbookDtos.AdminRoleView> updateRole(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable Integer id,
+            @RequestBody @Valid WolfbookDtos.AdminRoleRequest request
+    ) {
         adminService.requireAdmin(authorization);
         return ApiResponse.success(adminService.saveRole(id, request));
     }
@@ -93,27 +115,43 @@ public class AdminController {
     }
 
     @GetMapping("/posts")
-    public ApiResponse<PageResponse<WolfbookDtos.PostSummaryView>> posts(@RequestHeader("Authorization") String authorization, @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
+    public ApiResponse<PageResponse<WolfbookDtos.PostSummaryView>> posts(
+            @RequestHeader("Authorization") String authorization,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
         adminService.requireAdmin(authorization);
         return ApiResponse.success(adminService.listPosts(page, size));
     }
 
     @PatchMapping("/posts/{id}/status")
-    public ApiResponse<Void> updatePostStatus(@RequestHeader("Authorization") String authorization, @PathVariable Integer id, @RequestBody @Valid WolfbookDtos.AdminStatusRequest request) {
+    public ApiResponse<Void> updatePostStatus(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable Integer id,
+            @RequestBody @Valid WolfbookDtos.AdminStatusRequest request
+    ) {
         adminService.requireAdmin(authorization);
         adminService.updatePostStatus(id, request.status());
         return ApiResponse.success();
     }
 
     @PatchMapping("/posts/{id}/featured")
-    public ApiResponse<Void> updatePostFeatured(@RequestHeader("Authorization") String authorization, @PathVariable Integer id, @RequestBody @Valid WolfbookDtos.ToggleFlagRequest request) {
+    public ApiResponse<Void> updatePostFeatured(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable Integer id,
+            @RequestBody @Valid WolfbookDtos.ToggleFlagRequest request
+    ) {
         adminService.requireAdmin(authorization);
         adminService.updatePostFeatured(id, Boolean.TRUE.equals(request.enabled()));
         return ApiResponse.success();
     }
 
     @PatchMapping("/posts/{id}/pinned")
-    public ApiResponse<Void> updatePostPinned(@RequestHeader("Authorization") String authorization, @PathVariable Integer id, @RequestBody @Valid WolfbookDtos.ToggleFlagRequest request) {
+    public ApiResponse<Void> updatePostPinned(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable Integer id,
+            @RequestBody @Valid WolfbookDtos.ToggleFlagRequest request
+    ) {
         adminService.requireAdmin(authorization);
         adminService.updatePostPinned(id, Boolean.TRUE.equals(request.enabled()));
         return ApiResponse.success();
@@ -127,7 +165,11 @@ public class AdminController {
     }
 
     @GetMapping("/comments")
-    public ApiResponse<PageResponse<WolfbookDtos.CommentView>> comments(@RequestHeader("Authorization") String authorization, @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
+    public ApiResponse<PageResponse<WolfbookDtos.CommentView>> comments(
+            @RequestHeader("Authorization") String authorization,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
         adminService.requireAdmin(authorization);
         return ApiResponse.success(adminService.listComments(page, size));
     }
@@ -140,18 +182,29 @@ public class AdminController {
     }
 
     @GetMapping("/reports")
-    public ApiResponse<PageResponse<Report>> reports(@RequestHeader("Authorization") String authorization, @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
+    public ApiResponse<PageResponse<Report>> reports(
+            @RequestHeader("Authorization") String authorization,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
         adminService.requireAdmin(authorization);
         return ApiResponse.success(adminService.listReports(page, size));
     }
 
     @PatchMapping("/reports/{id}")
-    public ApiResponse<Report> processReport(@RequestHeader("Authorization") String authorization, @PathVariable Integer id, @RequestBody @Valid WolfbookDtos.ReportProcessRequest request) {
+    public ApiResponse<Report> processReport(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable Integer id,
+            @RequestBody @Valid WolfbookDtos.ReportProcessRequest request
+    ) {
         return ApiResponse.success(adminService.processReport(id, request, authorization));
     }
 
     @PostMapping("/upload")
-    public ApiResponse<WolfbookDtos.UploadResponse> upload(@RequestHeader("Authorization") String authorization, @RequestPart("file") MultipartFile file) {
+    public ApiResponse<WolfbookDtos.UploadResponse> upload(
+            @RequestHeader("Authorization") String authorization,
+            @RequestPart("file") MultipartFile file
+    ) {
         adminService.requireAdmin(authorization);
         return ApiResponse.success(new WolfbookDtos.UploadResponse(uploadProvider.upload(file, "admin/assets")));
     }

@@ -11,11 +11,13 @@ import { api, clearStoredToken, getStoredToken } from './services/api'
 import { resolveErrorMessage } from './utils/errors'
 import type { DashboardSummary, LoginResponse } from './types'
 
-const activeMenu = ref<'overview' | 'boards' | 'roles' | 'community' | 'ai'>('overview')
+type MenuKey = 'overview' | 'boards' | 'roles' | 'community' | 'ai'
+
+const activeMenu = ref<MenuKey>('overview')
 const authenticated = ref(Boolean(getStoredToken()))
 const summary = ref<DashboardSummary | null>(null)
 const loadingSummary = ref(false)
-const mountedMenus = reactive({
+const mountedMenus = reactive<Record<MenuKey, boolean>>({
   overview: true,
   boards: false,
   roles: false,
@@ -23,35 +25,38 @@ const mountedMenus = reactive({
   ai: false,
 })
 
+const menuItems: Array<{ key: MenuKey; label: string; hint: string }> = [
+  { key: 'overview', label: '总览', hint: 'Overview' },
+  { key: 'boards', label: '板子管理', hint: 'Boards' },
+  { key: 'roles', label: '角色管理', hint: 'Roles' },
+  { key: 'community', label: '社区治理', hint: 'Community' },
+  { key: 'ai', label: 'AI 助手', hint: 'Assistant' },
+]
+
 const pageMeta = computed(() => {
-  if (activeMenu.value === 'boards') {
-    return {
+  const meta: Record<MenuKey, { title: string; description: string }> = {
+    overview: {
+      title: '运营总览',
+      description: '围绕板子、角色与社区查看整体运行状态。',
+    },
+    boards: {
       title: '板子管理',
       description: '维护封面、阵容、规则、FAQ 与卡片摘要。',
-    }
-  }
-  if (activeMenu.value === 'roles') {
-    return {
+    },
+    roles: {
       title: '角色管理',
       description: '统一维护角色技能、阵营、FAQ 与插画资源。',
-    }
-  }
-  if (activeMenu.value === 'community') {
-    return {
+    },
+    community: {
       title: '社区治理',
       description: '处理帖子、评论、举报与内容状态，维持社区秩序。',
-    }
+    },
+    ai: {
+      title: 'AI 助手管理',
+      description: '配置知识库、上传发布文档、调试检索并跟踪问答质量。',
+    },
   }
-  if (activeMenu.value === 'ai') {
-    return {
-      title: 'AI 助手',
-      description: '管理知识库、发布版本、联网搜索与问答日志，给站内狼人杀 AI 助手提供运营控制台。',
-    }
-  }
-  return {
-    title: '运营总览',
-    description: '围绕板子、角色、社区与 AI 助手查看整体运行状态。',
-  }
+  return meta[activeMenu.value]
 })
 
 async function loadSummary() {
@@ -103,29 +108,19 @@ onMounted(() => {
       <div class="nav-top">
         <div class="brand-mark">WOLFBOOK</div>
         <div class="brand-title">OPERATIONS CONSOLE</div>
-        <div class="brand-sub">狼人杀内容运营、知识库治理与 AI 助手控制台</div>
+        <div class="brand-sub">狼人杀内容运营、板子角色与社区治理控制台</div>
       </div>
 
       <nav class="menu-stack">
-        <button class="menu-item" :class="{ active: activeMenu === 'overview' }" @click="activeMenu = 'overview'">
-          <span class="menu-label">总览</span>
-          <span class="menu-hint">Overview</span>
-        </button>
-        <button class="menu-item" :class="{ active: activeMenu === 'boards' }" @click="activeMenu = 'boards'">
-          <span class="menu-label">板子管理</span>
-          <span class="menu-hint">Boards</span>
-        </button>
-        <button class="menu-item" :class="{ active: activeMenu === 'roles' }" @click="activeMenu = 'roles'">
-          <span class="menu-label">角色管理</span>
-          <span class="menu-hint">Roles</span>
-        </button>
-        <button class="menu-item" :class="{ active: activeMenu === 'community' }" @click="activeMenu = 'community'">
-          <span class="menu-label">社区治理</span>
-          <span class="menu-hint">Community</span>
-        </button>
-        <button class="menu-item" :class="{ active: activeMenu === 'ai' }" @click="activeMenu = 'ai'">
-          <span class="menu-label">AI 助手</span>
-          <span class="menu-hint">Assistant</span>
+        <button
+          v-for="item in menuItems"
+          :key="item.key"
+          class="menu-item"
+          :class="{ active: activeMenu === item.key }"
+          @click="activeMenu = item.key"
+        >
+          <span class="menu-label">{{ item.label }}</span>
+          <span class="menu-hint">{{ item.hint }}</span>
         </button>
       </nav>
 
@@ -135,8 +130,8 @@ onMounted(() => {
       </div>
     </aside>
 
-    <main class="main-panel" :class="{ 'main-panel--ai': activeMenu === 'ai' }" v-loading="loadingSummary">
-      <header class="page-header" :class="{ 'page-header--static': activeMenu === 'ai' }">
+    <main class="main-panel" v-loading="loadingSummary">
+      <header class="page-header">
         <div class="eyebrow">BLACK GOLD CONTROL ROOM</div>
         <h1>{{ pageMeta.title }}</h1>
         <p>{{ pageMeta.description }}</p>
@@ -152,7 +147,7 @@ onMounted(() => {
                 <div class="welcome-eyebrow">Deployment</div>
                 <h3>三端闭环已经成型</h3>
                 <p>
-                  当前后台已经接入真实后端接口，管理动作会直接回写数据库。建议联调顺序为：先启动
+                  当前后台已接入真实后端接口，管理动作会直接回写数据库。建议联调顺序为：先启动
                   <code>backend</code>，再启动 <code>admin</code>，最后在微信开发者工具中加载
                   <code>miniprogram-vue/dist/build/mp-weixin</code>。
                 </p>
@@ -197,21 +192,26 @@ onMounted(() => {
 
 <style scoped>
 .app-shell {
-  height: 100vh;
+  min-height: 100vh;
   display: grid;
-  grid-template-columns: 272px 1fr;
-  overflow: hidden;
+  grid-template-columns: 272px minmax(0, 1fr);
+  background:
+    radial-gradient(circle at top left, rgba(255, 192, 0, 0.12), transparent 34%),
+    linear-gradient(135deg, #070707 0%, #111111 46%, #050505 100%);
+  color: #f7f0dd;
 }
 
 .side-nav {
   height: 100vh;
-  padding: 20px 18px;
+  position: sticky;
+  top: 0;
+  padding: 22px 18px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   background: linear-gradient(180deg, rgba(14, 14, 14, 0.98), rgba(4, 4, 4, 0.98));
-  overflow: hidden;
+  box-shadow: 18px 0 42px rgba(0, 0, 0, 0.22);
 }
 
 .nav-top {
@@ -220,205 +220,215 @@ onMounted(() => {
 }
 
 .brand-mark {
-  display: inline-flex;
   width: fit-content;
   padding: 5px 10px;
+  border-radius: 999px;
   background: rgba(255, 192, 0, 0.12);
   color: #ffc000;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: 0.18em;
 }
 
 .brand-title {
   font-size: 22px;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: 0.06em;
 }
 
 .brand-sub {
-  color: #8d8d8d;
+  max-width: 210px;
+  color: #999;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.7;
 }
 
 .menu-stack {
   display: grid;
-  gap: 10px;
-  margin: 24px 0 auto;
+  gap: 12px;
+  margin: 32px 0 auto;
 }
 
 .menu-item {
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
+  width: 100%;
+  padding: 16px;
+  display: grid;
   gap: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
   text-align: left;
-  background: rgba(255, 255, 255, 0.02);
-  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #f5f1e6;
   cursor: pointer;
+  transition: 0.18s ease;
 }
 
+.menu-item:hover,
 .menu-item.active {
-  border-color: rgba(255, 192, 0, 0.36);
-  background: linear-gradient(180deg, rgba(255, 192, 0, 0.12), rgba(255, 255, 255, 0.02));
+  border-color: rgba(255, 192, 0, 0.42);
+  background: linear-gradient(135deg, rgba(255, 192, 0, 0.18), rgba(255, 255, 255, 0.04));
+  transform: translateX(4px);
 }
 
 .menu-label {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 800;
 }
 
 .menu-hint {
-  color: #8d8d8d;
+  color: #a8a8a8;
   font-size: 11px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 .nav-bottom {
   display: grid;
-  gap: 10px;
+  gap: 12px;
+}
+
+.ghost-action,
+.logout-button {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 14px;
+  font-weight: 800;
 }
 
 .ghost-action {
-  display: none;
-}
-
-.logout-button {
-  width: 100%;
-  font-weight: 700;
+  border: 1px solid rgba(255, 192, 0, 0.25);
+  background: rgba(255, 192, 0, 0.08);
+  color: #f3cc71;
+  cursor: pointer;
 }
 
 .main-panel {
-  --panel-sticky-offset: 108px;
+  --panel-gutter: 34px;
   min-width: 0;
+  position: relative;
   height: 100vh;
-  padding: 0 24px 24px;
-  overflow-y: auto;
-  overflow-x: auto;
-  scrollbar-gutter: stable both-edges;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 192, 0, 0.4) rgba(255, 255, 255, 0.04);
-  -ms-overflow-style: auto;
-}
-
-.main-panel::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-.main-panel::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.main-panel::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  border: 2px solid rgba(10, 10, 10, 0.96);
-  background: linear-gradient(180deg, rgba(255, 211, 92, 0.72), rgba(182, 126, 12, 0.72));
-}
-
-.main-panel::-webkit-scrollbar-corner {
-  background: rgba(255, 255, 255, 0.04);
+  overflow: auto;
+  padding: 0 var(--panel-gutter) 40px;
+  scroll-padding-top: 160px;
 }
 
 .page-header {
-  display: grid;
-  gap: 6px;
   position: sticky;
   top: 0;
-  z-index: 12;
-  margin: 0 -24px 0;
-  padding: 14px 24px 16px;
+  z-index: 8;
+  isolation: isolate;
+  margin: 0 calc(var(--panel-gutter) * -1) 18px;
+  padding: 18px var(--panel-gutter) 28px;
   background:
-    linear-gradient(180deg, rgba(7, 7, 7, 0.98), rgba(7, 7, 7, 0.95) 68%, rgba(7, 7, 7, 0.8) 100%);
-  backdrop-filter: blur(14px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    radial-gradient(circle at top left, rgba(255, 192, 0, 0.12), transparent 38%),
+    linear-gradient(180deg, rgba(7, 7, 7, 0.99) 0%, rgba(9, 9, 9, 0.97) 56%, rgba(9, 9, 9, 0.94) 100%);
+  backdrop-filter: blur(16px) saturate(120%);
 }
 
-.eyebrow {
+.eyebrow,
+.welcome-eyebrow {
   color: #ffc000;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.2em;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
 }
 
 .page-header h1 {
-  margin: 0;
-  font-size: 34px;
-  line-height: 1.02;
+  margin: 10px 0 8px;
+  font-size: clamp(34px, 4vw, 58px);
+  line-height: 0.96;
+  letter-spacing: -0.03em;
 }
 
 .page-header p {
+  max-width: 760px;
   margin: 0;
-  max-width: 680px;
-  color: #8d8d8d;
-  line-height: 1.55;
+  color: #aaa;
+  font-size: 15px;
+  line-height: 1.8;
 }
 
+.page-header::before {
+  content: '';
+  position: absolute;
+  left: var(--panel-gutter);
+  right: var(--panel-gutter);
+  bottom: 10px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255, 192, 0, 0.32), rgba(255, 255, 255, 0.08) 46%, transparent 100%);
+  opacity: 0.7;
+}
+
+.page-header::after {
+  content: '';
+  position: absolute;
+  left: calc(var(--panel-gutter) - 6px);
+  right: calc(var(--panel-gutter) - 6px);
+  bottom: -8px;
+  height: 26px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 214, 94, 0.12), rgba(9, 9, 9, 0));
+  filter: blur(14px);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.panel-view,
 .content-stack {
-  margin-top: 12px;
   display: grid;
-  gap: 16px;
-  min-width: 0;
-}
-
-.content-stack--tight {
-  margin-top: 12px;
+  gap: 18px;
 }
 
 .panel-view {
-  min-width: 0;
+  padding-top: 8px;
+}
+
+.content-stack--tight {
+  gap: 16px;
 }
 
 .welcome-card {
-  border-radius: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at top right, rgba(255, 192, 0, 0.1), transparent 38%),
+    rgba(14, 14, 14, 0.88);
 }
 
 .welcome-grid {
   display: grid;
-  grid-template-columns: 1.3fr 0.9fr;
-  gap: 18px;
-}
-
-.welcome-eyebrow {
-  color: #ffc000;
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 24px;
+  align-items: stretch;
 }
 
 .welcome-grid h3 {
-  margin: 10px 0 8px;
+  margin: 12px 0;
   font-size: 24px;
 }
 
 .welcome-grid p {
   margin: 0;
-  color: #b5b5b5;
-  line-height: 1.7;
+  color: #b6b6b6;
+  line-height: 1.9;
 }
 
 .welcome-grid code {
-  padding: 1px 6px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.06);
+  color: #ffc000;
 }
 
 .welcome-panel {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .welcome-item {
-  padding: 14px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
+  padding: 16px;
   display: grid;
-  gap: 6px;
+  gap: 8px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .welcome-item span {
@@ -432,102 +442,38 @@ onMounted(() => {
   font-size: 17px;
 }
 
-.main-panel--ai {
-  --panel-sticky-offset: 0px;
-}
-
-:deep(.el-tag) {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 32px;
-  padding: 0 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 192, 0, 0.14);
-  background:
-    radial-gradient(circle at top left, rgba(255, 208, 96, 0.08), transparent 58%),
-    linear-gradient(180deg, rgba(39, 34, 22, 0.96), rgba(24, 20, 14, 0.98));
-  color: #e7d4a2;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    0 10px 18px rgba(0, 0, 0, 0.14);
-}
-
-:deep(.el-tag .el-tag__content) {
-  line-height: 1;
-}
-
-:deep(.el-tag.el-tag--warning) {
-  border-color: rgba(255, 192, 0, 0.26);
-  background:
-    radial-gradient(circle at top left, rgba(255, 212, 90, 0.18), transparent 55%),
-    linear-gradient(180deg, rgba(70, 53, 14, 0.94), rgba(38, 29, 8, 0.98));
-  color: #f3cc71;
-}
-
-:deep(.el-tag.el-tag--danger) {
-  border-color: rgba(255, 98, 84, 0.26);
-  background:
-    radial-gradient(circle at top left, rgba(255, 130, 112, 0.14), transparent 54%),
-    linear-gradient(180deg, rgba(68, 20, 20, 0.94), rgba(39, 11, 11, 0.98));
-  color: #ff8f7e;
-}
-
-:deep(.el-tag.el-tag--info) {
-  border-color: rgba(134, 144, 166, 0.22);
-  background:
-    radial-gradient(circle at top left, rgba(149, 163, 193, 0.12), transparent 58%),
-    linear-gradient(180deg, rgba(33, 36, 43, 0.96), rgba(19, 21, 27, 0.98));
-  color: #c4cad6;
-}
-
-:deep(.el-tag.el-tag--success) {
-  border-color: rgba(84, 191, 130, 0.22);
-  background:
-    radial-gradient(circle at top left, rgba(120, 222, 158, 0.12), transparent 54%),
-    linear-gradient(180deg, rgba(21, 51, 36, 0.94), rgba(11, 29, 20, 0.98));
-  color: #9fe0b6;
-}
-
 @media (max-width: 1140px) {
   .app-shell {
-    height: auto;
     grid-template-columns: 1fr;
-    overflow: visible;
   }
 
   .side-nav {
     height: auto;
-    overflow: visible;
+    position: static;
   }
 
   .main-panel {
-    --panel-sticky-offset: 0px;
+    --panel-gutter: 18px;
     height: auto;
     overflow: visible;
+    padding: 0 var(--panel-gutter) 24px;
+  }
+
+  .page-header {
+    position: static;
+    margin: 0 0 18px;
+    padding: 18px 0 12px;
+    background: transparent;
+    backdrop-filter: none;
+  }
+
+  .page-header::before,
+  .page-header::after {
+    display: none;
   }
 
   .welcome-grid {
     grid-template-columns: 1fr;
   }
-
-.page-header {
-    margin: 0;
-    padding: 0;
-    position: static;
-    background: transparent;
-    backdrop-filter: none;
-    border-bottom: none;
-  }
-}
-
-.page-header--static {
-  position: static;
-  top: auto;
-  z-index: auto;
 }
 </style>

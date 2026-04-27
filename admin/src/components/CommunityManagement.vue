@@ -282,6 +282,18 @@ function postAuthorLabel(post: PostSummary) {
   return post.nickname || formatOpenid(post.openid)
 }
 
+function postPreviewText(post: PostSummary) {
+  const content = (post.content || '').trim()
+  if (!content) {
+    return ''
+  }
+  const summary = (post.summary || '').trim()
+  if (summary && summary === content) {
+    return ''
+  }
+  return content
+}
+
 onMounted(load)
 </script>
 
@@ -335,6 +347,28 @@ onMounted(load)
                 </div>
                 <div v-if="row.tagList?.length" class="inline-tags">
                   <span v-for="tag in row.tagList.slice(0, 6)" :key="tag" class="inline-tag"># {{ tag }}</span>
+                </div>
+                <div class="post-extra-grid">
+                  <div class="post-extra-chip">
+                    <span class="post-extra-label">帖子 ID</span>
+                    <strong class="post-extra-value">#{{ row.id }}</strong>
+                  </div>
+                  <div class="post-extra-chip">
+                    <span class="post-extra-label">质量分</span>
+                    <strong class="post-extra-value">{{ Math.round(row.qualityScore || 0) }}</strong>
+                  </div>
+                  <div class="post-extra-chip">
+                    <span class="post-extra-label">图片数</span>
+                    <strong class="post-extra-value">{{ row.images?.length || 0 }}</strong>
+                  </div>
+                  <div class="post-extra-chip">
+                    <span class="post-extra-label">角色标签</span>
+                    <strong class="post-extra-value">{{ row.roleTags?.length || 0 }}</strong>
+                  </div>
+                </div>
+                <div v-if="postPreviewText(row)" class="post-content-preview">
+                  <div class="post-content-preview__title">正文片段</div>
+                  <p class="post-content-preview__text">{{ postPreviewText(row) }}</p>
                 </div>
               </div>
 
@@ -673,6 +707,7 @@ onMounted(load)
 
 .post-entry__content {
   min-width: 0;
+  align-content: start;
 }
 
 .post-summary-block {
@@ -685,7 +720,7 @@ onMounted(load)
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 4;
 }
 
 .post-meta-grid {
@@ -705,14 +740,14 @@ onMounted(load)
 }
 
 .post-side-panel {
-  padding: 14px;
+  padding: 12px;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .side-panel-block {
-  padding: 12px;
+  padding: 10px;
   border-radius: 14px;
   background: rgba(0, 0, 0, 0.18);
 }
@@ -814,6 +849,66 @@ onMounted(load)
   line-height: 1;
 }
 
+.post-extra-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.post-extra-chip {
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  min-width: 0;
+}
+
+.post-extra-label {
+  color: #8f8f8f;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.post-extra-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ececec;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.post-content-preview {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.028), rgba(255, 255, 255, 0.012));
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.post-content-preview__title {
+  color: #f2d391;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.post-content-preview__text {
+  margin: 0;
+  color: #cecece;
+  font-size: 13px;
+  line-height: 1.65;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+}
+
 .type-tag {
   min-width: 56px;
   justify-content: center;
@@ -905,6 +1000,7 @@ onMounted(load)
   }
 
   .post-meta-grid,
+  .post-extra-grid,
   .action-grid,
   .post-overview-grid {
     grid-template-columns: 1fr;
