@@ -60,9 +60,7 @@ public class AiAssistantService {
         hydrateRuntimeSettings();
         boolean postgresReady = store.ready();
         boolean chatReady = miniMaxGateway.chatReady();
-        boolean webSearchReady = runtimeSettings.webSearchEnabled()
-                && StringUtils.hasText(properties.getWebSearch().getMcpApiKey())
-                && chatReady;
+        boolean webSearchReady = webSearchReady();
         String mode = resolveMode(runtimeSettings.knowledgeBaseEnabled(), webSearchReady);
         String reason = null;
         if (!runtimeSettings.enabled()) {
@@ -486,9 +484,13 @@ public class AiAssistantService {
         if (!runtimeSettings.webSearchEnabled()) {
             throw new ApiException(5004, "联网搜索已关闭，无法切换到纯联网模式。");
         }
-        if (!StringUtils.hasText(properties.getWebSearch().getMcpApiKey())) {
-            throw new ApiException(5005, "MINIMAX_MCP_API_KEY 未配置，联网搜索不可用。");
+        if (!miniMaxGateway.chatReady()) {
+            throw new ApiException(5005, "MiniMax 聊天 key 未配置，联网搜索不可用。");
         }
+    }
+
+    private boolean webSearchReady() {
+        return runtimeSettings.webSearchEnabled() && miniMaxGateway.chatReady();
     }
 
     private Set<String> loadKnownSubjects() {

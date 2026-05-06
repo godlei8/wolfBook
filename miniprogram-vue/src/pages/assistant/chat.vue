@@ -1,10 +1,12 @@
 <script setup>
 import { computed, nextTick, onMounted, ref } from 'vue'
 import assistantApi from '../../services/assistant'
+import { buildChatViewportState } from './chat-state.mjs'
 import { requireAuth } from '../../utils/auth'
 
 const inputValue = ref('')
 const scrollIntoView = ref('')
+const chatScrollTop = ref(0)
 const loading = ref(false)
 const sending = ref(false)
 const sessionId = ref('')
@@ -82,8 +84,20 @@ function seedWelcome() {
 function scrollToBottom() {
   nextTick(() => {
     const latest = messages.value[messages.value.length - 1]
-    scrollIntoView.value = latest ? `msg-${latest.id}` : ''
+    const nextViewport = buildChatViewportState('append', latest?.id, chatScrollTop.value)
+    chatScrollTop.value = nextViewport.scrollTop
+    scrollIntoView.value = nextViewport.scrollIntoView
   })
+}
+
+function resetConversationViewport() {
+  const nextViewport = buildChatViewportState('reset', null, chatScrollTop.value)
+  chatScrollTop.value = nextViewport.scrollTop
+  scrollIntoView.value = nextViewport.scrollIntoView
+}
+
+function handleChatScroll(event) {
+  chatScrollTop.value = event?.detail?.scrollTop ?? chatScrollTop.value
 }
 
 async function loadHistory() {
@@ -91,12 +105,14 @@ async function loadHistory() {
     const sessions = await assistantApi.listSessions()
     if (!sessions || !sessions.length) {
       seedWelcome()
+      resetConversationViewport()
       return
     }
     sessionId.value = sessions[0].sessionId
     const history = await assistantApi.listMessages(sessionId.value)
     if (!history || !history.length) {
       seedWelcome()
+      resetConversationViewport()
       return
     }
     messages.value = history.map((item) =>
@@ -107,6 +123,7 @@ async function loadHistory() {
     )
   } catch (error) {
     seedWelcome()
+    resetConversationViewport()
   }
 }
 
@@ -197,7 +214,7 @@ function askQuickQuestion(question) {
 function clearMessages() {
   sessionId.value = ''
   seedWelcome()
-  scrollToBottom()
+  resetConversationViewport()
 }
 
 onMounted(() => {
@@ -237,8 +254,10 @@ onMounted(() => {
       <scroll-view
         class="assistant-chat-scroll"
         scroll-y
+        :scroll-top="chatScrollTop"
         :scroll-into-view="scrollIntoView"
         :scroll-with-animation="true"
+        @scroll="handleChatScroll"
       >
         <view class="assistant-chat-content">
           <view
@@ -441,6 +460,8 @@ onMounted(() => {
 .assistant-chat-scroll {
   min-height: 0;
   height: 100%;
+  border-radius: 28rpx;
+  background: rgba(6, 6, 6, 0.46);
 }
 
 .assistant-chat-content {
