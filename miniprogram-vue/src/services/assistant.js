@@ -1,30 +1,21 @@
 import { BASE_URL } from './config'
 import { clearAuthState, createAuthHeader, request } from './request'
 
-function decodeChunkData(data, decoder, stream = false) {
+function decodeChunkData(data) {
   if (!data) return ''
   if (typeof data === 'string') return data
 
-  let uint8Array = null
+  let buffer = null
   if (data instanceof ArrayBuffer) {
-    uint8Array = new Uint8Array(data)
-  } else if (typeof ArrayBuffer !== 'undefined' && typeof ArrayBuffer.isView === 'function' && ArrayBuffer.isView(data)) {
-    uint8Array = new Uint8Array(data.buffer, data.byteOffset || 0, data.byteLength || data.length || 0)
+    buffer = data
   } else if (data.buffer instanceof ArrayBuffer) {
-    const byteOffset = Number.isFinite(data.byteOffset) ? data.byteOffset : 0
-    const byteLength = Number.isFinite(data.byteLength)
-      ? data.byteLength
-      : Number.isFinite(data.length)
-        ? data.length
-        : data.buffer.byteLength - byteOffset
-    uint8Array = new Uint8Array(data.buffer, byteOffset, byteLength)
+    buffer = data.buffer
   }
 
-  if (!uint8Array) return ''
+  if (!buffer) return ''
+
+  const uint8Array = new Uint8Array(buffer)
   if (typeof TextDecoder !== 'undefined') {
-    if (decoder) {
-      return decoder.decode(uint8Array, { stream })
-    }
     return new TextDecoder('utf-8').decode(uint8Array)
   }
 
@@ -55,7 +46,7 @@ function parseEventBlock(block) {
     }
   })
 
-  const rawData = dataLines.join('\n').replace(/\u0000/g, '')
+  const rawData = dataLines.join('\n')
   if (!rawData) {
     return null
   }
@@ -63,25 +54,12 @@ function parseEventBlock(block) {
   try {
     return { event, data: JSON.parse(rawData) }
   } catch (error) {
-    if (event === 'delta') {
-      return { event, data: { delta: rawData } }
-    }
     return { event, data: rawData }
   }
 }
 
 function supportsStreamingRequest() {
-  return (
-    (typeof wx !== 'undefined' && typeof wx.request === 'function')
-    || (typeof uni !== 'undefined' && typeof uni.request === 'function')
-  )
-}
-
-function resolveStreamingRequestApi() {
-  if (typeof wx !== 'undefined' && typeof wx.request === 'function') {
-    return wx
-  }
-  return uni
+  return typeof wx !== 'undefined' && typeof uni.request === 'function'
 }
 
 function shouldClearAuthFromMessage(message) {
@@ -129,41 +107,21 @@ function streamAsk(payload, handlers = {}) {
     let finalResponse = null
     let settled = false
     let requestTask = null
-    let streamWatchdog = null
-    const textDecoder = typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8') : null
-    const requestApi = resolveStreamingRequestApi()
-
-    function clearWatchdog() {
-      if (streamWatchdog) {
-        clearTimeout(streamWatchdog)
-        streamWatchdog = null
-      }
-    }
-
-    function scheduleWatchdog() {
-      clearWatchdog()
-      streamWatchdog = setTimeout(() => {
-        fallbackOnce()
-      }, 12000)
-    }
 
     function resolveOnce(value) {
       if (settled) return
-      clearWatchdog()
       settled = true
       resolve(value)
     }
 
     function rejectOnce(error) {
       if (settled) return
-      clearWatchdog()
       settled = true
       reject(error)
     }
 
     function fallbackOnce() {
       if (settled) return
-      clearWatchdog()
       if (requestTask && typeof requestTask.abort === 'function') {
         requestTask.abort()
       }
@@ -206,9 +164,7 @@ function streamAsk(payload, handlers = {}) {
       })
     }
 
-    scheduleWatchdog()
-
-    requestTask = requestApi.request({
+    requestTask = uni.request({
       url: `${BASE_URL}/api/assistant/ask/stream`,
       method: 'POST',
       data: payload,
@@ -220,9 +176,7 @@ function streamAsk(payload, handlers = {}) {
       },
       success: (response) => {
         if (settled) return
-        clearWatchdog()
-        const rawChunkText = decodeChunkData(response.data, textDecoder, false)
-        const flushText = textDecoder ? textDecoder.decode() : ''
+        const rawChunkText = decodeChunkData(response.data)
 
         if (shouldFallbackToNonStreaming(response, rawChunkText)) {
           fallbackOnce()
@@ -231,11 +185,6 @@ function streamAsk(payload, handlers = {}) {
 
         if (rawChunkText) {
           eventBuffer += rawChunkText
-        }
-        if (flushText) {
-          eventBuffer += flushText
-        }
-        if (rawChunkText || flushText) {
           consumeEvents(true)
         }
 
@@ -253,7 +202,6 @@ function streamAsk(payload, handlers = {}) {
       },
       fail: (error) => {
         if (settled) return
-        clearWatchdog()
         const message = error?.errMsg || ''
         if (message.includes('404') || message.includes('fail')) {
           fallbackOnce()
@@ -270,8 +218,7 @@ function streamAsk(payload, handlers = {}) {
 
     requestTask.onChunkReceived((chunk) => {
       if (settled) return
-      scheduleWatchdog()
-      eventBuffer += decodeChunkData(chunk.data, textDecoder, true)
+      eventBuffer += decodeChunkData(chunk.data)
       consumeEvents(false)
     })
   })

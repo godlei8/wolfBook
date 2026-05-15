@@ -37,9 +37,6 @@ watch(
 function renderContent(message) {
   const content = message?.content || ''
   if ((message?.contentFormat || 'PLAIN_TEXT') === 'MARKDOWN') {
-    if (message?.isStreaming) {
-      return plainTextToRichText(content)
-    }
     return markdownToRichText(content, { streaming: !!message?.isStreaming })
   }
   return plainTextToRichText(content)
@@ -606,7 +603,7 @@ onLoad((options) => {
 }
 
 .message-bubble {
-  padding: 20rpx;
+  padding: 24rpx;
 }
 
 .message-bubble--assistant {
@@ -627,11 +624,11 @@ onLoad((options) => {
 }
 
 .answer-chip {
-  padding: 6rpx 14rpx;
+  padding: 8rpx 16rpx;
   border-radius: 999rpx;
   background: rgba(255, 192, 0, 0.14);
   color: #ffc000;
-  font-size: 18rpx;
+  font-size: 20rpx;
   font-weight: 700;
 }
 
@@ -646,13 +643,13 @@ onLoad((options) => {
 }
 
 .message-content {
-  margin-top: 12rpx;
+  margin-top: 16rpx;
 }
 
 .message-content--plain {
   white-space: pre-wrap;
-  line-height: 1.7;
-  font-size: 24rpx;
+  line-height: 1.8;
+  font-size: 28rpx;
 }
 
 .message-content--markdown {
@@ -701,15 +698,15 @@ onLoad((options) => {
 
 .board-name,
 .citation-title {
-  font-size: 26rpx;
+  font-size: 28rpx;
   font-weight: 700;
 }
 
 .board-reason,
 .citation-snippet {
-  margin-top: 8rpx;
-  line-height: 1.65;
-  font-size: 22rpx;
+  margin-top: 10rpx;
+  line-height: 1.7;
+  font-size: 24rpx;
 }
 
 .board-reason {
@@ -721,9 +718,9 @@ onLoad((options) => {
 }
 
 .citation-badge {
-  padding: 6rpx 14rpx;
+  padding: 8rpx 16rpx;
   border-radius: 999rpx;
-  font-size: 18rpx;
+  font-size: 20rpx;
   font-weight: 700;
 }
 
@@ -749,7 +746,7 @@ onLoad((options) => {
 
 .citation-action {
   color: #8f8f8f;
-  font-size: 20rpx;
+  font-size: 22rpx;
 }
 
 .assistant-composer {

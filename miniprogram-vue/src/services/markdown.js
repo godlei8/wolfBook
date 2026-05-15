@@ -1,13 +1,13 @@
-const BODY_STYLE = 'margin:0 0 12rpx 0;line-height:1.7;font-size:24rpx;color:#ece6d8;word-break:break-word;'
-const H2_STYLE = 'margin:0 0 14rpx 0;font-size:28rpx;font-weight:700;color:#fff4d3;line-height:1.4;'
-const H3_STYLE = 'margin:6rpx 0 12rpx 0;font-size:24rpx;font-weight:700;color:#ffd86b;line-height:1.45;'
-const LIST_STYLE = 'margin:0 0 14rpx 0;padding-left:28rpx;color:#e5dcc8;line-height:1.7;font-size:23rpx;'
-const BLOCKQUOTE_STYLE = 'margin:0 0 14rpx 0;padding:12rpx 16rpx;border-left:5rpx solid rgba(255,192,0,0.45);background:rgba(255,255,255,0.04);color:#d7cdb7;line-height:1.7;font-size:23rpx;'
-const CODE_BLOCK_STYLE = 'margin:0 0 14rpx 0;padding:14rpx;border-radius:16rpx;background:#111111;color:#f7e8b4;font-size:22rpx;line-height:1.65;white-space:pre-wrap;word-break:break-word;border:1rpx solid rgba(255,192,0,0.14);'
-const INLINE_CODE_STYLE = 'display:inline-block;padding:2rpx 8rpx;border-radius:8rpx;background:rgba(255,192,0,0.1);color:#ffd86b;font-size:22rpx;'
+const BODY_STYLE = 'margin:0 0 16rpx 0;line-height:1.8;font-size:28rpx;color:#f3eee1;word-break:break-word;'
+const H2_STYLE = 'margin:0 0 18rpx 0;font-size:32rpx;font-weight:700;color:#fff7df;line-height:1.45;'
+const H3_STYLE = 'margin:8rpx 0 14rpx 0;font-size:28rpx;font-weight:700;color:#ffd86b;line-height:1.5;'
+const LIST_STYLE = 'margin:0 0 18rpx 0;padding-left:30rpx;color:#ece4cf;line-height:1.8;font-size:26rpx;'
+const BLOCKQUOTE_STYLE = 'margin:0 0 18rpx 0;padding:14rpx 18rpx;border-left:6rpx solid rgba(255,192,0,0.5);background:rgba(255,255,255,0.04);color:#d8cfba;line-height:1.75;font-size:26rpx;'
+const CODE_BLOCK_STYLE = 'margin:0 0 18rpx 0;padding:18rpx;border-radius:18rpx;background:#111111;color:#f7e8b4;font-size:24rpx;line-height:1.7;white-space:pre-wrap;word-break:break-word;border:1rpx solid rgba(255,192,0,0.14);'
+const INLINE_CODE_STYLE = 'display:inline-block;padding:2rpx 10rpx;border-radius:10rpx;background:rgba(255,192,0,0.1);color:#ffd86b;font-size:24rpx;'
 const LINK_STYLE = 'color:#ffd86b;text-decoration:underline;'
-const STRONG_STYLE = 'font-weight:700;color:#fff7e6;'
-const CURSOR_HTML = '<span style="display:inline-block;margin-left:6rpx;color:#ffd86b;font-weight:700;">▌</span>'
+const STRONG_STYLE = 'font-weight:700;color:#fff9eb;'
+const CURSOR_HTML = '<span style="display:inline-block;margin-left:8rpx;color:#ffd86b;font-weight:700;">▍</span>'
 
 function escapeHtml(value = '') {
   return String(value)
@@ -32,7 +32,7 @@ function paragraphToHtml(lines) {
 
 function listToHtml(items, ordered = false) {
   const tag = ordered ? 'ol' : 'ul'
-  const body = items.map((item) => `<li style="margin-bottom:8rpx;">${renderInline(item)}</li>`).join('')
+  const body = items.map((item) => `<li style="margin-bottom:10rpx;">${renderInline(item)}</li>`).join('')
   return `<${tag} style="${LIST_STYLE}">${body}</${tag}>`
 }
 
