@@ -39,8 +39,6 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
-      ollama:
-        condition: service_healthy
     expose:
       - "8110"
     environment:
@@ -56,23 +54,32 @@ services:
       COS_REGION: ${COS_REGION}
       COS_PUBLIC_BASE_URL: ${COS_PUBLIC_BASE_URL}
       COS_PREFIX: ${COS_PREFIX:-wolfbook}
-      MINIMAX_API_KEY: ${MINIMAX_API_KEY}
-      MINIMAX_BASE_URL: ${MINIMAX_BASE_URL:-https://api.minimax.chat}
-      MINIMAX_CHAT_MODEL: ${MINIMAX_CHAT_MODEL:-MiniMax-M2.7}
-      MINIMAX_EMBEDDING_MODEL: ${MINIMAX_EMBEDDING_MODEL:-embo-01}
-      ASSISTANT_EMBEDDING_PROVIDER: ${ASSISTANT_EMBEDDING_PROVIDER:-ollama}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
-      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-qwen3-embedding:0.6b}
       WECHAT_MINI_APP_ID: ${WECHAT_MINI_APP_ID}
       WECHAT_MINI_APP_SECRET: ${WECHAT_MINI_APP_SECRET}
       WECHAT_CODE2SESSION_URL: ${WECHAT_CODE2SESSION_URL:-https://api.weixin.qq.com/sns/jscode2session}
       ASSISTANT_ENABLED: ${ASSISTANT_ENABLED:-true}
+      ASSISTANT_HISTORY_WINDOW: ${ASSISTANT_HISTORY_WINDOW:-12}
+      ASSISTANT_MAX_SESSIONS: ${ASSISTANT_MAX_SESSIONS:-20}
+      ASSISTANT_MAX_SUGGESTIONS: ${ASSISTANT_MAX_SUGGESTIONS:-3}
+      ASSISTANT_SIMILARITY_THRESHOLD: ${ASSISTANT_SIMILARITY_THRESHOLD:-0.45}
+      ASSISTANT_TOP_K: ${ASSISTANT_TOP_K:-4}
+      ASSISTANT_TEMPERATURE: ${ASSISTANT_TEMPERATURE:-0.35}
       ASSISTANT_WEB_SEARCH_ENABLED: ${ASSISTANT_WEB_SEARCH_ENABLED:-true}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-flash}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-sk-a57410a815c44ff28750e5e090d9d738}
+      VOLCENGINE_BASE_URL: ${VOLCENGINE_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
+      VOLCENGINE_EMBEDDING_MODEL: ${VOLCENGINE_EMBEDDING_MODEL:-doubao-embedding-large-text-250515}
+      VOLCENGINE_EMBEDDING_DIMENSIONS: ${VOLCENGINE_EMBEDDING_DIMENSIONS:-2048}
+      VOLCENGINE_EMBEDDING_API_KEY: ${VOLCENGINE_EMBEDDING_API_KEY:-ark-a027dbbb-e159-4801-952e-17d9acbc435a-76d84}
+      VOLCENGINE_SEARCH_MODEL: ${VOLCENGINE_SEARCH_MODEL:-doubao-seed-1-6-thinking-250715}
+      VOLCENGINE_SEARCH_API_KEY: ${VOLCENGINE_SEARCH_API_KEY:-K93gySpeOFFfzoQRBNkdVLRBhExdZr8T}
       ASSISTANT_PGVECTOR_ENABLED: ${ASSISTANT_PGVECTOR_ENABLED:-true}
       ASSISTANT_PGVECTOR_URL: jdbc:postgresql://postgres:5432/${PGVECTOR_DATABASE}
       ASSISTANT_PGVECTOR_USERNAME: ${PGVECTOR_USERNAME}
       ASSISTANT_PGVECTOR_PASSWORD: ${PGVECTOR_PASSWORD}
       ASSISTANT_PGVECTOR_TABLE: ${ASSISTANT_PGVECTOR_TABLE:-assistant_vector_store}
+      ASSISTANT_PGVECTOR_SCHEMA: ${ASSISTANT_PGVECTOR_SCHEMA:-public}
       JAVA_OPTS: ${JAVA_OPTS:-}
     networks:
       - wolfbook
@@ -118,23 +125,6 @@ services:
     networks:
       - wolfbook
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: wolfbook-ollama
-    restart: unless-stopped
-    expose:
-      - "11434"
-    healthcheck:
-      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
-      interval: 15s
-      timeout: 10s
-      retries: 20
-      start_period: 20s
-    volumes:
-      - ollama_data:/root/.ollama
-    networks:
-      - wolfbook
-
 networks:
   wolfbook:
     driver: bridge
@@ -142,4 +132,3 @@ networks:
 volumes:
   mysql_data:
   postgres_data:
-  ollama_data:

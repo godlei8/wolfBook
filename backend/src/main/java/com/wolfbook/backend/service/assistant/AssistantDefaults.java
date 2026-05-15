@@ -16,10 +16,21 @@ final class AssistantDefaults {
                         true,
                         "欢迎来到狼人杀 AI 助手，想问规则、角色，还是让我们一起挑个合适的板子？",
                         List.of("12人进阶推荐什么板子", "女巫能不能自救", "守卫和女巫会不会冲突"),
-                        properties.getMiniMax().getChatModel(),
-                        properties.getDefaultEmbeddingModelLabel(),
                         properties.getTemperature(),
                         properties.getMaxSuggestions()
+                ),
+                new AssistantDtos.ProviderSection(
+                        AssistantProperties.DEEPSEEK_PLATFORM,
+                        properties.getDeepSeek().getModel(),
+                        properties.getDeepSeek().getBaseUrl(),
+                        properties.getDeepSeek().getDefaultApiKey()
+                ),
+                new AssistantDtos.VolcengineSection(
+                        properties.getVolcengine().getBaseUrl(),
+                        properties.getVolcengine().getEmbeddingModel(),
+                        properties.getVolcengine().getEmbeddingApiKey(),
+                        properties.getVolcengine().getSearchModel(),
+                        properties.getVolcengine().getSearchApiKey()
                 ),
                 new AssistantDtos.PromptSection(
                         "你是 Wolfbook 的狼人杀知识助手。优先依据站内结构化数据和已发布知识库回答，回答简洁、准确、可执行。",
@@ -31,11 +42,7 @@ final class AssistantDefaults {
                         properties.getSimilarityThreshold(),
                         properties.getHistoryWindow()
                 ),
-                new AssistantDtos.SearchSection(
-                        properties.isWebSearchEnabled(),
-                        properties.getWebSearchTimeoutSeconds(),
-                        "MINIMAX_WEB_SEARCH"
-                ),
+                new AssistantDtos.SearchSection(properties.isWebSearchEnabled()),
                 new AssistantDtos.SafetySection(
                         "我不能替你做局中站边、判狼或实时裁判，但可以帮你解释规则、角色机制和推荐合适的板子。",
                         List.of("站边", "投谁", "谁是狼", "今晚刀谁", "谁更像狼", "实时判")

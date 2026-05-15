@@ -1,7 +1,6 @@
 package com.wolfbook.backend.service.assistant;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wolfbook.backend.common.ApiException;
 import com.wolfbook.backend.config.AssistantProperties;
@@ -31,7 +30,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -46,8 +44,6 @@ import java.util.stream.Collectors;
 @Service
 public class AssistantKnowledgeService {
 
-    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
-    };
     private static final Logger log = LoggerFactory.getLogger(AssistantKnowledgeService.class);
 
     private final AssistantDocumentMapper assistantDocumentMapper;
@@ -56,8 +52,8 @@ public class AssistantKnowledgeService {
     private final RoleMapper roleMapper;
     private final ObjectMapper objectMapper;
     private final AssistantProperties assistantProperties;
-    private final ObjectProvider<VectorStore> vectorStoreProvider;
     private final UploadProvider uploadProvider;
+    private final ObjectProvider<VectorStore> vectorStoreProvider;
     private final ExecutorService structuredKnowledgeExecutor = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "assistant-structured-knowledge");
         thread.setDaemon(true);
@@ -73,8 +69,8 @@ public class AssistantKnowledgeService {
             RoleMapper roleMapper,
             ObjectMapper objectMapper,
             AssistantProperties assistantProperties,
-            ObjectProvider<VectorStore> vectorStoreProvider,
-            UploadProvider uploadProvider
+            UploadProvider uploadProvider,
+            ObjectProvider<VectorStore> vectorStoreProvider
     ) {
         this.assistantDocumentMapper = assistantDocumentMapper;
         this.assistantPublishService = assistantPublishService;
@@ -82,8 +78,8 @@ public class AssistantKnowledgeService {
         this.roleMapper = roleMapper;
         this.objectMapper = objectMapper;
         this.assistantProperties = assistantProperties;
-        this.vectorStoreProvider = vectorStoreProvider;
         this.uploadProvider = uploadProvider;
+        this.vectorStoreProvider = vectorStoreProvider;
     }
 
     public List<AssistantDtos.AdminDocumentView> listDocuments() {
@@ -106,20 +102,21 @@ public class AssistantKnowledgeService {
     }
 
     public void syncPublishedKnowledgeVersion(Integer versionId) {
-        if (versionId == null) {
-            return;
+        List<AssistantDocumentEntity> documents = assistantDocumentMapper.selectList(
+                new LambdaQueryWrapper<AssistantDocumentEntity>()
+                        .eq(AssistantDocumentEntity::getReviewStatus, AssistantConstants.REVIEW_APPROVED)
+                        .eq(AssistantDocumentEntity::getProcessingStatus, AssistantConstants.STATUS_READY)
+                        .orderByAsc(AssistantDocumentEntity::getId)
+        );
+        for (AssistantDocumentEntity document : documents) {
+            if (versionId != null && versionId.equals(document.getPublishVersionId())) {
+                indexDocument(document);
+            } else {
+                deleteIndexedChunks(document.getSourceKey(), document.getChunkCount());
+            }
+            document.setUpdateTime(LocalDateTime.now());
+            assistantDocumentMapper.updateById(document);
         }
-        assistantDocumentMapper.selectList(
-                        new LambdaQueryWrapper<AssistantDocumentEntity>()
-                                .eq(AssistantDocumentEntity::getPublishVersionId, versionId)
-                                .eq(AssistantDocumentEntity::getReviewStatus, AssistantConstants.REVIEW_APPROVED)
-                                .eq(AssistantDocumentEntity::getProcessingStatus, AssistantConstants.STATUS_READY)
-                                .orderByAsc(AssistantDocumentEntity::getId)
-                ).forEach(document -> {
-                    indexDocument(document);
-                    document.setUpdateTime(LocalDateTime.now());
-                    assistantDocumentMapper.updateById(document);
-                });
     }
 
     public AssistantDtos.AdminDocumentView uploadDocument(MultipartFile file) {
@@ -153,6 +150,7 @@ public class AssistantKnowledgeService {
             entity.setMetadataJson(write(Map.of("sourceType", AssistantConstants.SOURCE_DOCUMENT)));
             assistantDocumentMapper.insert(entity);
             indexDocument(entity);
+            entity.setUpdateTime(LocalDateTime.now());
             assistantDocumentMapper.updateById(entity);
             return toView(entity);
         } catch (Exception exception) {
@@ -197,7 +195,8 @@ public class AssistantKnowledgeService {
                 .filter(java.util.Objects::nonNull)
                 .toList();
 
-        uploadedDocuments.forEach(document -> deleteIndexedChunks(document, document.getChunkCount()));
+        uploadedDocuments.forEach(document -> deleteIndexedChunks(document.getSourceKey(), document.getChunkCount()));
+
         assistantDocumentMapper.delete(new LambdaQueryWrapper<AssistantDocumentEntity>()
                 .eq(AssistantDocumentEntity::getSourceType, AssistantConstants.SOURCE_DOCUMENT));
         assistantPublishService.removeDocumentReferences(removedIds);
@@ -251,7 +250,7 @@ public class AssistantKnowledgeService {
         existing.values().stream()
                 .filter(item -> !activeKeys.contains(item.getSourceKey()))
                 .forEach(item -> {
-                    deleteIndexedChunks(item, item.getChunkCount());
+                    deleteIndexedChunks(item.getSourceKey(), item.getChunkCount());
                     assistantDocumentMapper.deleteById(item.getId());
                 });
     }
@@ -290,10 +289,7 @@ public class AssistantKnowledgeService {
             return List.of();
         }
 
-        Map<String, AssistantDocumentEntity> bySourceKey = publishedDocuments.stream()
-                .collect(Collectors.toMap(AssistantDocumentEntity::getSourceKey, item -> item, (left, right) -> left));
-
-        List<KnowledgeHit> vectorHits = searchViaVectorStore(query, currentVersionId, bySourceKey);
+        List<KnowledgeHit> vectorHits = searchViaVectorStore(query, publishedDocuments);
         if (!vectorHits.isEmpty()) {
             return vectorHits;
         }
@@ -304,43 +300,6 @@ public class AssistantKnowledgeService {
                 .sorted((left, right) -> Double.compare(right.score(), left.score()))
                 .limit(assistantProperties.getTopK())
                 .toList();
-    }
-
-    private List<KnowledgeHit> searchViaVectorStore(String query, Integer currentVersionId, Map<String, AssistantDocumentEntity> bySourceKey) {
-        VectorStore vectorStore = vectorStoreProvider.getIfAvailable();
-        if (vectorStore == null) {
-            return List.of();
-        }
-        List<Document> documents = vectorStore.similaritySearch(SearchRequest.builder()
-                .query(query)
-                .topK(assistantProperties.getTopK())
-                .similarityThreshold(assistantProperties.getSimilarityThreshold())
-                .filterExpression("publishedVersion == " + currentVersionId)
-                .build());
-        if (documents == null || documents.isEmpty()) {
-            return List.of();
-        }
-        List<KnowledgeHit> hits = new ArrayList<>();
-        for (Document document : documents) {
-            Map<String, Object> metadata = document.getMetadata();
-            String sourceKey = String.valueOf(metadata.getOrDefault("sourceKey", ""));
-            AssistantDocumentEntity source = bySourceKey.get(sourceKey);
-            if (source == null) {
-                continue;
-            }
-            String title = String.valueOf(metadata.getOrDefault("title", source.getName()));
-            String sourceType = String.valueOf(metadata.getOrDefault("sourceType", source.getSourceType()));
-            double score = document.getScore() == null ? 0.7d : document.getScore();
-            hits.add(new KnowledgeHit(
-                    source,
-                    title,
-                    sourceType,
-                    trimSnippet(document.getText()),
-                    score,
-                    source.getSourceId()
-            ));
-        }
-        return hits;
     }
 
     private KnowledgeHit scoreFallback(String query, AssistantDocumentEntity document) {
@@ -376,7 +335,6 @@ public class AssistantKnowledgeService {
             boolean refreshIndex
     ) {
         AssistantDocumentEntity entity = existing == null ? new AssistantDocumentEntity() : existing;
-        int previousChunkCount = entity.getChunkCount() == null ? 0 : entity.getChunkCount();
         entity.setName(name);
         entity.setFileName(null);
         entity.setSourceType(AssistantConstants.SOURCE_STRUCTURED);
@@ -400,79 +358,103 @@ public class AssistantKnowledgeService {
             assistantDocumentMapper.updateById(entity);
         }
         if (refreshIndex) {
-            indexDocument(entity, previousChunkCount);
+            indexDocument(entity);
             entity.setUpdateTime(LocalDateTime.now());
             assistantDocumentMapper.updateById(entity);
         }
     }
 
     private void indexDocument(AssistantDocumentEntity entity) {
-        int previousChunkCount = entity.getChunkCount() == null ? 0 : entity.getChunkCount();
-        indexDocument(entity, previousChunkCount);
-    }
-
-    private void indexDocument(AssistantDocumentEntity entity, int previousChunkCount) {
         List<String> chunks = chunkText(entity.getContentText());
+        int previousChunkCount = entity.getChunkCount() == null ? 0 : entity.getChunkCount();
         entity.setChunkCount(chunks.size());
-        VectorStore vectorStore = vectorStoreProvider.getIfAvailable();
-        if (vectorStore == null || entity.getPublishVersionId() == null) {
+        if (entity.getId() == null) {
             return;
         }
-        deleteIndexedChunks(entity, Math.max(previousChunkCount, chunks.size()));
-        List<String> ids = new ArrayList<>();
+        deleteIndexedChunks(entity.getSourceKey(), previousChunkCount);
+
+        VectorStore vectorStore = vectorStoreProvider.getIfAvailable();
+        if (vectorStore == null || chunks.isEmpty()) {
+            return;
+        }
+
         List<Document> documents = new ArrayList<>();
         for (int index = 0; index < chunks.size(); index++) {
-            String chunkId = buildChunkId(entity, index);
-            ids.add(chunkId);
-            Map<String, Object> metadata = new HashMap<>();
-            putMetadata(metadata, "sourceType", entity.getSourceType());
-            putMetadata(metadata, "sourceKey", entity.getSourceKey());
-            putMetadata(metadata, "sourceId", entity.getSourceId());
-            putMetadata(metadata, "publishedVersion", entity.getPublishVersionId());
-            putMetadata(metadata, "title", entity.getName());
             documents.add(Document.builder()
-                    .id(chunkId)
+                    .id(buildChunkId(entity.getSourceKey(), index))
                     .text(chunks.get(index))
-                    .metadata(metadata)
+                    .metadata(Map.of(
+                            "documentId", entity.getId(),
+                            "sourceType", entity.getSourceType(),
+                            "sourceKey", entity.getSourceKey(),
+                            "sourceId", entity.getSourceId() == null ? "" : entity.getSourceId(),
+                            "title", entity.getName() == null ? "" : entity.getName(),
+                            "publishVersionId", entity.getPublishVersionId() == null ? -1 : entity.getPublishVersionId()
+                    ))
                     .build());
         }
         vectorStore.add(documents);
     }
 
-    private void deleteIndexedChunks(AssistantDocumentEntity entity, Integer chunkCount) {
+    private List<KnowledgeHit> searchViaVectorStore(String query, List<AssistantDocumentEntity> publishedDocuments) {
         VectorStore vectorStore = vectorStoreProvider.getIfAvailable();
-        if (vectorStore == null || entity.getId() == null || chunkCount == null || chunkCount <= 0) {
+        if (vectorStore == null) {
+            return List.of();
+        }
+
+        Map<String, AssistantDocumentEntity> bySourceKey = publishedDocuments.stream()
+                .collect(Collectors.toMap(AssistantDocumentEntity::getSourceKey, item -> item, (left, right) -> left));
+        Set<String> allowedSourceKeys = bySourceKey.keySet();
+
+        List<Document> matches = vectorStore.similaritySearch(SearchRequest.builder()
+                .query(query)
+                .topK(Math.max(assistantProperties.getTopK() * 8, 20))
+                .similarityThreshold(assistantProperties.getSimilarityThreshold())
+                .build());
+        if (matches == null || matches.isEmpty()) {
+            return List.of();
+        }
+
+        List<KnowledgeHit> hits = new ArrayList<>();
+        Set<String> seenSourceKeys = new java.util.LinkedHashSet<>();
+        for (Document match : matches) {
+            String sourceKey = String.valueOf(match.getMetadata().getOrDefault("sourceKey", ""));
+            if (sourceKey.isBlank() || !allowedSourceKeys.contains(sourceKey) || !seenSourceKeys.add(sourceKey)) {
+                continue;
+            }
+            AssistantDocumentEntity entity = bySourceKey.get(sourceKey);
+            if (entity == null) {
+                continue;
+            }
+            hits.add(new KnowledgeHit(
+                    entity,
+                    entity.getName(),
+                    entity.getSourceType(),
+                    trimSnippet(match.getText()),
+                    match.getScore() == null ? 0 : match.getScore(),
+                    entity.getSourceId()
+            ));
+            if (hits.size() >= assistantProperties.getTopK()) {
+                break;
+            }
+        }
+        return hits;
+    }
+
+    private void deleteIndexedChunks(String sourceKey, Integer chunkCount) {
+        VectorStore vectorStore = vectorStoreProvider.getIfAvailable();
+        if (vectorStore == null || sourceKey == null || sourceKey.isBlank() || chunkCount == null || chunkCount <= 0) {
             return;
         }
         List<String> ids = new ArrayList<>();
         for (int index = 0; index < chunkCount; index++) {
-            ids.add(buildChunkId(entity, index));
+            ids.add(buildChunkId(sourceKey, index));
         }
-        try {
-            vectorStore.delete(ids);
-        } catch (Exception ignored) {
-        }
+        vectorStore.delete(ids);
     }
 
-    private String buildChunkId(AssistantDocumentEntity entity, int chunkIndex) {
-        String raw = String.join(":",
-                "assistant-doc",
-                String.valueOf(entity.getId()),
-                String.valueOf(entity.getPublishVersionId()),
-                entity.getSourceKey() == null ? "unknown" : entity.getSourceKey(),
-                String.valueOf(chunkIndex)
-        );
-        return UUID.nameUUIDFromBytes(raw.getBytes(StandardCharsets.UTF_8)).toString();
-    }
-
-    private void putMetadata(Map<String, Object> metadata, String key, Object value) {
-        if (value == null) {
-            return;
-        }
-        if (value instanceof String text && text.isBlank()) {
-            return;
-        }
-        metadata.put(key, value);
+    private String buildChunkId(String sourceKey, int chunkIndex) {
+        return sourceKey + "#chunk-" + chunkIndex;
     }
 
     private String buildBoardStructuredText(Board board) {

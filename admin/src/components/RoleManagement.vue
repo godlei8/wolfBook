@@ -4,6 +4,8 @@ import { ElMessage } from 'element-plus'
 import type { UploadRequestOptions } from 'element-plus'
 import { api } from '../services/api'
 import type { Role } from '../types'
+import { resolveMediaUrl } from '../utils/media'
+import { clampPage, paginate } from '../utils/pagination'
 
 const emit = defineEmits<{ changed: [] }>()
 
@@ -67,7 +69,6 @@ const emptyRole = (): Role => ({
 const form = reactive<Role>(emptyRole())
 
 const availableRoleTypes = computed(() => roleTypeOptionsMap[form.faction] || [])
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080').replace(/\/+$/, '')
 const portraitPreviewUrl = computed(() => resolveMediaUrl(form.portrait))
 const illustrationPreviewUrl = computed(() => resolveMediaUrl(form.fullIllustration))
 const filteredRoles = computed(() => {
@@ -83,14 +84,18 @@ const filteredRoles = computed(() => {
   })
 })
 
-const pagedRoles = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  return filteredRoles.value.slice(start, start + pageSize.value)
-})
+const pagedRoles = computed(() => paginate(filteredRoles.value, currentPage.value, pageSize.value))
 
 watch([keyword, factionFilter, roleTypeFilter, pageSize], () => {
   currentPage.value = 1
 })
+
+watch(
+  () => filteredRoles.value.length,
+  (total) => {
+    currentPage.value = clampPage(currentPage.value, pageSize.value, total)
+  },
+)
 
 function syncCamp() {
   form.camp = buildCamp(form.faction, form.roleType)
@@ -126,20 +131,6 @@ function resetForm(role?: Role) {
   ensureRoleType()
 }
 
-function resolveMediaUrl(url?: string | null) {
-  const value = (url || '').trim()
-  if (!value) {
-    return ''
-  }
-  if (/^(https?:)?\/\//i.test(value)) {
-    return value.startsWith('//') ? `http:${value}` : value
-  }
-  if (value.startsWith('/')) {
-    return `${apiBaseUrl}${value}`
-  }
-  return value
-}
-
 function resetFilters() {
   keyword.value = ''
   factionFilter.value = 'ALL'
@@ -163,9 +154,6 @@ async function load() {
   loading.value = true
   try {
     roles.value = await api.getRoles()
-    if ((currentPage.value - 1) * pageSize.value >= roles.value.length) {
-      currentPage.value = 1
-    }
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '角色数据加载失败')
   } finally {

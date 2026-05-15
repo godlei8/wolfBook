@@ -1,11 +1,5 @@
 import { BASE_URL } from './config'
-import { request } from './request'
-import storage from './storage'
-
-function authHeader() {
-  const token = storage.getAuthToken()
-  return token ? { Authorization: `Bearer ${token}` } : {}
-}
+import { clearAuthState, createAuthHeader, request } from './request'
 
 function decodeChunkData(data) {
   if (!data) return ''
@@ -75,17 +69,12 @@ function shouldClearAuthFromMessage(message) {
   return /token|authorization|auth|登录/i.test(message)
 }
 
-function clearAuthState() {
-  storage.clearAuthToken()
-  storage.setUserProfile(null)
-}
-
 function fallbackAsk(payload, handlers = {}) {
   return request({
     url: '/api/assistant/ask',
     method: 'POST',
     data: payload,
-    header: authHeader(),
+    header: createAuthHeader(),
   }).then((response) => {
     handlers.onStarted?.({
       sessionId: response.sessionId,
@@ -183,7 +172,7 @@ function streamAsk(payload, handlers = {}) {
       responseType: 'arraybuffer',
       header: {
         Accept: 'text/event-stream',
-        ...authHeader(),
+        ...createAuthHeader(),
       },
       success: (response) => {
         if (settled) return
@@ -237,20 +226,20 @@ function streamAsk(payload, handlers = {}) {
 
 export default {
   async bootstrap() {
-    return request({ url: '/api/assistant/bootstrap', header: authHeader() })
+    return request({ url: '/api/assistant/bootstrap', header: createAuthHeader() })
   },
   async getSessions() {
-    return request({ url: '/api/assistant/sessions', header: authHeader() })
+    return request({ url: '/api/assistant/sessions', header: createAuthHeader() })
   },
   async getMessages(sessionId) {
-    return request({ url: `/api/assistant/sessions/${sessionId}/messages`, header: authHeader() })
+    return request({ url: `/api/assistant/sessions/${sessionId}/messages`, header: createAuthHeader() })
   },
   async ask(payload) {
     return request({
       url: '/api/assistant/ask',
       method: 'POST',
       data: payload,
-      header: authHeader(),
+      header: createAuthHeader(),
     })
   },
   async askStream(payload, handlers = {}) {
@@ -263,7 +252,7 @@ export default {
     return request({
       url: `/api/assistant/sessions/${sessionId}/reset`,
       method: 'POST',
-      header: authHeader(),
+      header: createAuthHeader(),
     })
   },
 }

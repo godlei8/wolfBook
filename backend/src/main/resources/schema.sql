@@ -132,6 +132,8 @@ CREATE TABLE `admin_users` (
 CREATE TABLE `assistant_config` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `base_config` JSON,
+  `provider_config` JSON,
+  `volcengine_config` JSON,
   `prompt_config` JSON,
   `retrieval_config` JSON,
   `search_config` JSON,

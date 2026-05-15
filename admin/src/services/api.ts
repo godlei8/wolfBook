@@ -41,6 +41,17 @@ async function unwrap<T>(promise: Promise<{ data: ApiResponse<T> }>): Promise<T>
   return response.data.data
 }
 
+async function uploadMultipart<T>(url: string, file: File, timeout = DEFAULT_TIMEOUT) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return unwrap<T>(
+    http.post(url, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout,
+    }),
+  )
+}
+
 export function getStoredToken() {
   return localStorage.getItem(TOKEN_KEY)
 }
@@ -106,13 +117,7 @@ export const api = {
     return unwrap<ReportItem>(http.patch(`/admin/reports/${id}`, { processStatus }))
   },
   async upload(file: File) {
-    const formData = new FormData()
-    formData.append('file', file)
-    return unwrap<{ url: string }>(
-      http.post('/admin/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      }),
-    )
+    return uploadMultipart<{ url: string }>('/admin/upload', file)
   },
   async getAiConfig() {
     return unwrap<AdminAiConfig>(http.get('/admin/ai/config'))
@@ -124,14 +129,7 @@ export const api = {
     return unwrap<AdminAiDocument[]>(http.get('/admin/ai/documents'))
   },
   async uploadAiDocument(file: File) {
-    const formData = new FormData()
-    formData.append('file', file)
-    return unwrap<AdminAiDocument>(
-      http.post('/admin/ai/documents', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: AI_UPLOAD_TIMEOUT,
-      }),
-    )
+    return uploadMultipart<AdminAiDocument>('/admin/ai/documents', file, AI_UPLOAD_TIMEOUT)
   },
   async updateAiDocumentReview(id: number, reviewStatus: string) {
     return unwrap<AdminAiDocument>(http.patch(`/admin/ai/documents/${id}`, { reviewStatus }))

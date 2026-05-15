@@ -132,6 +132,8 @@ CREATE TABLE admin_users (
 CREATE TABLE assistant_config (
   id INT PRIMARY KEY AUTO_INCREMENT,
   base_config CLOB,
+  provider_config CLOB,
+  volcengine_config CLOB,
   prompt_config CLOB,
   retrieval_config CLOB,
   search_config CLOB,

@@ -138,10 +138,21 @@ export interface AdminAiConfig {
     enabled: boolean
     welcomeMessage: string
     quickQuestions: string[]
-    chatModel: string
-    embeddingModel: string
     temperature: number
     maxSuggestions: number
+  }
+  provider: {
+    platform: string
+    model: string
+    baseUrl: string
+    apiKey: string
+  }
+  volcengine: {
+    baseUrl: string
+    embeddingModel: string
+    embeddingApiKey: string
+    searchModel: string
+    searchApiKey: string
   }
   prompt: {
     systemPrompt: string
@@ -155,8 +166,6 @@ export interface AdminAiConfig {
   }
   search: {
     webSearchEnabled: boolean
-    timeoutSeconds: number
-    provider: string
   }
   safety: {
     unsupportedMessage: string
