@@ -10,11 +10,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-/**
- * 小程序用户个人数据接口。
- *
- * <p>包括收藏板子、笔记局、笔记记录、复盘时间线和用户侧统计摘要。</p>
- */
 @RestController
 @RequestMapping("/api/user")
 @Validated

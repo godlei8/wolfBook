@@ -9,12 +9,6 @@ import org.springframework.stereotype.Component;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * Entity 与领域模型之间的转换器。
- *
- * <p>数据库里 JSON 字符串、关联表等结构不适合直接给前端，本类负责把它们组装成
- * {@code Board}、{@code Role}、{@code Post} 等前端更好用的对象。</p>
- */
 @Component
 public class DomainConverter {
 
@@ -60,7 +54,6 @@ public class DomainConverter {
                 readFaqList(entity.getFaqs()),
                 entity.getWinCondition(),
                 entity.getRuleType(),
-                entity.getJudgeSupportLevel(),
                 entity.getStatus(),
                 roleEntities == null ? List.of() : roleEntities.stream()
                         .map(item -> new BoardRoleRef(item.getRoleId(), item.getCount()))
@@ -86,26 +79,11 @@ public class DomainConverter {
         return new Post(
                 entity.getId(),
                 entity.getOpenid(),
-                entity.getPostType(),
-                entity.getTitle(),
-                entity.getSummary(),
                 entity.getContent(),
                 readStringList(entity.getImages()),
-                entity.getBoardId(),
-                entity.getBoardName(),
-                readStringList(entity.getRoleTags()),
-                readStringList(entity.getTagList()),
-                entity.getSessionId(),
-                entity.getQualityScore(),
-                entity.getHotScore(),
-                entity.getViewCount(),
                 entity.getLikeCount(),
                 entity.getCommentCount(),
-                entity.getFavoriteCount(),
                 entity.getStatus(),
-                entity.getFeatured(),
-                entity.getPinned(),
-                entity.getRejectReason(),
                 entity.getCreateTime(),
                 entity.getUpdateTime()
         );
@@ -116,13 +94,10 @@ public class DomainConverter {
                 entity.getId(),
                 entity.getPostId(),
                 entity.getOpenid(),
-                entity.getParentCommentId(),
-                entity.getReplyToOpenid(),
                 entity.getContent(),
                 entity.getLikeCount(),
                 entity.getStatus(),
-                entity.getCreateTime(),
-                entity.getUpdateTime()
+                entity.getCreateTime()
         );
     }
 

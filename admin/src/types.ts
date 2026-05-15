@@ -79,30 +79,13 @@ export interface PostSummary {
   openid: string
   nickname: string
   avatar: string
-  postType: string
-  title: string
-  summary: string
   content: string
   images: string[]
-  boardId: number | null
-  boardName: string | null
-  roleTags: string[]
-  tagList: string[]
-  sessionId: string | null
-  qualityScore: number
-  hotScore: number
-  viewCount: number
   likeCount: number
   commentCount: number
-  favoriteCount: number
-  status: string
-  featured: boolean
-  pinned: boolean
+  status: number
   liked: boolean
-  favorited: boolean
-  owned: boolean
   createTime: string
-  updateTime: string
 }
 
 export interface CommentView {
@@ -111,17 +94,11 @@ export interface CommentView {
   openid: string
   nickname: string
   avatar: string
-  parentCommentId: number | null
-  replyToOpenid: string | null
-  replyToNickname: string | null
   content: string
   likeCount: number
   liked: boolean
-  owned: boolean
-  postAuthor: boolean
-  status: string
+  status: number
   createTime: string
-  updateTime: string
 }
 
 export interface ReportItem {
@@ -136,120 +113,109 @@ export interface ReportItem {
   createTime: string
 }
 
-export type AiAnswerType =
-  | 'RAG_ANSWER'
-  | 'WEB_AUGMENTED_ANSWER'
-  | 'WEB_ONLY_ANSWER'
-  | 'CLARIFICATION'
-  | 'NO_EVIDENCE'
-  | 'OUT_OF_SCOPE'
-  | 'ERROR'
-
-export interface AiSource {
-  chunkUid: string
-  title: string
-  sectionPath: string
-  subject: string
-  content: string
-  score: number
-  sourceType: string
-  url?: string | null
+export interface AssistantAppearance {
+  mascot: string
+  accentColor: string
+  dockLabel: string
 }
 
-export interface AiBootstrap {
-  enabled: boolean
-  knowledgeBaseEnabled: boolean
+export interface AssistantFeatureFlags {
   webSearchEnabled: boolean
-  postgresReady: boolean
-  chatReady: boolean
-  currentMode: string
-  unavailableReason: string | null
+  historyEnabled: boolean
+}
+
+export interface AssistantBootstrapResponse {
+  enabled: boolean
+  welcomeMessage: string
   quickQuestions: string[]
+  latestSessionId: string | null
+  appearance: AssistantAppearance
+  featureFlags: AssistantFeatureFlags
 }
 
-export interface AiAdminConfig {
-  enabled: boolean
-  knowledgeBaseEnabled: boolean
-  webSearchEnabled: boolean
-  postgresReady: boolean
-  chatReady: boolean
-  embeddingReady: boolean
-  topK: number
-  minScore: number
-  maxEvidenceChars: number
-  chatModel: string
-  embeddingModel: string
-  chatApiKeyMasked: string | null
-  embeddingApiKeyMasked: string | null
+export interface AdminAiConfig {
+  base: {
+    enabled: boolean
+    welcomeMessage: string
+    quickQuestions: string[]
+    temperature: number
+    maxSuggestions: number
+  }
+  provider: {
+    platform: string
+    model: string
+    baseUrl: string
+    apiKey: string
+  }
+  volcengine: {
+    baseUrl: string
+    embeddingModel: string
+    embeddingApiKey: string
+    searchModel: string
+    searchApiKey: string
+  }
+  prompt: {
+    systemPrompt: string
+    recommendationPrompt: string
+    refusalPrompt: string
+  }
+  retrieval: {
+    topK: number
+    similarityThreshold: number
+    historyWindow: number
+  }
+  search: {
+    webSearchEnabled: boolean
+  }
+  safety: {
+    unsupportedMessage: string
+    blockedKeywords: string[]
+  }
+  ui: {
+    mascot: string
+    dockLabel: string
+    accentColor: string
+  }
 }
 
-export interface AiAdminConfigUpdate {
-  enabled?: boolean
-  knowledgeBaseEnabled?: boolean
-  webSearchEnabled?: boolean
-  topK?: number
-  minScore?: number
-  maxEvidenceChars?: number
-  chatModel?: string
-  embeddingModel?: string
-  chatApiKey?: string
-  embeddingApiKey?: string
-}
-
-export interface AiAdminDocument {
+export interface AdminAiDocument {
   id: number
-  documentUid: string
-  domain: string
-  title: string
+  name: string
+  fileName: string | null
   sourceType: string
+  sourceKey: string
+  sourceId: string | null
+  summary: string | null
+  chunkCount: number
+  processingStatus: string
   reviewStatus: string
-  parseStatus: string
-  summary: string
-  chunkCount: number
-  active: boolean
-  createdAt: string
-  updatedAt: string
+  publishVersionId: number | null
+  lastError: string | null
+  createTime: string
+  updateTime: string
 }
 
-export interface AiAdminPublish {
-  versionKey: string
-  status: string
-  active: boolean
-  documentCount: number
-  chunkCount: number
-  createdAt: string
-  activatedAt: string | null
-}
-
-export interface AiAdminLog {
-  traceId: string
-  sessionId: string
-  question: string
-  answerType: AiAnswerType | string
-  subject: string | null
-  retrievalMode: string
-  hitCount: number
-  webUsed: boolean
-  failureReason: string | null
-  latencyMs: number | null
-  createdAt: string
-}
-
-export interface AiAdminDebugResponse {
-  query: string
-  subject: string | null
-  intent: string
-  outOfScope: boolean
-  hits: AiSource[]
-  meta: Record<string, unknown>
-}
-
-export interface AiAdminEvalCase {
+export interface AdminAiVersion {
   id: number
-  question: string
-  expectedSubject: string | null
-  expectedKeywords: string | null
-  category: string | null
-  enabled: boolean
-  createdAt: string
+  versionName: string
+  notes: string | null
+  documentIds: number[]
+  current: boolean
+  publishedBy: string | null
+  createTime: string
+}
+
+export interface AdminAiLog {
+  id: number
+  openid: string | null
+  sessionId: string | null
+  userMessage: string
+  answerType: string
+  hitSources: string[]
+  usedWebSearch: boolean
+  latencyMs: number
+  success: boolean
+  failureType: string | null
+  traceId: string
+  createTime: string
 }

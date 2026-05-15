@@ -1,12 +1,6 @@
 import { BASE_URL } from './config'
-import { request, uploadFile } from './request'
+import { createAuthHeader, request, uploadFile } from './request'
 import storage from './storage'
-import { normalizeSession as normalizeNoteSessionV2, normalizeRecord as normalizeNoteRecordV2 } from '../utils/session/normalizer'
-
-function authHeader() {
-  const token = storage.getAuthToken()
-  return token ? { Authorization: `Bearer ${token}` } : {}
-}
 
 function withBaseUrl(url) {
   if (!url) return url
@@ -72,7 +66,6 @@ function normalizeRole(role) {
 }
 
 function normalizeComment(comment) {
-  if (!comment) return comment
   return {
     ...comment,
     avatar: withBaseUrl(comment.avatar),
@@ -88,192 +81,73 @@ function normalizeUser(user) {
 }
 
 function normalizeNoteRecord(record) {
-  return normalizeNoteRecordV2(record)
+  if (!record) return record
+  return {
+    ...record,
+    id: record.id || record.recordId,
+    timestamp: record.timestamp || record.createTime,
+  }
 }
 
 function normalizeNoteSession(session) {
-  return normalizeNoteSessionV2({
+  if (!session) return session
+  return {
     ...session,
-    records: (session?.records || []).map(normalizeNoteRecord),
-  })
-}
-
-function normalizeJudgePlayer(player) {
-  if (!player) return player
-  return {
-    ...player,
-    avatar: withBaseUrl(player.avatar),
+    records: (session.records || []).map(normalizeNoteRecord),
   }
-}
-
-function normalizeJudgeRoomSummary(room) {
-  if (!room) return room
-  return {
-    ...room,
-    judgeSupportLevel: room.judgeSupportLevel || 'manual_only',
-  }
-}
-
-function normalizeJudgeRoomSnapshot(snapshot) {
-  if (!snapshot) return snapshot
-  return {
-    ...snapshot,
-    judgeSupportLevel: snapshot.judgeSupportLevel || 'manual_only',
-    selfPlayer: normalizeJudgePlayer(snapshot.selfPlayer),
-    players: (snapshot.players || []).map(normalizeJudgePlayer),
-    timeline: snapshot.timeline || [],
-    voteTallies: snapshot.voteTallies || [],
-    nightActions: snapshot.nightActions || [],
-    pendingNightAction: snapshot.pendingNightAction || { submitted: false, targetSeatNo: null, note: '' },
-  }
-}
-
-function safeCommunityText(value) {
-  return typeof value === 'string' ? value.trim() : ''
-}
-
-function buildCommunityExcerpt(value, maxLength = 120) {
-  const normalized = safeCommunityText(value).replace(/\s+/g, ' ')
-  if (!normalized) return ''
-  return normalized.length > maxLength ? normalized.slice(0, maxLength) : normalized
-}
-
-function isPlaceholderPostTitle(title) {
-  const normalized = safeCommunityText(title)
-  return !normalized || normalized.toLowerCase() === 'untitled post'
 }
 
 function normalizePost(post) {
   if (!post) return post
-  const content = safeCommunityText(post.content)
-  const summary = buildCommunityExcerpt(post.summary, 120) || buildCommunityExcerpt(content, 120)
-  const title = isPlaceholderPostTitle(post.title)
-    ? buildCommunityExcerpt(summary || content, 40) || '未命名帖子'
-    : safeCommunityText(post.title)
   return {
     ...post,
-    title,
-    summary,
-    content,
     avatar: withBaseUrl(post.avatar),
     images: (post.images || []).map(withBaseUrl),
-    board: post.board
-      ? {
-          ...post.board,
-          coverImage: withBaseUrl(post.board.coverImage),
-        }
-      : null,
     comments: (post.comments || []).map(normalizeComment),
-    relatedPosts: (post.relatedPosts || []).map((item) => normalizePost({ ...item, comments: [] })),
-  }
-}
-
-function normalizeCommunityFeed(data) {
-  if (!data) {
-    return {
-      posts: { list: [], total: 0, page: 1, size: 10 },
-      hotBoards: [],
-      suggestedTags: [],
-    }
-  }
-  const posts = data.posts || { list: [], total: 0, page: 1, size: 10 }
-  return {
-    ...data,
-    posts: {
-      ...posts,
-      list: (posts.list || []).map((item) => normalizePost({ ...item, comments: [] })),
-    },
-    hotBoards: (data.hotBoards || []).map((item) => ({
-      ...item,
-      coverImage: withBaseUrl(item.coverImage),
-    })),
-    suggestedTags: data.suggestedTags || [],
   }
 }
 
 export default {
   async getBoards(params = {}) {
-    const data = await request({ url: '/api/boards', data: params, header: authHeader() })
+    const data = await request({ url: '/api/boards', data: params, header: createAuthHeader() })
     return {
       ...data,
       list: (data.list || []).map(normalizeBoard),
     }
   },
   async getBoardDetail(id) {
-    return normalizeBoard(await request({ url: `/api/boards/${id}`, header: authHeader() }))
+    return normalizeBoard(await request({ url: `/api/boards/${id}`, header: createAuthHeader() }))
   },
   async getRoles(camp = '') {
-    return (await request({ url: '/api/roles', data: { camp }, header: authHeader() })).map(normalizeRole)
+    return (await request({ url: '/api/roles', data: { camp }, header: createAuthHeader() })).map(normalizeRole)
   },
   async getRoleDetail(id) {
-    return normalizeRole(await request({ url: `/api/roles/${id}`, header: authHeader() }))
+    return normalizeRole(await request({ url: `/api/roles/${id}`, header: createAuthHeader() }))
   },
-  async getPosts(page = 1, size = 20, options = {}) {
-    const params = {
-      page,
-      size,
-      tab: options.tab || 'recommend',
-      type: options.type || '',
-      q: options.q || '',
-      sort: options.sort || 'hot',
+  async getPosts(page = 1, size = 20) {
+    const data = await request({ url: '/api/posts', data: { page, size }, header: createAuthHeader() })
+    return {
+      ...data,
+      list: (data.list || []).map(normalizePost),
     }
-    if (options.boardId) {
-      params.boardId = options.boardId
-    }
-    const data = await request({
-      url: '/api/posts',
-      data: params,
-      header: authHeader(),
-    })
-    return normalizeCommunityFeed(data)
-  },
-  async searchPosts(q, options = {}) {
-    const params = {
-      q,
-      type: options.type || '',
-      sort: options.sort || 'hot',
-      page: options.page || 1,
-      size: options.size || 10,
-    }
-    if (options.boardId) {
-      params.boardId = options.boardId
-    }
-    const data = await request({
-      url: '/api/posts/search',
-      data: params,
-      header: authHeader(),
-    })
-    return normalizeCommunityFeed(data)
   },
   async getPostDetail(id) {
-    return normalizePost(await request({ url: `/api/posts/${id}`, header: authHeader() }))
+    return normalizePost(await request({ url: `/api/posts/${id}`, header: createAuthHeader() }))
   },
   async createPost(payload) {
-    return request({ url: '/api/posts', method: 'POST', data: payload, header: authHeader() })
-  },
-  async deletePost(id) {
-    return request({ url: `/api/posts/${id}`, method: 'DELETE', header: authHeader() })
+    return request({ url: '/api/posts', method: 'POST', data: payload, header: createAuthHeader() })
   },
   async togglePostLike(id) {
-    return request({ url: `/api/posts/${id}/like`, method: 'POST', header: authHeader() })
-  },
-  async favoritePost(id) {
-    return request({ url: `/api/posts/${id}/favorite`, method: 'POST', header: authHeader() })
-  },
-  async unfavoritePost(id) {
-    return request({ url: `/api/posts/${id}/favorite`, method: 'DELETE', header: authHeader() })
+    return request({ url: `/api/posts/${id}/like`, method: 'POST', header: createAuthHeader() })
   },
   async createComment(payload) {
-    return request({ url: '/api/comments', method: 'POST', data: payload, header: authHeader() })
-  },
-  async deleteComment(id) {
-    return request({ url: `/api/comments/${id}`, method: 'DELETE', header: authHeader() })
+    return request({ url: '/api/comments', method: 'POST', data: payload, header: createAuthHeader() })
   },
   async toggleCommentLike(id) {
-    return request({ url: `/api/comments/${id}/like`, method: 'POST', header: authHeader() })
+    return request({ url: `/api/comments/${id}/like`, method: 'POST', header: createAuthHeader() })
   },
   async createReport(payload) {
-    return request({ url: '/api/reports', method: 'POST', data: payload, header: authHeader() })
+    return request({ url: '/api/reports', method: 'POST', data: payload, header: createAuthHeader() })
   },
   async login(code) {
     const result = await request({ url: '/api/login', method: 'POST', data: { code } })
@@ -283,37 +157,37 @@ export default {
     }
   },
   async getUserInfo() {
-    return normalizeUser(await request({ url: '/api/user/info', header: authHeader() }))
+    return normalizeUser(await request({ url: '/api/user/info', header: createAuthHeader() }))
   },
   async updateUserInfo(payload) {
-    return normalizeUser(await request({ url: '/api/user/info', method: 'PUT', data: payload, header: authHeader() }))
+    return normalizeUser(await request({ url: '/api/user/info', method: 'PUT', data: payload, header: createAuthHeader() }))
   },
   async getFavoriteBoards() {
-    const data = await request({ url: '/api/user/favorites', header: authHeader() })
+    const data = await request({ url: '/api/user/favorites', header: createAuthHeader() })
     return {
       boardIds: data.boardIds || [],
       boards: (data.boards || []).map(normalizeBoard),
     }
   },
   async addFavoriteBoard(boardId) {
-    const data = await request({ url: `/api/user/favorites/${boardId}`, method: 'POST', header: authHeader() })
+    const data = await request({ url: `/api/user/favorites/${boardId}`, method: 'POST', header: createAuthHeader() })
     return {
       boardIds: data.boardIds || [],
       boards: (data.boards || []).map(normalizeBoard),
     }
   },
   async removeFavoriteBoard(boardId) {
-    const data = await request({ url: `/api/user/favorites/${boardId}`, method: 'DELETE', header: authHeader() })
+    const data = await request({ url: `/api/user/favorites/${boardId}`, method: 'DELETE', header: createAuthHeader() })
     return {
       boardIds: data.boardIds || [],
       boards: (data.boards || []).map(normalizeBoard),
     }
   },
   async getUserSessions() {
-    return (await request({ url: '/api/user/sessions', header: authHeader() })).map(normalizeNoteSession)
+    return (await request({ url: '/api/user/sessions', header: createAuthHeader() })).map(normalizeNoteSession)
   },
   async getUserSessionDetail(sessionId) {
-    return normalizeNoteSession(await request({ url: `/api/user/sessions/${sessionId}`, header: authHeader() }))
+    return normalizeNoteSession(await request({ url: `/api/user/sessions/${sessionId}`, header: createAuthHeader() }))
   },
   async saveUserSession(session) {
     return normalizeNoteSession(
@@ -321,58 +195,12 @@ export default {
         url: `/api/user/sessions/${session.sessionId}`,
         method: 'PUT',
         data: session,
-        header: authHeader(),
+        header: createAuthHeader(),
       }),
     )
   },
   async deleteUserSession(sessionId) {
-    return request({ url: `/api/user/sessions/${sessionId}`, method: 'DELETE', header: authHeader() })
-  },
-  async getJudgeRecentRooms() {
-    return (await request({ url: '/api/judge/rooms/recent', header: authHeader() })).map(normalizeJudgeRoomSummary)
-  },
-  async createJudgeRoom(payload) {
-    return normalizeJudgeRoomSnapshot(
-      await request({ url: '/api/judge/rooms', method: 'POST', data: payload, header: authHeader() }),
-    )
-  },
-  async getJudgeRoom(roomId) {
-    return normalizeJudgeRoomSnapshot(await request({ url: `/api/judge/rooms/${roomId}`, header: authHeader() }))
-  },
-  async joinJudgeRoom(roomId) {
-    return normalizeJudgeRoomSnapshot(
-      await request({ url: `/api/judge/rooms/${roomId}/join`, method: 'POST', header: authHeader() }),
-    )
-  },
-  async toggleJudgeReady(roomId) {
-    return normalizeJudgeRoomSnapshot(
-      await request({ url: `/api/judge/rooms/${roomId}/ready`, method: 'POST', header: authHeader() }),
-    )
-  },
-  async startJudgeRoom(roomId) {
-    return normalizeJudgeRoomSnapshot(
-      await request({ url: `/api/judge/rooms/${roomId}/start`, method: 'POST', header: authHeader() }),
-    )
-  },
-  async advanceJudgeRoom(roomId, payload) {
-    return normalizeJudgeRoomSnapshot(
-      await request({ url: `/api/judge/rooms/${roomId}/advance`, method: 'POST', data: payload, header: authHeader() }),
-    )
-  },
-  async submitJudgeNightAction(roomId, payload) {
-    return normalizeJudgeRoomSnapshot(
-      await request({
-        url: `/api/judge/rooms/${roomId}/night-action`,
-        method: 'POST',
-        data: payload,
-        header: authHeader(),
-      }),
-    )
-  },
-  async submitJudgeVote(roomId, payload) {
-    return normalizeJudgeRoomSnapshot(
-      await request({ url: `/api/judge/rooms/${roomId}/vote`, method: 'POST', data: payload, header: authHeader() }),
-    )
+    return request({ url: `/api/user/sessions/${sessionId}`, method: 'DELETE', header: createAuthHeader() })
   },
   async uploadImage(filePath) {
     const result = await uploadFile(filePath, storage.getAuthToken())

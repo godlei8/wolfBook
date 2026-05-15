@@ -6,12 +6,9 @@ public record Comment(
         Integer id,
         Integer postId,
         String openid,
-        Integer parentCommentId,
-        String replyToOpenid,
         String content,
         Integer likeCount,
-        String status,
-        LocalDateTime createTime,
-        LocalDateTime updateTime
+        Integer status,
+        LocalDateTime createTime
 ) {
 }

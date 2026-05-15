@@ -6,12 +6,6 @@ import org.springframework.stereotype.Component;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
-/**
- * 简化版 token 服务。
- *
- * <p>当前 token 用 Base64 编码身份类型和主体，适合本项目开发/轻量部署使用。
- * 如果后续接入正式登录体系，可以在这里替换为 JWT 或服务端 session。</p>
- */
 @Component
 public class TokenService {
 

@@ -1,149 +1,137 @@
 # Wolfbook
 
-狼人杀内容平台，包含 Spring Boot 后端、Vue 管理后台、uni-app 微信小程序和生产部署配置。
+狼人杀内容平台，包含：
 
-旧版 AI 助手后端、后台管理、知识库表、向量库依赖已经移除。小程序端暂时保留 AI 助手入口和聊天页视觉样式，方便后续重新开发新版 AI 助手。
+- `backend`：Spring Boot 后端
+- `admin`：Vue 3 管理后台
+- `miniprogram-vue`：uni-app 微信小程序
 
-## Modules
+## 当前 AI 架构
 
-- `backend`: Spring Boot API, MyBatis-Plus, MySQL, Redis, Meilisearch.
-- `admin`: Vue 3 + Element Plus operations console.
-- `miniprogram-vue`: uni-app WeChat mini program.
-- `deploy`: Nginx, Docker Compose, certificates, environment template.
-- `docs`: SQL and project documentation.
+项目现在使用的是混合 AI 架构：
 
-## Core Features
+- 主回答模型：`DeepSeek / deepseek-v4-flash`
+- 向量模型：火山方舟 Embedding
+- 向量存储：PostgreSQL `pgvector` 扩展
+- 联网搜索：火山方舟 `web_search`
 
-- Board and role library management.
-- Community posts, comments, likes, favorites, reports, featured and pinned content.
-- User note sessions and structured game records.
-- Community search and related recommendations through Meilisearch.
-- Admin console for boards, roles and community operations.
-- Mini program AI assistant shell retained as a frontend placeholder only.
+能力链路：
 
-## Tech Stack
+1. 结构化板子推荐优先命中站内数据
+2. 知识库问题优先走 `pgvector` 语义检索
+3. 检索不足时可走火山联网搜索兜底
+4. 最终回答仍由现有助手响应结构返回
 
-- Java 21
-- Spring Boot 3.5
-- MyBatis-Plus
-- MySQL 8
-- Redis 7
-- Meilisearch 1.12
-- Tencent COS
-- Vue 3
-- TypeScript
-- Vite
-- Element Plus
-- uni-app
+## 后端关键配置
 
-## Local Development
+主配置文件：
 
-### Backend
+- [backend/src/main/resources/application.yml](/d:/AI/wolfBook/backend/src/main/resources/application.yml:1)
+- [backend/src/main/resources/application-prod.yml](/d:/AI/wolfBook/backend/src/main/resources/application-prod.yml:1)
 
-```powershell
-cd D:\Ai\wolfbook\backend
-.\mvnw.cmd spring-boot:run
+当前配置项分为三组：
+
+### DeepSeek
+
+```yaml
+wolfbook:
+  assistant:
+    deep-seek:
+      base-url: https://api.deepseek.com
+      model: deepseek-v4-flash
+      default-api-key: ${DEEPSEEK_API_KEY}
 ```
 
-Default URLs:
+### 火山方舟
 
-- API: `http://localhost:8080`
-- Swagger: `http://localhost:8080/swagger-ui.html`
+```yaml
+wolfbook:
+  assistant:
+    volcengine:
+      base-url: https://ark.cn-beijing.volces.com/api/v3
+      embedding-model: doubao-embedding-large-text-250515
+      embedding-dimensions: 2048
+      embedding-api-key: ${VOLCENGINE_EMBEDDING_API_KEY}
+      search-model: doubao-seed-1-6-thinking-250715
+      search-api-key: ${VOLCENGINE_SEARCH_API_KEY}
+```
 
-### Admin
+### pgvector
+
+```yaml
+wolfbook:
+  assistant:
+    pg-vector:
+      enabled: true
+      url: jdbc:postgresql://postgres:5432/wolfbook_ai
+      username: wolfbook_ai
+      password: replace-me
+      table-name: assistant_vector_store
+      schema-name: public
+```
+
+## 生产部署
+
+生产部署入口：
+
+- [docker-compose.prod.yml](/d:/AI/wolfBook/docker-compose.prod.yml:1)
+- [deploy/.env.prod.example](/d:/AI/wolfBook/deploy/.env.prod.example:1)
+
+生产 compose 当前包含：
+
+- `mysql`
+- `postgres`（带 `pgvector` 扩展）
+- `backend`
+- `admin`
+- `gateway`
+
+PostgreSQL 初始化脚本：
+
+- [deploy/postgres/init/01-enable-vector.sql](/d:/AI/wolfBook/deploy/postgres/init/01-enable-vector.sql:1)
+
+## 本地开发
+
+### 启动后端测试
 
 ```powershell
-cd D:\Ai\wolfbook\admin
+powershell -ExecutionPolicy Bypass -File .\scripts\test-backend.ps1
+```
+
+### 启动后端开发服务
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-backend-dev.ps1
+```
+
+### 启动管理后台
+
+```powershell
+cd .\admin
 npm install
 npm run dev
 ```
 
-Default URL: `http://localhost:5173`
-
-### Mini Program
+### 启动小程序构建
 
 ```powershell
-cd D:\Ai\wolfbook\miniprogram-vue
+cd .\miniprogram-vue
 npm install
-npm run dev:mp-weixin
-```
-
-Production build:
-
-```powershell
-cd D:\Ai\wolfbook\miniprogram-vue
 npm run build:mp-weixin
 ```
 
-Then import one of these directories in WeChat Developer Tools:
+## 已验证
 
-- `D:\Ai\wolfbook\miniprogram-vue\dist\dev\mp-weixin`
-- `D:\Ai\wolfbook\miniprogram-vue\dist\build\mp-weixin`
+- 后端测试：`7` 个通过
+- 管理后台构建：通过
 
-## Database
+## 说明
 
-Create the MySQL database:
+后台管理端现在仍然管理：
 
-```sql
-CREATE DATABASE wolfbook DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
+- AI 是否启用
+- Prompt
+- 检索参数
+- 联网搜索开关
+- DeepSeek API Key
 
-Schema files:
-
-- `backend/src/main/resources/schema.sql`
-- `backend/src/test/resources/schema-h2.sql`
-- `docs/sql/schema.sql`
-
-Runtime schema compatibility is handled by the existing user data and community schema initializers.
-
-## Verification
-
-```powershell
-cd D:\Ai\wolfbook\backend
-.\mvnw.cmd clean test
-```
-
-```powershell
-cd D:\Ai\wolfbook\admin
-npm run build
-```
-
-```powershell
-cd D:\Ai\wolfbook\miniprogram-vue
-npm run build:mp-weixin
-```
-
-## Production
-
-Copy the environment template and fill real values:
-
-```powershell
-Copy-Item .\deploy\.env.prod.example .\.env.prod
-```
-
-Start the production stack:
-
-```powershell
-docker compose -f .\docker-compose.prod.yml --env-file .\.env.prod up -d --build
-```
-
-Services:
-
-- `gateway`: Nginx HTTPS reverse proxy.
-- `admin`: Admin static site.
-- `backend`: API service.
-- `mysql`: Main business database.
-- `redis`: Community hot feed and cache.
-- `meilisearch`: Community search and related recommendation index.
-
-## AI Assistant Reset
-
-The old AI assistant implementation has intentionally been removed from backend and admin:
-
-- No `/api/assistant/*` endpoints.
-- No `/admin/ai/*` endpoints.
-- No `assistant_*` MySQL tables.
-- No Spring AI, MiniMax, Ollama or pgvector runtime dependency.
-- No pgvector service in production Docker Compose.
-
-The mini program keeps the assistant dock and chat page styling as a placeholder. Rebuild the new AI assistant from a clean backend API and schema when ready.
+火山方舟的向量与联网搜索 Key 保持在后端配置中，不从后台下发。

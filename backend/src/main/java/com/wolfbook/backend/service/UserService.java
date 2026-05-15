@@ -13,12 +13,6 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 
-/**
- * 小程序用户服务。
- *
- * <p>负责微信 code 登录、用户资料初始化、token 签发和用户身份校验。
- * 其他需要登录态的 Service 通常通过 {@link #requireUser(String)} 获取当前用户。</p>
- */
 @Service
 public class UserService {
 

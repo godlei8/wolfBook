@@ -10,11 +10,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-/**
- * 小程序板库接口。
- *
- * <p>提供板子列表、板子详情、角色资料和筛选项，主要服务首页板库和详情页。</p>
- */
 @RestController
 @RequestMapping("/api")
 @Validated

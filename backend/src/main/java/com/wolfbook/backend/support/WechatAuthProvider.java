@@ -4,8 +4,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wolfbook.backend.common.ApiException;
 import com.wolfbook.backend.config.WechatProperties;
-import org.springframework.core.env.Environment;
-import org.springframework.core.env.Profiles;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -14,12 +12,6 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
 
-/**
- * 微信小程序登录适配器。
- *
- * <p>生产环境通过微信 code2session 换取 openid；开发环境缺少 appid/secret 时会抛出明确异常。
- * 测试环境使用 {@code MockAuthProvider}，所以本类通过 {@code !test} profile 排除。</p>
- */
 @Component
 @Profile("!test")
 public class WechatAuthProvider implements AuthProvider {
@@ -27,12 +19,10 @@ public class WechatAuthProvider implements AuthProvider {
     private final WechatProperties wechatProperties;
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
-    private final Environment environment;
 
-    public WechatAuthProvider(WechatProperties wechatProperties, ObjectMapper objectMapper, Environment environment) {
+    public WechatAuthProvider(WechatProperties wechatProperties, ObjectMapper objectMapper) {
         this.wechatProperties = wechatProperties;
         this.objectMapper = objectMapper;
-        this.environment = environment;
         this.restClient = RestClient.builder().build();
     }
 
@@ -43,10 +33,7 @@ public class WechatAuthProvider implements AuthProvider {
         }
         WechatProperties.MiniProgramProperties miniProgram = wechatProperties.getMiniProgram();
         if (!StringUtils.hasText(miniProgram.getAppId()) || !StringUtils.hasText(miniProgram.getAppSecret())) {
-            if (environment.acceptsProfiles(Profiles.of("prod"))) {
-                throw new ApiException(5001, "微信登录未配置 appId 或 appSecret");
-            }
-            return MockAuthProvider.buildMockAuthUser(code);
+            throw new ApiException(5001, "微信登录未配置 appId 或 appSecret");
         }
 
         URI uri = UriComponentsBuilder.fromHttpUrl(miniProgram.getCode2SessionUrl())

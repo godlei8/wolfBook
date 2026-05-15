@@ -39,10 +39,6 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-      meilisearch:
-        condition: service_healthy
     expose:
       - "8110"
     environment:
@@ -50,10 +46,6 @@ services:
       DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8
       DB_USERNAME: ${MYSQL_USERNAME}
       DB_PASSWORD: ${MYSQL_PASSWORD}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      REDIS_DATABASE: ${REDIS_DATABASE:-0}
       ADMIN_INIT_PASSWORD: ${ADMIN_INIT_PASSWORD}
       CORS_ALLOWED_ORIGIN_PATTERNS: ${CORS_ALLOWED_ORIGIN_PATTERNS:-https://wolfbook.godlei8.top}
       COS_SECRET_ID: ${COS_SECRET_ID}
@@ -65,27 +57,29 @@ services:
       WECHAT_MINI_APP_ID: ${WECHAT_MINI_APP_ID}
       WECHAT_MINI_APP_SECRET: ${WECHAT_MINI_APP_SECRET}
       WECHAT_CODE2SESSION_URL: ${WECHAT_CODE2SESSION_URL:-https://api.weixin.qq.com/sns/jscode2session}
-      COMMUNITY_MEILI_ENABLED: ${COMMUNITY_MEILI_ENABLED:-true}
-      COMMUNITY_MEILI_BASE_URL: ${COMMUNITY_MEILI_BASE_URL:-http://meilisearch:7700}
-      COMMUNITY_MEILI_API_KEY: ${COMMUNITY_MEILI_MASTER_KEY:-}
-      COMMUNITY_MEILI_INDEX: ${COMMUNITY_MEILI_INDEX:-community_posts}
-      AI_ENABLED: ${AI_ENABLED:-true}
-      AI_KB_ENABLED: ${AI_KB_ENABLED:-true}
-      AI_PG_ENABLED: ${AI_PG_ENABLED:-true}
-      AI_PG_INITIALIZE: ${AI_PG_INITIALIZE:-true}
-      AI_PG_URL: jdbc:postgresql://postgres:5432/${AI_PG_DATABASE:-wolfbook_ai}
-      AI_PG_USERNAME: ${AI_PG_USERNAME:-wolfbook_ai}
-      AI_PG_PASSWORD: ${AI_PG_PASSWORD}
-      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
-      MINIMAX_CHAT_API_KEY: ${MINIMAX_CHAT_API_KEY:-}
-      MINIMAX_EMBEDDING_API_KEY: ${MINIMAX_EMBEDDING_API_KEY:-}
-      MINIMAX_MCP_API_KEY: ${MINIMAX_MCP_API_KEY:-}
-      MINIMAX_CHAT_MODEL: ${MINIMAX_CHAT_MODEL:-MiniMax-M2.7}
-      MINIMAX_EMBEDDING_MODEL: ${MINIMAX_EMBEDDING_MODEL:-embo-01}
-      AI_RETRIEVAL_TOP_K: ${AI_RETRIEVAL_TOP_K:-8}
-      AI_RETRIEVAL_MIN_SCORE: ${AI_RETRIEVAL_MIN_SCORE:-0.12}
-      AI_MAX_EVIDENCE_CHARS: ${AI_MAX_EVIDENCE_CHARS:-6000}
-      AI_WEB_SEARCH_ENABLED: ${AI_WEB_SEARCH_ENABLED:-true}
+      ASSISTANT_ENABLED: ${ASSISTANT_ENABLED:-true}
+      ASSISTANT_HISTORY_WINDOW: ${ASSISTANT_HISTORY_WINDOW:-12}
+      ASSISTANT_MAX_SESSIONS: ${ASSISTANT_MAX_SESSIONS:-20}
+      ASSISTANT_MAX_SUGGESTIONS: ${ASSISTANT_MAX_SUGGESTIONS:-3}
+      ASSISTANT_SIMILARITY_THRESHOLD: ${ASSISTANT_SIMILARITY_THRESHOLD:-0.45}
+      ASSISTANT_TOP_K: ${ASSISTANT_TOP_K:-4}
+      ASSISTANT_TEMPERATURE: ${ASSISTANT_TEMPERATURE:-0.35}
+      ASSISTANT_WEB_SEARCH_ENABLED: ${ASSISTANT_WEB_SEARCH_ENABLED:-true}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-flash}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-sk-a57410a815c44ff28750e5e090d9d738}
+      VOLCENGINE_BASE_URL: ${VOLCENGINE_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
+      VOLCENGINE_EMBEDDING_MODEL: ${VOLCENGINE_EMBEDDING_MODEL:-doubao-embedding-large-text-250515}
+      VOLCENGINE_EMBEDDING_DIMENSIONS: ${VOLCENGINE_EMBEDDING_DIMENSIONS:-2048}
+      VOLCENGINE_EMBEDDING_API_KEY: ${VOLCENGINE_EMBEDDING_API_KEY:-ark-a027dbbb-e159-4801-952e-17d9acbc435a-76d84}
+      VOLCENGINE_SEARCH_MODEL: ${VOLCENGINE_SEARCH_MODEL:-doubao-seed-1-6-thinking-250715}
+      VOLCENGINE_SEARCH_API_KEY: ${VOLCENGINE_SEARCH_API_KEY:-K93gySpeOFFfzoQRBNkdVLRBhExdZr8T}
+      ASSISTANT_PGVECTOR_ENABLED: ${ASSISTANT_PGVECTOR_ENABLED:-true}
+      ASSISTANT_PGVECTOR_URL: jdbc:postgresql://postgres:5432/${PGVECTOR_DATABASE}
+      ASSISTANT_PGVECTOR_USERNAME: ${PGVECTOR_USERNAME}
+      ASSISTANT_PGVECTOR_PASSWORD: ${PGVECTOR_PASSWORD}
+      ASSISTANT_PGVECTOR_TABLE: ${ASSISTANT_PGVECTOR_TABLE:-assistant_vector_store}
+      ASSISTANT_PGVECTOR_SCHEMA: ${ASSISTANT_PGVECTOR_SCHEMA:-public}
       JAVA_OPTS: ${JAVA_OPTS:-}
     networks:
       - wolfbook
@@ -112,65 +106,14 @@ services:
     networks:
       - wolfbook
 
-  redis:
-    image: redis:7.4-alpine
-    container_name: wolfbook-redis
-    restart: unless-stopped
-    command:
-      - sh
-      - -c
-      - |
-        if [ -n "$$REDIS_PASSWORD" ]; then
-          exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
-        else
-          exec redis-server --appendonly yes
-        fi
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - |
-          if [ -n "$$REDIS_PASSWORD" ]; then
-            redis-cli -a "$$REDIS_PASSWORD" ping | grep PONG
-          else
-            redis-cli ping | grep PONG
-          fi
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    volumes:
-      - redis_data:/data
-    networks:
-      - wolfbook
-
-  meilisearch:
-    image: getmeili/meilisearch:v1.12
-    container_name: wolfbook-meilisearch
-    restart: unless-stopped
-    environment:
-      MEILI_ENV: production
-      MEILI_NO_ANALYTICS: "true"
-      MEILI_MASTER_KEY: ${COMMUNITY_MEILI_MASTER_KEY:-}
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7700/health | grep -q 'available'"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-    volumes:
-      - meilisearch_data:/meili_data
-    networks:
-      - wolfbook
-
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: wolfbook-ai-postgres
+    container_name: wolfbook-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${AI_PG_DATABASE:-wolfbook_ai}
-      POSTGRES_USER: ${AI_PG_USERNAME:-wolfbook_ai}
-      POSTGRES_PASSWORD: ${AI_PG_PASSWORD}
-      TZ: Asia/Shanghai
+      POSTGRES_DB: ${PGVECTOR_DATABASE}
+      POSTGRES_USER: ${PGVECTOR_USERNAME}
+      POSTGRES_PASSWORD: ${PGVECTOR_PASSWORD}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
@@ -189,5 +132,3 @@ networks:
 volumes:
   mysql_data:
   postgres_data:
-  redis_data:
-  meilisearch_data:

@@ -14,18 +14,10 @@ public class UserNoteRecordEntity {
     private String sessionId;
     private String openid;
     private String recordType;
-    private String scene;
     private Integer dayNo;
-    private String phase;
-    private String actorSeatsJson;
-    private String targetSeatsJson;
     private String content;
     private String player;
-    private String payloadJson;
-    private String tagsJson;
-    private Boolean editable;
     private LocalDateTime createTime;
-    private LocalDateTime updateTime;
 
     public String getRecordId() {
         return recordId;
@@ -59,44 +51,12 @@ public class UserNoteRecordEntity {
         this.recordType = recordType;
     }
 
-    public String getScene() {
-        return scene;
-    }
-
-    public void setScene(String scene) {
-        this.scene = scene;
-    }
-
     public Integer getDayNo() {
         return dayNo;
     }
 
     public void setDayNo(Integer dayNo) {
         this.dayNo = dayNo;
-    }
-
-    public String getPhase() {
-        return phase;
-    }
-
-    public void setPhase(String phase) {
-        this.phase = phase;
-    }
-
-    public String getActorSeatsJson() {
-        return actorSeatsJson;
-    }
-
-    public void setActorSeatsJson(String actorSeatsJson) {
-        this.actorSeatsJson = actorSeatsJson;
-    }
-
-    public String getTargetSeatsJson() {
-        return targetSeatsJson;
-    }
-
-    public void setTargetSeatsJson(String targetSeatsJson) {
-        this.targetSeatsJson = targetSeatsJson;
     }
 
     public String getContent() {
@@ -115,43 +75,11 @@ public class UserNoteRecordEntity {
         this.player = player;
     }
 
-    public String getPayloadJson() {
-        return payloadJson;
-    }
-
-    public void setPayloadJson(String payloadJson) {
-        this.payloadJson = payloadJson;
-    }
-
-    public String getTagsJson() {
-        return tagsJson;
-    }
-
-    public void setTagsJson(String tagsJson) {
-        this.tagsJson = tagsJson;
-    }
-
-    public Boolean getEditable() {
-        return editable;
-    }
-
-    public void setEditable(Boolean editable) {
-        this.editable = editable;
-    }
-
     public LocalDateTime getCreateTime() {
         return createTime;
     }
 
     public void setCreateTime(LocalDateTime createTime) {
         this.createTime = createTime;
-    }
-
-    public LocalDateTime getUpdateTime() {
-        return updateTime;
-    }
-
-    public void setUpdateTime(LocalDateTime updateTime) {
-        this.updateTime = updateTime;
     }
 }

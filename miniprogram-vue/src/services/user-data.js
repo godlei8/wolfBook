@@ -1,7 +1,5 @@
 import api from './api'
 import storage from './storage'
-import { getAuthToken } from '../utils/auth'
-import { normalizeSession, normalizeSessions } from '../utils/session/normalizer'
 
 let favoriteCache = null
 let sessionCache = null
@@ -9,7 +7,7 @@ let favoriteCacheToken = ''
 let sessionCacheToken = ''
 
 function currentAuthToken() {
-  return getAuthToken()
+  return storage.getAuthToken() || ''
 }
 
 function syncCacheScope() {
@@ -25,7 +23,7 @@ function syncCacheScope() {
   return token
 }
 
-function hasSyncedAuthToken() {
+function hasAuthToken() {
   return !!syncCacheScope()
 }
 
@@ -40,14 +38,14 @@ function mergeIds(remoteIds = [], localIds = []) {
 }
 
 function sortSessions(list = []) {
-  return normalizeSessions(list)
+  return list
     .slice()
     .sort((left, right) => new Date(right.updateTime || right.createTime || 0).getTime() - new Date(left.updateTime || left.createTime || 0).getTime())
 }
 
 function mergeSessions(remoteSessions = [], localSessions = []) {
-  const merged = new Map(normalizeSessions(remoteSessions).map((item) => [item.sessionId, item]))
-  normalizeSessions(localSessions).forEach((localItem) => {
+  const merged = new Map(remoteSessions.map((item) => [item.sessionId, item]))
+  localSessions.forEach((localItem) => {
     const remoteItem = merged.get(localItem.sessionId)
     if (!remoteItem) {
       merged.set(localItem.sessionId, localItem)
@@ -64,7 +62,7 @@ function mergeSessions(remoteSessions = [], localSessions = []) {
 
 async function migrateFavoritesIfNeeded() {
   syncCacheScope()
-  if (!hasSyncedAuthToken()) {
+  if (!hasAuthToken()) {
     return {
       boardIds: storage.getFavorites(),
       boards: [],
@@ -91,7 +89,7 @@ async function migrateFavoritesIfNeeded() {
 
 async function migrateSessionsIfNeeded() {
   syncCacheScope()
-  if (!hasSyncedAuthToken()) {
+  if (!hasAuthToken()) {
     return sortSessions(storage.getSessions())
   }
 
@@ -116,13 +114,13 @@ async function migrateSessionsIfNeeded() {
 }
 
 export default {
-  hasAuthToken: hasSyncedAuthToken,
+  hasAuthToken,
   async loadFavoriteBoards() {
     return migrateFavoritesIfNeeded()
   },
   async toggleFavorite(boardId) {
     syncCacheScope()
-    if (!hasSyncedAuthToken()) {
+    if (!hasAuthToken()) {
       const boardIds = storage.toggleFavorite(boardId)
       favoriteCache = {
         boardIds,
@@ -146,10 +144,10 @@ export default {
   },
   async getSessionById(sessionId) {
     syncCacheScope()
-    if (!hasSyncedAuthToken()) {
-      return normalizeSession(storage.getSessionById(sessionId))
+    if (!hasAuthToken()) {
+      return storage.getSessionById(sessionId)
     }
-    const session = normalizeSession(await api.getUserSessionDetail(sessionId))
+    const session = await api.getUserSessionDetail(sessionId)
     if (sessionCache) {
       const next = sessionCache.slice()
       const index = next.findIndex((item) => item.sessionId === session.sessionId)
@@ -164,11 +162,10 @@ export default {
   },
   async saveSession(session) {
     syncCacheScope()
-    const normalized = normalizeSession(session)
-    if (!hasSyncedAuthToken()) {
-      return storage.upsertSession(normalized)
+    if (!hasAuthToken()) {
+      return storage.upsertSession(session)
     }
-    const saved = normalizeSession(await api.saveUserSession(normalized))
+    const saved = await api.saveUserSession(session)
     const source = sessionCache ? sessionCache.slice() : []
     const index = source.findIndex((item) => item.sessionId === saved.sessionId)
     if (index >= 0) {
@@ -182,7 +179,7 @@ export default {
   },
   async deleteSession(sessionId) {
     syncCacheScope()
-    if (!hasSyncedAuthToken()) {
+    if (!hasAuthToken()) {
       return storage.deleteSession(sessionId)
     }
     await api.deleteUserSession(sessionId)

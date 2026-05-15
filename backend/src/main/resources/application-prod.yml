@@ -2,9 +2,6 @@ server:
   port: 8110
 
 spring:
-  config:
-    activate:
-      on-profile: prod
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
@@ -21,26 +18,6 @@ springdoc:
     enabled: false
 
 wolfbook:
-  ai:
-    enabled: ${AI_ENABLED:true}
-    knowledge-base-enabled: ${AI_KB_ENABLED:true}
-    postgres:
-      enabled: ${AI_PG_ENABLED:true}
-      initialize: ${AI_PG_INITIALIZE:true}
-      url: ${AI_PG_URL:jdbc:postgresql://postgres:5432/wolfbook_ai}
-      username: ${AI_PG_USERNAME:wolfbook_ai}
-      password: ${AI_PG_PASSWORD:}
-    chat:
-      api-key: ${MINIMAX_CHAT_API_KEY:${MINIMAX_API_KEY:}}
-      base-url: ${MINIMAX_BASE_URL:https://api.minimax.chat}
-      model: ${MINIMAX_CHAT_MODEL:MiniMax-M2.7}
-    embedding:
-      api-key: ${MINIMAX_EMBEDDING_API_KEY:${MINIMAX_API_KEY:}}
-      base-url: ${MINIMAX_BASE_URL:https://api.minimax.chat}
-      model: ${MINIMAX_EMBEDDING_MODEL:embo-01}
-    web-search:
-      enabled: ${AI_WEB_SEARCH_ENABLED:true}
-      mcp-api-key: ${MINIMAX_MCP_API_KEY:${MINIMAX_API_KEY:}}
   cors:
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:https://wolfbook.godlei8.top}
   wechat:
@@ -57,3 +34,30 @@ wolfbook:
       region: ${COS_REGION}
       public-base-url: ${COS_PUBLIC_BASE_URL:https://cos.godlei8.top}
       prefix: ${COS_PREFIX:wolfbook}
+  assistant:
+    enabled: ${ASSISTANT_ENABLED:true}
+    history-window: ${ASSISTANT_HISTORY_WINDOW:12}
+    max-sessions-per-user: ${ASSISTANT_MAX_SESSIONS:20}
+    max-suggestions: ${ASSISTANT_MAX_SUGGESTIONS:3}
+    similarity-threshold: ${ASSISTANT_SIMILARITY_THRESHOLD:0.45}
+    top-k: ${ASSISTANT_TOP_K:4}
+    temperature: ${ASSISTANT_TEMPERATURE:0.35}
+    web-search-enabled: ${ASSISTANT_WEB_SEARCH_ENABLED:true}
+    deep-seek:
+      base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+      model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
+      default-api-key: ${DEEPSEEK_API_KEY:sk-a57410a815c44ff28750e5e090d9d738}
+    volcengine:
+      base-url: ${VOLCENGINE_BASE_URL:https://ark.cn-beijing.volces.com/api/v3}
+      embedding-model: ${VOLCENGINE_EMBEDDING_MODEL:doubao-embedding-large-text-250515}
+      embedding-dimensions: ${VOLCENGINE_EMBEDDING_DIMENSIONS:2048}
+      embedding-api-key: ${VOLCENGINE_EMBEDDING_API_KEY:ark-a027dbbb-e159-4801-952e-17d9acbc435a-76d84}
+      search-model: ${VOLCENGINE_SEARCH_MODEL:doubao-seed-1-6-thinking-250715}
+      search-api-key: ${VOLCENGINE_SEARCH_API_KEY:K93gySpeOFFfzoQRBNkdVLRBhExdZr8T}
+    pg-vector:
+      enabled: ${ASSISTANT_PGVECTOR_ENABLED:true}
+      url: ${ASSISTANT_PGVECTOR_URL:jdbc:postgresql://postgres:5432/wolfbook_ai}
+      username: ${ASSISTANT_PGVECTOR_USERNAME:wolfbook_ai}
+      password: ${ASSISTANT_PGVECTOR_PASSWORD:replace-me-pg}
+      table-name: ${ASSISTANT_PGVECTOR_TABLE:assistant_vector_store}
+      schema-name: ${ASSISTANT_PGVECTOR_SCHEMA:public}

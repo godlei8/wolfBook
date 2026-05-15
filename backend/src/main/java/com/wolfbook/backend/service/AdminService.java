@@ -9,9 +9,8 @@ import com.wolfbook.backend.domain.Report;
 import com.wolfbook.backend.dto.WolfbookDtos;
 import com.wolfbook.backend.entity.*;
 import com.wolfbook.backend.mapper.*;
-import com.wolfbook.backend.support.CommunityStatuses;
+import com.wolfbook.backend.service.assistant.AssistantKnowledgeService;
 import com.wolfbook.backend.support.DomainConverter;
-import com.wolfbook.backend.support.JudgeSupportLevels;
 import com.wolfbook.backend.support.TokenService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -21,12 +20,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * 管理后台聚合服务。
- *
- * <p>后台页面的大部分操作都会到这里：管理员登录、板子和角色维护、社区内容审核、
- * 举报处理、AI 知识库重建触发等。它偏“后台编排层”，会协调多个业务 Service 和 Mapper。</p>
- */
 @Service
 public class AdminService {
 
@@ -39,6 +32,7 @@ public class AdminService {
     private final ReportMapper reportMapper;
     private final BoardService boardService;
     private final CommunityService communityService;
+    private final AssistantKnowledgeService assistantKnowledgeService;
     private final TokenService tokenService;
     private final DomainConverter converter;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
@@ -53,6 +47,7 @@ public class AdminService {
             ReportMapper reportMapper,
             BoardService boardService,
             CommunityService communityService,
+            AssistantKnowledgeService assistantKnowledgeService,
             TokenService tokenService,
             DomainConverter converter
     ) {
@@ -65,6 +60,7 @@ public class AdminService {
         this.reportMapper = reportMapper;
         this.boardService = boardService;
         this.communityService = communityService;
+        this.assistantKnowledgeService = assistantKnowledgeService;
         this.tokenService = tokenService;
         this.converter = converter;
     }
@@ -93,7 +89,7 @@ public class AdminService {
 
     public WolfbookDtos.DashboardSummary summary() {
         long openReports = reportMapper.selectCount(
-                new LambdaQueryWrapper<ReportEntity>().eq(ReportEntity::getProcessStatus, CommunityStatuses.REPORT_OPEN)
+                new LambdaQueryWrapper<ReportEntity>().eq(ReportEntity::getProcessStatus, "OPEN")
         );
         return new WolfbookDtos.DashboardSummary(
                 boardMapper.selectCount(null),
@@ -128,7 +124,6 @@ public class AdminService {
         entity.setWinCondition(request.winCondition() == null || request.winCondition().isBlank() ? "屠边" : request.winCondition());
         entity.setRuleType(request.ruleType() == null || request.ruleType().isBlank() ? "标准板" : request.ruleType());
         entity.setStatus(id == null ? 1 : entity.getStatus());
-        entity.setJudgeSupportLevel(JudgeSupportLevels.resolve(request.judgeSupportLevel(), entity.getJudgeSupportLevel()));
         entity.setCreateTime(id == null ? LocalDateTime.now() : entity.getCreateTime());
         entity.setUpdateTime(LocalDateTime.now());
 
@@ -143,6 +138,7 @@ public class AdminService {
             ref.setBoardId(entity.getId());
             boardRoleMapper.insert(ref);
         }
+        assistantKnowledgeService.requestStructuredKnowledgeRebuild();
         return boardService.getBoard(entity.getId());
     }
 
@@ -150,6 +146,7 @@ public class AdminService {
         boardService.getBoard(id);
         boardRoleMapper.delete(new LambdaQueryWrapper<BoardRoleEntity>().eq(BoardRoleEntity::getBoardId, id));
         boardMapper.deleteById(id);
+        assistantKnowledgeService.requestStructuredKnowledgeRebuild();
     }
 
     public List<WolfbookDtos.AdminRoleView> listRoles() {
@@ -178,6 +175,7 @@ public class AdminService {
         } else {
             roleMapper.updateById(entity);
         }
+        assistantKnowledgeService.requestStructuredKnowledgeRebuild();
         return toAdminRoleView(entity);
     }
 
@@ -190,6 +188,7 @@ public class AdminService {
             throw new ApiException(4002, "该角色已被板子使用，无法删除");
         }
         roleMapper.deleteById(id);
+        assistantKnowledgeService.requestStructuredKnowledgeRebuild();
     }
 
     public PageResponse<WolfbookDtos.PostSummaryView> listPosts(int page, int size) {
@@ -197,15 +196,11 @@ public class AdminService {
     }
 
     public void updatePostStatus(Integer id, String status) {
-        communityService.updatePostStatus(id, status);
-    }
-
-    public void updatePostFeatured(Integer id, boolean enabled) {
-        communityService.updatePostFeatured(id, enabled);
-    }
-
-    public void updatePostPinned(Integer id, boolean enabled) {
-        communityService.updatePostPinned(id, enabled);
+        PostEntity post = getPostEntity(id);
+        int numeric = "PUBLISHED".equalsIgnoreCase(status) || "ONLINE".equalsIgnoreCase(status) || "1".equals(status) ? 1 : 0;
+        post.setStatus(numeric);
+        post.setUpdateTime(LocalDateTime.now());
+        postMapper.updateById(post);
     }
 
     public void deletePost(Integer id) {

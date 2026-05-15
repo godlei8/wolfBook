@@ -1,11 +1,8 @@
-import { normalizeSession as normalizeSessionV2, normalizeSessions as normalizeSessionsV2 } from '../utils/session/normalizer'
-
 const AUTH_TOKEN_KEY = 'auth_token'
 const USER_PROFILE_KEY = 'user_profile'
 const FAVORITES_KEY = 'favorite_boards'
 const SESSIONS_KEY = 'werewolf_sessions'
 const ASSISTANT_DOCK_KEY = 'assistant_dock_state'
-const JUDGE_INVITE_KEY = 'judge_invite_room'
 
 function parseMaybeJson(value) {
   if (typeof value !== 'string') {
@@ -62,12 +59,47 @@ function normalizeFavorites(value) {
     .filter((item) => Number.isFinite(item) && item > 0)
 }
 
+function normalizeRecord(record, index) {
+  if (!record || typeof record !== 'object') {
+    return null
+  }
+  return {
+    id: String(record.id || `rec_${Date.now()}_${index}`),
+    type: record.type || 'speech',
+    round: Number(record.round) || 1,
+    content: typeof record.content === 'string' ? record.content : '',
+    player: typeof record.player === 'string' ? record.player : '',
+    timestamp: record.timestamp || new Date().toISOString(),
+  }
+}
+
 function normalizeSession(session, index) {
-  return normalizeSessionV2(session, index)
+  if (!session || typeof session !== 'object') {
+    return null
+  }
+  const boardId = Number(session.boardId)
+  const hasBoardId = Number.isFinite(boardId) && boardId > 0
+  const records = toArray(session.records)
+    .map(normalizeRecord)
+    .filter(Boolean)
+
+  return {
+    sessionId: String(session.sessionId || session.id || `session_${Date.now()}_${index}`),
+    boardMode: session.boardMode === 'library' || (hasBoardId && session.boardMode !== 'custom') ? 'library' : 'custom',
+    boardId: hasBoardId ? boardId : null,
+    boardName: typeof session.boardName === 'string' ? session.boardName : '',
+    playerCount: Number(session.playerCount) || 12,
+    createTime: session.createTime || session.updateTime || new Date().toISOString(),
+    updateTime: session.updateTime || session.createTime || new Date().toISOString(),
+    records,
+  }
 }
 
 function normalizeSessions(value) {
-  return normalizeSessionsV2(toArray(value))
+  return toArray(value)
+    .map(normalizeSession)
+    .filter(Boolean)
+    .sort((left, right) => new Date(right.updateTime).getTime() - new Date(left.updateTime).getTime())
 }
 
 function persistIfChanged(key, raw, normalized) {
@@ -217,42 +249,11 @@ export default {
   setAssistantDockState(value) {
     setJson(ASSISTANT_DOCK_KEY, value)
   },
-  getPendingJudgeInvite() {
-    const raw = getJson(JUDGE_INVITE_KEY, null)
-    if (!raw || typeof raw !== 'object') {
-      return null
-    }
-    const roomId = typeof raw.roomId === 'string' ? raw.roomId.trim() : ''
-    const boardName = typeof raw.boardName === 'string' ? raw.boardName.trim() : ''
-    if (!roomId) {
-      return null
-    }
-    return {
-      roomId,
-      boardName,
-    }
-  },
-  setPendingJudgeInvite(value) {
-    const roomId = typeof value?.roomId === 'string' ? value.roomId.trim() : ''
-    const boardName = typeof value?.boardName === 'string' ? value.boardName.trim() : ''
-    if (!roomId) {
-      uni.removeStorageSync(JUDGE_INVITE_KEY)
-      return
-    }
-    setJson(JUDGE_INVITE_KEY, {
-      roomId,
-      boardName,
-    })
-  },
-  clearPendingJudgeInvite() {
-    uni.removeStorageSync(JUDGE_INVITE_KEY)
-  },
   clearAllLocalData() {
     uni.removeStorageSync(AUTH_TOKEN_KEY)
     uni.removeStorageSync(USER_PROFILE_KEY)
     uni.removeStorageSync(FAVORITES_KEY)
     uni.removeStorageSync(SESSIONS_KEY)
     uni.removeStorageSync(ASSISTANT_DOCK_KEY)
-    uni.removeStorageSync(JUDGE_INVITE_KEY)
   },
 }

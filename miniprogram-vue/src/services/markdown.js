@@ -1,14 +1,13 @@
-const BODY_STYLE = 'margin:0 0 8px 0;line-height:1.55;font-size:12px;color:#ece6d8;word-break:break-word;'
-const H2_STYLE = 'margin:0 0 8px 0;font-size:18px;font-weight:800;color:#fff4d3;line-height:1.25;'
-const H3_STYLE = 'margin:10px 0 6px 0;font-size:13px;font-weight:800;color:#ffd86b;line-height:1.35;'
-const LIST_ROW_STYLE = 'margin:0 0 6px 0;line-height:1.5;font-size:12px;color:#e5dcc8;word-break:break-word;'
-const LIST_MARK_STYLE = 'display:inline-block;width:13px;color:#ffd86b;font-weight:800;'
-const BLOCKQUOTE_STYLE = 'margin:0 0 8px 0;padding:6px 8px;border-left:3px solid rgba(255,192,0,0.45);background:rgba(255,255,255,0.04);color:#d7cdb7;line-height:1.55;font-size:12px;'
-const CODE_BLOCK_STYLE = 'margin:0 0 8px 0;padding:8px;border-radius:8px;background:#111111;color:#f7e8b4;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-word;border:1px solid rgba(255,192,0,0.14);'
-const INLINE_CODE_STYLE = 'display:inline-block;padding:1px 4px;border-radius:4px;background:rgba(255,192,0,0.1);color:#ffd86b;font-size:11px;'
+const BODY_STYLE = 'margin:0 0 16rpx 0;line-height:1.8;font-size:28rpx;color:#f3eee1;word-break:break-word;'
+const H2_STYLE = 'margin:0 0 18rpx 0;font-size:32rpx;font-weight:700;color:#fff7df;line-height:1.45;'
+const H3_STYLE = 'margin:8rpx 0 14rpx 0;font-size:28rpx;font-weight:700;color:#ffd86b;line-height:1.5;'
+const LIST_STYLE = 'margin:0 0 18rpx 0;padding-left:30rpx;color:#ece4cf;line-height:1.8;font-size:26rpx;'
+const BLOCKQUOTE_STYLE = 'margin:0 0 18rpx 0;padding:14rpx 18rpx;border-left:6rpx solid rgba(255,192,0,0.5);background:rgba(255,255,255,0.04);color:#d8cfba;line-height:1.75;font-size:26rpx;'
+const CODE_BLOCK_STYLE = 'margin:0 0 18rpx 0;padding:18rpx;border-radius:18rpx;background:#111111;color:#f7e8b4;font-size:24rpx;line-height:1.7;white-space:pre-wrap;word-break:break-word;border:1rpx solid rgba(255,192,0,0.14);'
+const INLINE_CODE_STYLE = 'display:inline-block;padding:2rpx 10rpx;border-radius:10rpx;background:rgba(255,192,0,0.1);color:#ffd86b;font-size:24rpx;'
 const LINK_STYLE = 'color:#ffd86b;text-decoration:underline;'
-const STRONG_STYLE = 'font-weight:700;color:#fff7e6;'
-const CURSOR_HTML = '<span style="display:inline-block;margin-left:4px;color:#ffd86b;font-weight:700;">▌</span>'
+const STRONG_STYLE = 'font-weight:700;color:#fff9eb;'
+const CURSOR_HTML = '<span style="display:inline-block;margin-left:8rpx;color:#ffd86b;font-weight:700;">▍</span>'
 
 function escapeHtml(value = '') {
   return String(value)
@@ -22,36 +21,9 @@ function escapeHtml(value = '') {
 function renderInline(text = '') {
   let html = escapeHtml(text)
   html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, `<span style="${LINK_STYLE}">$1</span>`)
-  html = html.replace(/(^|\s)#{1,6}\s+/g, '$1')
-  html = html.replace(/\s+-\s+/g, ' ')
   html = html.replace(/\*\*([^*]+)\*\*/g, `<strong style="${STRONG_STYLE}">$1</strong>`)
   html = html.replace(/`([^`]+)`/g, `<code style="${INLINE_CODE_STYLE}">$1</code>`)
   return html
-}
-
-function fingerprintLine(line = '') {
-  return String(line || '')
-    .toLowerCase()
-    .replace(/https?:\/\/\S+/g, '')
-    .replace(/^#{1,6}\s*/, '')
-    .replace(/^[-*]\s+/, '')
-    .replace(/^\d+[.、．]\s*/, '')
-    .replace(/\*\*|`|_/g, '')
-    .replace(/[，。！？、；：：“”‘’（）《》【】「」『』,.!?;:()[\]{}"'`~@#$%^&+=|\\/<>*\-—_\s]+/g, '')
-}
-
-function hasSimilarFingerprint(fingerprint, recentFingerprints) {
-  if (!fingerprint || fingerprint.length < 12) {
-    return false
-  }
-  return recentFingerprints.some((existing) => {
-    if (fingerprint === existing) {
-      return true
-    }
-    const shorter = fingerprint.length <= existing.length ? fingerprint : existing
-    const longer = fingerprint.length > existing.length ? fingerprint : existing
-    return shorter.length >= 24 && longer.includes(shorter)
-  })
 }
 
 function paragraphToHtml(lines) {
@@ -59,12 +31,9 @@ function paragraphToHtml(lines) {
 }
 
 function listToHtml(items, ordered = false) {
-  return items
-    .map((item, index) => {
-      const marker = ordered ? `${index + 1}.` : '•'
-      return `<p style="${LIST_ROW_STYLE}"><span style="${LIST_MARK_STYLE}">${marker}</span>${renderInline(item)}</p>`
-    })
-    .join('')
+  const tag = ordered ? 'ol' : 'ul'
+  const body = items.map((item) => `<li style="margin-bottom:10rpx;">${renderInline(item)}</li>`).join('')
+  return `<${tag} style="${LIST_STYLE}">${body}</${tag}>`
 }
 
 function blockquoteToHtml(lines) {
@@ -80,69 +49,8 @@ export function plainTextToRichText(text = '') {
   return `<p style="${BODY_STYLE}">${escaped || '&nbsp;'}</p>`
 }
 
-function normalizeMarkdownSource(markdown = '') {
-  const prepared = String(markdown || '')
-    .replace(/\r\n/g, '\n')
-    .replace(/\u00a0/g, ' ')
-    .replace(/\s+-\s+(?=(?:#{1,6}\s*)?[\u4e00-\u9fa5A-Za-z0-9]{1,12}[：:])/g, '\n- ')
-    .replace(/\s+-\s+(?=(?:若|如果|当|可|可以|不|在|被|否则|同时|然后|接刀|小贴士|注意))/g, '\n- ')
-
-  const lines = prepared
-    .split('\n')
-
-  const normalized = []
-  let previousMeaningful = ''
-  const recentFingerprints = []
-  let skippingAttribution = false
-
-  for (const rawLine of lines) {
-    let line = rawLine
-      .replace(/^\s*[-*]\s+(#{1,6}\s+)/, '$1')
-      .replace(/^\s*[-*]\s+[-*]\s+/, '- ')
-      .replace(/^\s*[-*]\s+(\d+[.、．]\s*)/, '$1')
-      .replace(/^(\s*#{1,6})\s*(\d+[.、．]\s*)/, '$1 ')
-
-    let meaningful = line.trim()
-    const sectionMatch = meaningful.match(/^[-*]\s*(结论|技能|规则拆解|你可以怎么做|小贴士|注意事项|常见问题)[：:]?\s*$/)
-    if (sectionMatch) {
-      line = `### ${sectionMatch[1]}`
-      meaningful = line
-    }
-    if (/^#{1,6}\s*(依据|参考来源|来源|使用说明)\s*$/.test(meaningful)) {
-      skippingAttribution = true
-      continue
-    }
-    if (skippingAttribution) {
-      if (/^#{1,6}\s+/.test(meaningful)) {
-        skippingAttribution = false
-      } else {
-        continue
-      }
-    }
-    if (meaningful && meaningful === previousMeaningful) {
-      continue
-    }
-    const fingerprint = fingerprintLine(meaningful)
-    if (hasSimilarFingerprint(fingerprint, recentFingerprints)) {
-      continue
-    }
-    if (meaningful) {
-      previousMeaningful = meaningful
-      if (fingerprint.length >= 12) {
-        recentFingerprints.push(fingerprint)
-        if (recentFingerprints.length > 18) {
-          recentFingerprints.shift()
-        }
-      }
-    }
-    normalized.push(line)
-  }
-
-  return normalized.join('\n')
-}
-
 export function markdownToRichText(markdown = '', options = {}) {
-  const source = normalizeMarkdownSource(markdown)
+  const source = String(markdown || '').replace(/\r\n/g, '\n')
   const lines = source.split('\n')
   const blocks = []
   let index = 0

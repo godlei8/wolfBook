@@ -8,7 +8,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import java.nio.file.Path;
 
 @Configuration
-@EnableConfigurationProperties({UploadProperties.class, WechatProperties.class, CommunityProperties.class})
+@EnableConfigurationProperties({UploadProperties.class, AssistantProperties.class, WechatProperties.class})
 public class WebConfig implements WebMvcConfigurer {
 
     private final UploadProperties uploadProperties;

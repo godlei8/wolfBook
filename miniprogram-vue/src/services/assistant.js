@@ -1,287 +1,258 @@
 import { BASE_URL } from './config'
-import { request } from './request'
-import storage from './storage'
+import { clearAuthState, createAuthHeader, request } from './request'
 
-function authHeader() {
-  const token = storage.getAuthToken()
-  return token ? { Authorization: `Bearer ${token}` } : {}
-}
+function decodeChunkData(data) {
+  if (!data) return ''
+  if (typeof data === 'string') return data
 
-function unwrapApiResponse(payload, hasAuthorization = false) {
-  if (!payload || payload.code !== 0) {
-    if (payload?.code === 4001 && hasAuthorization) {
-      storage.clearAuthToken()
-      storage.setUserProfile(null)
-    }
-    throw new Error(payload?.msg || 'Request failed')
+  let buffer = null
+  if (data instanceof ArrayBuffer) {
+    buffer = data
+  } else if (data.buffer instanceof ArrayBuffer) {
+    buffer = data.buffer
   }
-  return payload.data
-}
 
-function normalizeHeaderValue(headers, key) {
-  if (!headers) {
-    return ''
-  }
-  const normalizedKey = key.toLowerCase()
-  const match = Object.keys(headers).find((headerKey) => headerKey.toLowerCase() === normalizedKey)
-  return match ? headers[match] : ''
-}
+  if (!buffer) return ''
 
-function decodeChunk(data, decoder) {
-  if (typeof data === 'string') {
-    return data
+  const uint8Array = new Uint8Array(buffer)
+  if (typeof TextDecoder !== 'undefined') {
+    return new TextDecoder('utf-8').decode(uint8Array)
   }
-  if (decoder) {
-    return decoder.decode(data, { stream: true })
+
+  let result = ''
+  for (let index = 0; index < uint8Array.length; index += 1) {
+    result += String.fromCharCode(uint8Array[index])
   }
-  const bytes = new Uint8Array(data)
-  let encoded = ''
-  for (let index = 0; index < bytes.length; index += 1) {
-    encoded += `%${bytes[index].toString(16).padStart(2, '0')}`
-  }
+
   try {
-    return decodeURIComponent(encoded)
+    return decodeURIComponent(escape(result))
   } catch (error) {
-    return ''
+    return result
   }
 }
 
-function createSseParser(handlers) {
-  let buffer = ''
+function parseEventBlock(block) {
+  const lines = block.replace(/\r/g, '').split('\n')
+  let event = 'message'
+  const dataLines = []
 
-  function dispatchBlock(block) {
-    if (!block.trim()) {
-      return null
+  lines.forEach((line) => {
+    if (line.startsWith('event:')) {
+      event = line.slice(6).trim()
+      return
     }
-    let eventName = 'message'
-    const dataLines = []
-    block.split('\n').forEach((line) => {
-      if (!line || line.startsWith(':')) {
-        return
-      }
-      if (line.startsWith('event:')) {
-        eventName = line.slice(6).trim()
-        return
-      }
-      if (line.startsWith('data:')) {
-        dataLines.push(line.slice(5).trimStart())
-      }
-    })
-    if (!dataLines.length) {
-      return null
+    if (line.startsWith('data:')) {
+      dataLines.push(line.slice(5).trimStart())
     }
-    const rawData = dataLines.join('\n')
-    let payload = rawData
-    try {
-      payload = JSON.parse(rawData)
-    } catch (error) {
-      payload = rawData
-    }
-    switch (eventName) {
-      case 'start':
-        handlers.onStart?.(payload)
-        break
-      case 'delta':
-        handlers.onDelta?.(payload?.delta || '')
-        break
-      case 'done':
-        handlers.onDone?.(payload)
-        break
-      case 'error':
-        handlers.onError?.(payload)
-        break
-      default:
-        break
-    }
-    return { eventName, payload }
+  })
+
+  const rawData = dataLines.join('\n')
+  if (!rawData) {
+    return null
   }
 
-  return {
-    push(chunk) {
-      buffer += chunk.replace(/\r\n/g, '\n')
-      const events = []
-      let boundaryIndex = buffer.indexOf('\n\n')
-      while (boundaryIndex >= 0) {
-        const block = buffer.slice(0, boundaryIndex)
-        buffer = buffer.slice(boundaryIndex + 2)
-        const parsed = dispatchBlock(block)
-        if (parsed) {
-          events.push(parsed)
-        }
-        boundaryIndex = buffer.indexOf('\n\n')
-      }
-      return events
-    },
-    flush() {
-      const last = dispatchBlock(buffer)
-      buffer = ''
-      return last ? [last] : []
-    },
+  try {
+    return { event, data: JSON.parse(rawData) }
+  } catch (error) {
+    return { event, data: rawData }
   }
 }
 
-async function fallbackAsk(payload, handlers) {
-  const response = await request({
-    url: '/api/ai/ask',
+function supportsStreamingRequest() {
+  return typeof wx !== 'undefined' && typeof uni.request === 'function'
+}
+
+function shouldClearAuthFromMessage(message) {
+  if (!message || typeof message !== 'string') {
+    return false
+  }
+  return /token|authorization|auth|登录/i.test(message)
+}
+
+function fallbackAsk(payload, handlers = {}) {
+  return request({
+    url: '/api/assistant/ask',
     method: 'POST',
     data: payload,
-    header: authHeader(),
+    header: createAuthHeader(),
+  }).then((response) => {
+    handlers.onStarted?.({
+      sessionId: response.sessionId,
+      traceId: response.traceId,
+      contentFormat: response.contentFormat || 'MARKDOWN',
+    })
+    handlers.onDelta?.({ delta: response.answer || '' })
+    handlers.onDone?.(response)
+    return response
   })
-  handlers.onStart?.({
-    sessionId: response.sessionId,
-    messageId: response.messageId,
-    traceId: response.traceId,
-    answerType: response.answerType,
-    sources: response.sources || [],
-    suggestedQuestions: response.suggestedQuestions || [],
-    retrievalMeta: response.retrievalMeta || {},
-  })
-  if (response.answer) {
-    handlers.onDelta?.(response.answer)
+}
+
+function shouldFallbackToNonStreaming(response, rawChunkText) {
+  if (!response) return false
+  if ([404, 405, 406, 415, 500, 501].includes(response.statusCode)) {
+    return true
   }
-  handlers.onDone?.(response)
-  return response
+  if (response.statusCode !== 200) {
+    return false
+  }
+  if (!rawChunkText) {
+    return false
+  }
+  return !rawChunkText.includes('event:') && !rawChunkText.includes('data:')
+}
+
+function streamAsk(payload, handlers = {}) {
+  return new Promise((resolve, reject) => {
+    let eventBuffer = ''
+    let finalResponse = null
+    let settled = false
+    let requestTask = null
+
+    function resolveOnce(value) {
+      if (settled) return
+      settled = true
+      resolve(value)
+    }
+
+    function rejectOnce(error) {
+      if (settled) return
+      settled = true
+      reject(error)
+    }
+
+    function fallbackOnce() {
+      if (settled) return
+      if (requestTask && typeof requestTask.abort === 'function') {
+        requestTask.abort()
+      }
+      fallbackAsk(payload, handlers).then(resolveOnce).catch(rejectOnce)
+    }
+
+    function consumeEvents(flushAll) {
+      const normalized = eventBuffer.replace(/\r/g, '')
+      const blocks = normalized.split('\n\n')
+      eventBuffer = flushAll ? '' : blocks.pop() || ''
+      const readyBlocks = flushAll ? blocks.filter(Boolean) : blocks
+
+      readyBlocks.forEach((block) => {
+        const parsed = parseEventBlock(block)
+        if (!parsed) return
+
+        if (parsed.event === 'started') {
+          handlers.onStarted?.(parsed.data)
+          return
+        }
+
+        if (parsed.event === 'delta') {
+          handlers.onDelta?.(parsed.data)
+          return
+        }
+
+        if (parsed.event === 'done') {
+          finalResponse = parsed.data
+          handlers.onDone?.(parsed.data)
+          return
+        }
+
+        if (parsed.event === 'error') {
+          const message = parsed.data?.message || 'stream response failed'
+          if (shouldClearAuthFromMessage(message)) {
+            clearAuthState()
+          }
+          rejectOnce(new Error(message))
+        }
+      })
+    }
+
+    requestTask = uni.request({
+      url: `${BASE_URL}/api/assistant/ask/stream`,
+      method: 'POST',
+      data: payload,
+      enableChunked: true,
+      responseType: 'arraybuffer',
+      header: {
+        Accept: 'text/event-stream',
+        ...createAuthHeader(),
+      },
+      success: (response) => {
+        if (settled) return
+        const rawChunkText = decodeChunkData(response.data)
+
+        if (shouldFallbackToNonStreaming(response, rawChunkText)) {
+          fallbackOnce()
+          return
+        }
+
+        if (rawChunkText) {
+          eventBuffer += rawChunkText
+          consumeEvents(true)
+        }
+
+        if (response.statusCode !== 200) {
+          rejectOnce(new Error(`Request failed: ${response.statusCode}`))
+          return
+        }
+
+        if (finalResponse) {
+          resolveOnce(finalResponse)
+          return
+        }
+
+        fallbackOnce()
+      },
+      fail: (error) => {
+        if (settled) return
+        const message = error?.errMsg || ''
+        if (message.includes('404') || message.includes('fail')) {
+          fallbackOnce()
+          return
+        }
+        rejectOnce(error)
+      },
+    })
+
+    if (!requestTask || typeof requestTask.onChunkReceived !== 'function') {
+      fallbackOnce()
+      return
+    }
+
+    requestTask.onChunkReceived((chunk) => {
+      if (settled) return
+      eventBuffer += decodeChunkData(chunk.data)
+      consumeEvents(false)
+    })
+  })
 }
 
 export default {
   async bootstrap() {
-    return request({
-      url: '/api/ai/bootstrap',
-      method: 'GET',
-    })
+    return request({ url: '/api/assistant/bootstrap', header: createAuthHeader() })
   },
-  async listSessions() {
-    return request({
-      url: '/api/ai/sessions',
-      method: 'GET',
-      header: authHeader(),
-    })
+  async getSessions() {
+    return request({ url: '/api/assistant/sessions', header: createAuthHeader() })
   },
-  async listMessages(sessionId) {
-    return request({
-      url: `/api/ai/sessions/${sessionId}/messages`,
-      method: 'GET',
-      header: authHeader(),
-    })
+  async getMessages(sessionId) {
+    return request({ url: `/api/assistant/sessions/${sessionId}/messages`, header: createAuthHeader() })
   },
   async ask(payload) {
     return request({
-      url: '/api/ai/ask',
+      url: '/api/assistant/ask',
       method: 'POST',
       data: payload,
-      header: authHeader(),
+      header: createAuthHeader(),
     })
   },
   async askStream(payload, handlers = {}) {
-    const header = {
-      ...authHeader(),
-      Accept: 'text/event-stream',
+    if (!supportsStreamingRequest()) {
+      return fallbackAsk(payload, handlers)
     }
-    const hasAuthorization = !!(header.Authorization || header.authorization)
-
-    return new Promise((resolve, reject) => {
-      let completed = false
-      let donePayload = null
-      let sawStreamEvent = false
-      const decoder = typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8') : null
-      const parser = createSseParser({
-        onStart: (event) => {
-          sawStreamEvent = true
-          handlers.onStart?.(event)
-        },
-        onDelta: (delta) => {
-          sawStreamEvent = true
-          handlers.onDelta?.(delta)
-        },
-        onDone: (event) => {
-          sawStreamEvent = true
-          donePayload = event
-          handlers.onDone?.(event)
-          if (!completed) {
-            completed = true
-            resolve(event)
-          }
-        },
-        onError: (event) => {
-          sawStreamEvent = true
-          handlers.onError?.(event)
-          if (!completed) {
-            completed = true
-            reject(new Error(event?.message || 'Stream request failed'))
-          }
-        },
-      })
-
-      const requestTask = uni.request({
-        url: `${BASE_URL}/api/ai/ask/stream`,
-        method: 'POST',
-        data: payload,
-        header,
-        enableChunked: true,
-        success: (response) => {
-          if (completed) {
-            return
-          }
-          const contentType = normalizeHeaderValue(response.header, 'content-type')
-          if (!sawStreamEvent || !String(contentType).includes('text/event-stream')) {
-            try {
-              const body = typeof response.data === 'string' ? JSON.parse(response.data) : response.data
-              const unwrapped = unwrapApiResponse(body, hasAuthorization)
-              completed = true
-              resolve(unwrapped)
-            } catch (error) {
-              completed = true
-              reject(error)
-            }
-            return
-          }
-          parser.flush()
-          if (!completed) {
-            completed = true
-            resolve(donePayload)
-          }
-        },
-        fail: async (error) => {
-          if (completed) {
-            return
-          }
-          if (typeof requestTask?.onChunkReceived !== 'function') {
-            try {
-              const response = await fallbackAsk(payload, handlers)
-              completed = true
-              resolve(response)
-            } catch (fallbackError) {
-              completed = true
-              reject(fallbackError)
-            }
-            return
-          }
-          completed = true
-          reject(error)
-        },
-      })
-
-      if (!requestTask || typeof requestTask.onChunkReceived !== 'function') {
-        requestTask?.abort?.()
-        fallbackAsk(payload, handlers).then(resolve).catch(reject)
-        return
-      }
-
-      requestTask.onChunkReceived((chunk) => {
-        if (completed) {
-          return
-        }
-        const text = decodeChunk(chunk.data, decoder)
-        parser.push(text)
-      })
-    })
+    return streamAsk(payload, handlers)
   },
-  async feedback(messageId, payload) {
+  async resetSession(sessionId) {
     return request({
-      url: `/api/ai/messages/${messageId}/feedback`,
+      url: `/api/assistant/sessions/${sessionId}/reset`,
       method: 'POST',
-      data: payload,
-      header: authHeader(),
+      header: createAuthHeader(),
     })
   },
 }

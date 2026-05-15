@@ -1,7 +1,6 @@
 <script setup>
 import { computed, reactive } from 'vue'
 import storage from '../../services/storage'
-import { requireAuth } from '../../utils/auth'
 
 const props = defineProps({
   scene: {
@@ -32,7 +31,9 @@ const dockStyle = computed(() => ({
 }))
 
 function openAssistant() {
-  if (!requireAuth({ title: '请先登录后使用 AI 助手', redirect: true })) {
+  if (!storage.getAuthToken()) {
+    uni.showToast({ title: '请先登录后使用 AI 助手', icon: 'none' })
+    uni.switchTab({ url: '/pages/user/index' })
     return
   }
   const context = encodeURIComponent(JSON.stringify(props.pageContext || {}))

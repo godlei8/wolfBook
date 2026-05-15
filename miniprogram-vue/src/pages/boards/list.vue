@@ -141,51 +141,45 @@ onPullDownRefresh(async () => {
           confirm-type="search"
           @confirm="loadBoards"
         />
-        <button class="button-primary search-action" @tap="loadBoards">搜索</button>
+        <view class="search-action" @tap="loadBoards">搜索</view>
       </view>
 
       <view class="section-meta filter-title">人数</view>
-      <scroll-view scroll-x class="chip-row filter-scroll" enable-flex>
-        <view class="filter-strip">
-          <button
-            v-for="item in playerOptions"
-            :key="item.value"
-            class="button-segment filter-chip"
-            :class="{ active: playerFilter === item.value }"
-            @tap="applyPlayerFilter(item)"
-          >
-            {{ item.label }}
-          </button>
+      <scroll-view scroll-x class="chip-row">
+        <view
+          v-for="item in playerOptions"
+          :key="item.value"
+          class="chip"
+          :class="{ active: playerFilter === item.value }"
+          @tap="applyPlayerFilter(item)"
+        >
+          {{ item.label }}
         </view>
       </scroll-view>
 
       <view class="section-meta filter-title">难度</view>
-      <scroll-view scroll-x class="chip-row filter-scroll" enable-flex>
-        <view class="filter-strip">
-          <button
-            v-for="item in difficultyOptions"
-            :key="item.value"
-            class="button-segment filter-chip"
-            :class="{ active: difficultyFilter === item.value }"
-            @tap="applyDifficultyFilter(item)"
-          >
-            {{ item.label }}
-          </button>
+      <scroll-view scroll-x class="chip-row">
+        <view
+          v-for="item in difficultyOptions"
+          :key="item.value"
+          class="chip"
+          :class="{ active: difficultyFilter === item.value }"
+          @tap="applyDifficultyFilter(item)"
+        >
+          {{ item.label }}
         </view>
       </scroll-view>
 
       <view class="section-meta filter-title">标签</view>
-      <scroll-view scroll-x class="chip-row filter-scroll" enable-flex>
-        <view class="filter-strip">
-          <button
-            v-for="item in tagOptions"
-            :key="item.value"
-            class="button-segment filter-chip"
-            :class="{ active: tagFilter === item.value }"
-            @tap="applyTagFilter(item)"
-          >
-            {{ item.label }}
-          </button>
+      <scroll-view scroll-x class="chip-row">
+        <view
+          v-for="item in tagOptions"
+          :key="item.value"
+          class="chip"
+          :class="{ active: tagFilter === item.value }"
+          @tap="applyTagFilter(item)"
+        >
+          {{ item.label }}
         </view>
       </scroll-view>
     </view>
@@ -255,7 +249,6 @@ onPullDownRefresh(async () => {
 .search-input {
   flex: 1;
   height: 76rpx;
-  line-height: 76rpx;
   padding: 0 24rpx;
   border-radius: 16rpx;
   background: rgba(255, 255, 255, 0.05);
@@ -264,14 +257,18 @@ onPullDownRefresh(async () => {
 }
 
 .search-action {
-  margin: 0;
   width: 120rpx;
   height: 76rpx;
-  font-size: 24rpx;
-  padding: 0 24rpx;
-  line-height: 76rpx;
   border-radius: 16rpx;
+  background: linear-gradient(135deg, rgba(255, 213, 77, 0.96), rgba(166, 127, 8, 0.96));
+  color: #1b1506;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24rpx;
+  font-weight: 700;
   flex-shrink: 0;
+  box-shadow: 0 10rpx 22rpx rgba(255, 192, 0, 0.18);
 }
 
 .filter-title {
@@ -279,25 +276,12 @@ onPullDownRefresh(async () => {
 }
 
 .chip-row {
-  margin: 0 -4rpx;
-  padding: 4rpx 4rpx 8rpx;
+  margin: 0 -6rpx;
+  padding: 4rpx 10rpx 8rpx 6rpx;
   box-sizing: border-box;
 }
 
-.filter-scroll {
-  white-space: nowrap;
-}
-
-.filter-strip {
-  display: inline-flex;
-  gap: 0;
-  align-items: center;
-  padding-right: 4rpx;
-  box-sizing: border-box;
-}
-
-.filter-chip {
-  margin: 0 4rpx;
-  flex-shrink: 0;
+.chip {
+  padding: 10rpx 24rpx;
 }
 </style>

@@ -3,7 +3,6 @@ import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import api from '../../services/api'
 import userData from '../../services/user-data'
-import { createSessionModel } from '../../utils/session/normalizer'
 
 const sessionId = ref('')
 const sessionMode = ref('library')
@@ -156,20 +155,13 @@ async function saveSession() {
   try {
     const current = sessionId.value ? await userData.getSessionById(sessionId.value) : null
     const now = new Date().toISOString()
-    const session = createSessionModel({
+    const session = {
       sessionId: sessionId.value || makeId('session'),
       ...base,
-      status: current?.status || 'active',
-      currentDay: current?.currentDay || 1,
-      currentPhase: current?.currentPhase || 'day_speech',
-      resultCamp: current?.resultCamp || '',
-      sheriffSeat: current?.sheriffSeat || null,
-      players: current?.players,
-      summary: current?.summary,
       createTime: current ? current.createTime : now,
       updateTime: now,
       records: current ? current.records || [] : [],
-    })
+    }
     const saved = await userData.saveSession(session)
     uni.redirectTo({ url: `/pages/sessions/detail?id=${saved.sessionId}` })
   } catch (error) {
@@ -179,7 +171,6 @@ async function saveSession() {
 
 async function initialize(options) {
   let editingSession = null
-  const preferredBoardId = Number(options?.boardId || 0)
   if (options?.id) {
     try {
       editingSession = await userData.getSessionById(options.id)
@@ -190,18 +181,6 @@ async function initialize(options) {
   await loadBoardOptions()
   if (editingSession) {
     hydrateSession(editingSession)
-    return
-  }
-
-  if (preferredBoardId) {
-    const index = boards.value.findIndex((item) => item.id === preferredBoardId)
-    if (index >= 0) {
-      sessionMode.value = 'library'
-      selectedBoardIndex.value = index
-      selectedBoardId.value = preferredBoardId
-      customBoardName.value = boards.value[index].name
-      customPlayerCount.value = boards.value[index].playerCount
-    }
   }
 }
 
@@ -377,9 +356,9 @@ onLoad((options) => {
 }
 
 .mode-chip.active {
-  background: linear-gradient(180deg, rgba(108, 84, 24, 0.94) 0%, rgba(64, 49, 15, 0.98) 100%);
-  color: #f0c35b;
-  box-shadow: inset 0 0 0 2rpx rgba(242, 194, 84, 0.04);
+  background: linear-gradient(180deg, rgba(255, 192, 0, 0.18), rgba(255, 192, 0, 0.1));
+  color: #ffc000;
+  box-shadow: inset 0 0 0 2rpx rgba(255, 192, 0, 0.08);
 }
 
 .section-space {
@@ -575,7 +554,6 @@ onLoad((options) => {
 
 .board-name-input {
   min-height: 84rpx;
-  line-height: 84rpx;
   font-size: 26rpx;
 }
 
@@ -586,7 +564,6 @@ onLoad((options) => {
 
 .player-count-input {
   min-height: 84rpx;
-  line-height: 84rpx;
   padding-right: 92rpx;
   font-size: 28rpx;
 }

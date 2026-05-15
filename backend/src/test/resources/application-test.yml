@@ -17,3 +17,19 @@ wolfbook:
   upload:
     provider: local
     dir: ./target/test-uploads
+  assistant:
+    enabled: true
+    web-search-enabled: true
+    deep-seek:
+      base-url: https://api.deepseek.com
+      model: deepseek-v4-flash
+      default-api-key:
+    volcengine:
+      base-url: https://ark.cn-beijing.volces.com/api/v3
+      embedding-model: doubao-embedding-large-text-250515
+      embedding-dimensions: 2048
+      embedding-api-key:
+      search-model: doubao-seed-1-6-thinking-250715
+      search-api-key:
+    pg-vector:
+      enabled: false

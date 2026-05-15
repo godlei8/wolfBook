@@ -1,14 +1,11 @@
 import axios from 'axios'
 import type {
+  AdminAiConfig,
+  AdminAiDocument,
+  AdminAiLog,
+  AdminAiVersion,
   ApiResponse,
-  AiAdminConfigUpdate,
   Board,
-  AiAdminConfig,
-  AiAdminDebugResponse,
-  AiAdminDocument,
-  AiAdminEvalCase,
-  AiAdminLog,
-  AiAdminPublish,
   CommentView,
   DashboardSummary,
   LoginResponse,
@@ -20,6 +17,8 @@ import type {
 
 const TOKEN_KEY = 'wolfbook_admin_token'
 const DEFAULT_TIMEOUT = 15000
+const AI_UPLOAD_TIMEOUT = 120000
+const AI_LONG_TASK_TIMEOUT = 300000
 
 const http = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? 'http://localhost:8080' : '/'),
@@ -40,6 +39,17 @@ async function unwrap<T>(promise: Promise<{ data: ApiResponse<T> }>): Promise<T>
     throw new Error(response.data.msg || '请求失败')
   }
   return response.data.data
+}
+
+async function uploadMultipart<T>(url: string, file: File, timeout = DEFAULT_TIMEOUT) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return unwrap<T>(
+    http.post(url, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout,
+    }),
+  )
 }
 
 export function getStoredToken() {
@@ -91,12 +101,6 @@ export const api = {
   async updatePostStatus(id: number, status: string) {
     return unwrap<void>(http.patch(`/admin/posts/${id}/status`, { status }))
   },
-  async updatePostFeatured(id: number, enabled: boolean) {
-    return unwrap<void>(http.patch(`/admin/posts/${id}/featured`, { enabled }))
-  },
-  async updatePostPinned(id: number, enabled: boolean) {
-    return unwrap<void>(http.patch(`/admin/posts/${id}/pinned`, { enabled }))
-  },
   async deletePost(id: number) {
     return unwrap<void>(http.delete(`/admin/posts/${id}`))
   },
@@ -113,64 +117,54 @@ export const api = {
     return unwrap<ReportItem>(http.patch(`/admin/reports/${id}`, { processStatus }))
   },
   async upload(file: File) {
-    const formData = new FormData()
-    formData.append('file', file)
-    return unwrap<{ url: string }>(
-      http.post('/admin/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      }),
-    )
+    return uploadMultipart<{ url: string }>('/admin/upload', file)
   },
   async getAiConfig() {
-    return unwrap<AiAdminConfig>(http.get('/admin/ai/config'))
+    return unwrap<AdminAiConfig>(http.get('/admin/ai/config'))
   },
-  async updateAiConfig(payload: AiAdminConfigUpdate) {
-    return unwrap<AiAdminConfig>(http.put('/admin/ai/config', payload))
+  async saveAiConfig(payload: AdminAiConfig) {
+    return unwrap<AdminAiConfig>(http.put('/admin/ai/config', payload))
   },
   async getAiDocuments() {
-    return unwrap<AiAdminDocument[]>(http.get('/admin/ai/documents'))
+    return unwrap<AdminAiDocument[]>(http.get('/admin/ai/documents'))
   },
-  async uploadAiDocument(file: File, domain: string, title?: string) {
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('domain', domain)
-    if (title) {
-      formData.append('title', title)
-    }
-    return unwrap<AiAdminDocument>(
-      http.post('/admin/ai/documents', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+  async uploadAiDocument(file: File) {
+    return uploadMultipart<AdminAiDocument>('/admin/ai/documents', file, AI_UPLOAD_TIMEOUT)
+  },
+  async updateAiDocumentReview(id: number, reviewStatus: string) {
+    return unwrap<AdminAiDocument>(http.patch(`/admin/ai/documents/${id}`, { reviewStatus }))
+  },
+  async reindexAiDocument(id: number) {
+    return unwrap<AdminAiDocument>(
+      http.post(`/admin/ai/documents/${id}/reindex`, undefined, {
+        timeout: AI_LONG_TASK_TIMEOUT,
       }),
     )
   },
-  async reindexAiDocument(documentUid: string) {
-    return unwrap<AiAdminDocument>(http.post(`/admin/ai/documents/${documentUid}/reindex`))
+  async clearAiDocuments() {
+    return unwrap<number>(http.delete('/admin/ai/documents'))
   },
-  async importBusinessAiKnowledge() {
-    return unwrap<{ imported: number }>(http.post('/admin/ai/documents/import-business'))
+  async getAiVersions() {
+    return unwrap<AdminAiVersion[]>(http.get('/admin/ai/publish'))
   },
-  async publishAiVersion(description: string) {
-    return unwrap<void>(http.post('/admin/ai/publish', { description }))
+  async publishAiVersion(notes: string) {
+    return unwrap<AdminAiVersion>(
+      http.post('/admin/ai/publish', { notes }, {
+        timeout: AI_LONG_TASK_TIMEOUT,
+      }),
+    )
   },
-  async getAiPublishVersions() {
-    return unwrap<AiAdminPublish[]>(http.get('/admin/ai/publish'))
+  async rollbackAiVersion(versionId: number) {
+    return unwrap<AdminAiVersion>(
+      http.post('/admin/ai/publish/rollback', { versionId }, {
+        timeout: AI_LONG_TASK_TIMEOUT,
+      }),
+    )
   },
   async getAiLogs() {
-    return unwrap<AiAdminLog[]>(http.get('/admin/ai/logs'))
+    return unwrap<AdminAiLog[]>(http.get('/admin/ai/logs'))
   },
-  async debugAiRetrieve(query: string, sessionId?: string, confirmedEntity?: string) {
-    return unwrap<AiAdminDebugResponse>(http.post('/admin/ai/debug/retrieve', { query, sessionId, confirmedEntity }))
-  },
-  async rebuildAi() {
-    return unwrap<Record<string, number>>(http.post('/admin/ai/rebuild'))
-  },
-  async getAiStats() {
-    return unwrap<Record<string, number>>(http.get('/admin/ai/stats'))
-  },
-  async getAiEvals() {
-    return unwrap<AiAdminEvalCase[]>(http.get('/admin/ai/evals'))
-  },
-  async createAiEval(payload: { question: string; expectedSubject?: string; expectedKeywords?: string; category?: string }) {
-    return unwrap<void>(http.post('/admin/ai/evals', payload))
+  async clearAiLogs() {
+    return unwrap<number>(http.delete('/admin/ai/logs'))
   },
 }

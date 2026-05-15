@@ -15,18 +15,11 @@ import com.wolfbook.backend.mapper.BoardMapper;
 import com.wolfbook.backend.mapper.BoardRoleMapper;
 import com.wolfbook.backend.mapper.RoleMapper;
 import com.wolfbook.backend.support.DomainConverter;
-import com.wolfbook.backend.support.JudgeSupportLevels;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * 板子和角色资料服务。
- *
- * <p>负责前台板库查询、后台板子/角色 CRUD、板子角色配置、FAQ 读写，
- * 以及给法官局、AI 助手等模块提供结构化的板子/角色资料。</p>
- */
 @Service
 public class BoardService {
 
@@ -121,8 +114,7 @@ public class BoardService {
                 converter.readFaqList(boardEntity.getFaqs()).stream().map(this::toFaqInput).toList(),
                 boardEntity.getWinCondition(),
                 boardEntity.getRuleType(),
-                roles,
-                JudgeSupportLevels.normalize(boardEntity.getJudgeSupportLevel())
+                roles
         );
     }
 
@@ -246,8 +238,7 @@ public class BoardService {
                 buildLineupSummary(roleViews),
                 roleViews,
                 featuredRoles,
-                buildCardSummary(board),
-                JudgeSupportLevels.normalize(board.getJudgeSupportLevel())
+                buildCardSummary(board)
         );
     }
 

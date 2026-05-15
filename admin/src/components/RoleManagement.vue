@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { UploadRequestOptions } from 'element-plus'
-import { clampPageToTotal, usePagedItems, useResetPageOnChange } from '../composables/pagination'
-import { FILTER_ALL, PAGE_SIZES_STANDARD } from '../constants/filters'
 import { api } from '../services/api'
-import { resolveErrorMessage } from '../utils/errors'
 import type { Role } from '../types'
+import { resolveMediaUrl } from '../utils/media'
+import { clampPage, paginate } from '../utils/pagination'
 
 const emit = defineEmits<{ changed: [] }>()
 
@@ -15,8 +14,8 @@ const loading = ref(false)
 const dialogVisible = ref(false)
 
 const keyword = ref('')
-const factionFilter = ref<string | typeof FILTER_ALL>(FILTER_ALL)
-const roleTypeFilter = ref<string | typeof FILTER_ALL>(FILTER_ALL)
+const factionFilter = ref('ALL')
+const roleTypeFilter = ref('ALL')
 const currentPage = ref(1)
 const pageSize = ref(8)
 
@@ -70,7 +69,6 @@ const emptyRole = (): Role => ({
 const form = reactive<Role>(emptyRole())
 
 const availableRoleTypes = computed(() => roleTypeOptionsMap[form.faction] || [])
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080').replace(/\/+$/, '')
 const portraitPreviewUrl = computed(() => resolveMediaUrl(form.portrait))
 const illustrationPreviewUrl = computed(() => resolveMediaUrl(form.fullIllustration))
 const filteredRoles = computed(() => {
@@ -80,15 +78,24 @@ const filteredRoles = computed(() => {
       .join(' ')
       .toLowerCase()
     const matchesKeyword = !normalizedKeyword || searchableText.includes(normalizedKeyword)
-    const matchesFaction = factionFilter.value === FILTER_ALL || role.faction === factionFilter.value
-    const matchesType = roleTypeFilter.value === FILTER_ALL || role.roleType === roleTypeFilter.value
+    const matchesFaction = factionFilter.value === 'ALL' || role.faction === factionFilter.value
+    const matchesType = roleTypeFilter.value === 'ALL' || role.roleType === roleTypeFilter.value
     return matchesKeyword && matchesFaction && matchesType
   })
 })
 
-const pagedRoles = usePagedItems(filteredRoles, currentPage, pageSize)
+const pagedRoles = computed(() => paginate(filteredRoles.value, currentPage.value, pageSize.value))
 
-useResetPageOnChange(currentPage, [keyword, factionFilter, roleTypeFilter, pageSize])
+watch([keyword, factionFilter, roleTypeFilter, pageSize], () => {
+  currentPage.value = 1
+})
+
+watch(
+  () => filteredRoles.value.length,
+  (total) => {
+    currentPage.value = clampPage(currentPage.value, pageSize.value, total)
+  },
+)
 
 function syncCamp() {
   form.camp = buildCamp(form.faction, form.roleType)
@@ -124,24 +131,10 @@ function resetForm(role?: Role) {
   ensureRoleType()
 }
 
-function resolveMediaUrl(url?: string | null) {
-  const value = (url || '').trim()
-  if (!value) {
-    return ''
-  }
-  if (/^(https?:)?\/\//i.test(value)) {
-    return value.startsWith('//') ? `http:${value}` : value
-  }
-  if (value.startsWith('/')) {
-    return `${apiBaseUrl}${value}`
-  }
-  return value
-}
-
 function resetFilters() {
   keyword.value = ''
-  factionFilter.value = FILTER_ALL
-  roleTypeFilter.value = FILTER_ALL
+  factionFilter.value = 'ALL'
+  roleTypeFilter.value = 'ALL'
   currentPage.value = 1
 }
 
@@ -161,9 +154,8 @@ async function load() {
   loading.value = true
   try {
     roles.value = await api.getRoles()
-    clampPageToTotal(currentPage, pageSize, filteredRoles.value.length)
   } catch (error) {
-    ElMessage.error(resolveErrorMessage(error, '角色数据加载失败'))
+    ElMessage.error(error instanceof Error ? error.message : '角色数据加载失败')
   } finally {
     loading.value = false
   }
@@ -195,7 +187,7 @@ async function submit() {
     await load()
     emit('changed')
   } catch (error) {
-    ElMessage.error(resolveErrorMessage(error, '角色保存失败'))
+    ElMessage.error(error instanceof Error ? error.message : '角色保存失败')
   }
 }
 
@@ -206,7 +198,7 @@ async function removeRole(id: number) {
     await load()
     emit('changed')
   } catch (error) {
-    ElMessage.error(resolveErrorMessage(error, '角色删除失败'))
+    ElMessage.error(error instanceof Error ? error.message : '角色删除失败')
   }
 }
 
@@ -217,7 +209,7 @@ async function uploadTo(target: 'portrait' | 'fullIllustration', options: Upload
     ElMessage.success(target === 'portrait' ? '头像已上传' : '立绘已上传')
     options.onSuccess?.(result)
   } catch (error) {
-    ElMessage.error(resolveErrorMessage(error, '图片上传失败'))
+    ElMessage.error(error instanceof Error ? error.message : '图片上传失败')
     options.onError?.(Object.assign(new Error('upload failed'), { status: 0, method: 'post', url: '' }) as never)
   }
 }
@@ -235,19 +227,19 @@ onMounted(load)
 
 <template>
   <el-card class="panel-card">
-    <div class="admin-management-toolbar">
-      <el-input v-model="keyword" class="admin-management-toolbar__search" clearable placeholder="搜索角色名称、别名或组合标签" />
-      <el-select v-model="factionFilter" class="admin-management-toolbar__select">
-        <el-option label="全部阵营" :value="FILTER_ALL" />
+    <div class="table-toolbar">
+      <el-input v-model="keyword" clearable placeholder="搜索角色名称、别名或组合标签" />
+      <el-select v-model="factionFilter">
+        <el-option label="全部阵营" value="ALL" />
         <el-option v-for="item in factionOptions" :key="item" :label="item" :value="item" />
       </el-select>
-      <el-select v-model="roleTypeFilter" class="admin-management-toolbar__select">
-        <el-option label="全部类型" :value="FILTER_ALL" />
+      <el-select v-model="roleTypeFilter">
+        <el-option label="全部类型" value="ALL" />
         <el-option v-for="item in allRoleTypes" :key="item" :label="item" :value="item" />
       </el-select>
-      <el-button class="admin-management-toolbar__action" @click="resetFilters">重置</el-button>
-      <div class="admin-toolbar-summary">当前 {{ filteredRoles.length }} 条</div>
-      <el-button class="admin-management-toolbar__primary" type="primary" @click="resetForm(); dialogVisible = true">新建角色</el-button>
+      <el-button @click="resetFilters">重置</el-button>
+      <div class="toolbar-summary">当前 {{ filteredRoles.length }} 条</div>
+      <el-button type="primary" @click="resetForm(); dialogVisible = true">新建角色</el-button>
     </div>
 
     <el-table :data="pagedRoles" v-loading="loading" empty-text="暂无符合条件的角色">
@@ -270,8 +262,8 @@ onMounted(load)
       </el-table-column>
     </el-table>
 
-    <div class="admin-table-footer">
-      <div class="admin-table-total">共 {{ filteredRoles.length }} 条角色</div>
+    <div class="table-footer">
+      <div class="table-total">共 {{ filteredRoles.length }} 条角色</div>
       <el-pagination
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
@@ -279,13 +271,13 @@ onMounted(load)
         size="small"
         layout="sizes, prev, pager, next"
         :pager-count="5"
-        :page-sizes="PAGE_SIZES_STANDARD"
+        :page-sizes="[8, 10, 20, 30]"
         :total="filteredRoles.length"
       />
     </div>
   </el-card>
 
-  <el-dialog v-model="dialogVisible" class="admin-scroll-dialog" width="880px" :title="form.id ? '编辑角色' : '新建角色'">
+  <el-dialog v-model="dialogVisible" width="880px" :title="form.id ? '编辑角色' : '新建角色'">
     <el-form label-position="top">
       <div class="form-grid form-grid-role">
         <el-form-item label="名称">
@@ -388,8 +380,133 @@ onMounted(load)
 </template>
 
 <style scoped>
+:deep(.el-dialog) {
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+}
+
+:deep(.el-dialog__header),
+:deep(.el-dialog__footer) {
+  flex: 0 0 auto;
+}
+
+:deep(.el-dialog__body) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 192, 0, 0.42) rgba(255, 255, 255, 0.05);
+}
+
+:deep(.el-dialog__body::-webkit-scrollbar) {
+  width: 8px;
+}
+
+:deep(.el-dialog__body::-webkit-scrollbar-track) {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 999px;
+}
+
+:deep(.el-dialog__body::-webkit-scrollbar-thumb) {
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 211, 92, 0.72), rgba(182, 126, 12, 0.74));
+}
+
 .panel-card {
   border-radius: 18px;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.panel-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.panel-kicker {
+  color: #ffc000;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.panel-header h3 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.panel-header p {
+  margin: 0;
+  color: #8d8d8d;
+  line-height: 1.55;
+}
+
+.table-toolbar {
+  margin-bottom: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.table-toolbar > :nth-child(1) {
+  flex: 1 1 360px;
+  min-width: 280px;
+}
+
+.table-toolbar > :nth-child(2),
+.table-toolbar > :nth-child(3) {
+  flex: 0 0 150px;
+}
+
+.table-toolbar > :nth-child(4) {
+  flex: 0 0 90px;
+}
+
+.table-toolbar > :nth-child(5) {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.table-toolbar > :nth-child(6) {
+  flex: 0 0 auto;
+}
+
+.toolbar-summary {
+  color: #8d8d8d;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.table-footer {
+  margin-top: 14px;
+  padding-top: 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.table-total {
+  color: #8d8d8d;
+  font-size: 13px;
+}
+
+.table-footer :deep(.el-pagination) {
+  margin-left: auto;
 }
 
 .form-grid {
@@ -477,11 +594,47 @@ onMounted(load)
   gap: 12px;
 }
 
+@media (max-width: 1080px) {
+  .table-toolbar > :nth-child(1) {
+    flex-basis: 100%;
+  }
+
+  .table-toolbar > :nth-child(5) {
+    margin-left: 0;
+  }
+
+  .table-footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
 @media (max-width: 980px) {
+  .panel-header {
+    display: grid;
+  }
+
   .form-grid,
   .form-grid-role,
   .faq-row {
     grid-template-columns: 1fr;
+  }
+
+  .table-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .table-toolbar > :nth-child(1),
+  .table-toolbar > :nth-child(2),
+  .table-toolbar > :nth-child(3),
+  .table-toolbar > :nth-child(4),
+  .table-toolbar > :nth-child(5),
+  .table-toolbar > :nth-child(6),
+  .toolbar-summary {
+    flex: initial;
+    min-width: 0;
+    margin-left: 0;
   }
 
   .upload-stack {
