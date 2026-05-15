@@ -28,6 +28,8 @@ public class AssistantSchemaInitializer implements ApplicationRunner {
                 CREATE TABLE IF NOT EXISTS assistant_config (
                   id INT PRIMARY KEY AUTO_INCREMENT,
                   base_config JSON,
+                  provider_config JSON,
+                  volcengine_config JSON,
                   prompt_config JSON,
                   retrieval_config JSON,
                   search_config JSON,
@@ -37,6 +39,9 @@ public class AssistantSchemaInitializer implements ApplicationRunner {
                   update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                 )
                 """);
+
+        addColumnIfMissing("assistant_config", "provider_config", "ALTER TABLE assistant_config ADD COLUMN provider_config JSON");
+        addColumnIfMissing("assistant_config", "volcengine_config", "ALTER TABLE assistant_config ADD COLUMN volcengine_config JSON");
 
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS assistant_documents (
@@ -142,6 +147,24 @@ public class AssistantSchemaInitializer implements ApplicationRunner {
                 Integer.class,
                 tableName,
                 indexName
+        );
+        if (count == null || count == 0) {
+            jdbcTemplate.execute(ddl);
+        }
+    }
+
+    private void addColumnIfMissing(String tableName, String columnName, String ddl) {
+        Integer count = jdbcTemplate.queryForObject(
+                """
+                        SELECT COUNT(1)
+                        FROM information_schema.columns
+                        WHERE table_schema = DATABASE()
+                          AND table_name = ?
+                          AND column_name = ?
+                        """,
+                Integer.class,
+                tableName,
+                columnName
         );
         if (count == null || count == 0) {
             jdbcTemplate.execute(ddl);

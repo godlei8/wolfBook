@@ -1,5 +1,6 @@
 package com.wolfbook.backend.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -117,6 +118,8 @@ public final class AssistantDtos {
 
     public record AdminAiConfig(
             BaseSection base,
+            ProviderSection provider,
+            VolcengineSection volcengine,
             PromptSection prompt,
             RetrievalSection retrieval,
             SearchSection search,
@@ -125,17 +128,36 @@ public final class AssistantDtos {
     ) {
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record BaseSection(
             boolean enabled,
             String welcomeMessage,
             List<String> quickQuestions,
-            String chatModel,
-            String embeddingModel,
             Double temperature,
             Integer maxSuggestions
     ) {
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record ProviderSection(
+            String platform,
+            String model,
+            String baseUrl,
+            String apiKey
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record VolcengineSection(
+            String baseUrl,
+            String embeddingModel,
+            String embeddingApiKey,
+            String searchModel,
+            String searchApiKey
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record PromptSection(
             String systemPrompt,
             String recommendationPrompt,
@@ -143,6 +165,7 @@ public final class AssistantDtos {
     ) {
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record RetrievalSection(
             Integer topK,
             Double similarityThreshold,
@@ -150,19 +173,20 @@ public final class AssistantDtos {
     ) {
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record SearchSection(
-            boolean webSearchEnabled,
-            Integer timeoutSeconds,
-            String provider
+            boolean webSearchEnabled
     ) {
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record SafetySection(
             String unsupportedMessage,
             List<String> blockedKeywords
     ) {
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record UiSection(
             String mascot,
             String dockLabel,

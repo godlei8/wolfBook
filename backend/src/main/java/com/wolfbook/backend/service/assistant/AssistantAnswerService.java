@@ -14,11 +14,7 @@ import com.wolfbook.backend.service.UserService;
 import jakarta.annotation.PreDestroy;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
-import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.minimax.MiniMaxChatModel;
-import org.springframework.ai.minimax.MiniMaxChatOptions;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -46,11 +42,11 @@ public class AssistantAnswerService {
     private final AssistantConfigService assistantConfigService;
     private final AssistantConversationService assistantConversationService;
     private final AssistantKnowledgeService assistantKnowledgeService;
-    private final AssistantSearchService assistantSearchService;
+    private final DeepSeekChatService deepSeekChatService;
+    private final VolcengineWebSearchService volcengineWebSearchService;
     private final AssistantQueryLogMapper assistantQueryLogMapper;
     private final BoardService boardService;
     private final AssistantProperties assistantProperties;
-    private final ObjectProvider<MiniMaxChatModel> miniMaxChatModelProvider;
     private final ObjectMapper objectMapper;
     private final ExecutorService streamExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
@@ -59,22 +55,22 @@ public class AssistantAnswerService {
             AssistantConfigService assistantConfigService,
             AssistantConversationService assistantConversationService,
             AssistantKnowledgeService assistantKnowledgeService,
-            AssistantSearchService assistantSearchService,
+            DeepSeekChatService deepSeekChatService,
+            VolcengineWebSearchService volcengineWebSearchService,
             AssistantQueryLogMapper assistantQueryLogMapper,
             BoardService boardService,
             AssistantProperties assistantProperties,
-            ObjectProvider<MiniMaxChatModel> miniMaxChatModelProvider,
             ObjectMapper objectMapper
     ) {
         this.userService = userService;
         this.assistantConfigService = assistantConfigService;
         this.assistantConversationService = assistantConversationService;
         this.assistantKnowledgeService = assistantKnowledgeService;
-        this.assistantSearchService = assistantSearchService;
+        this.deepSeekChatService = deepSeekChatService;
+        this.volcengineWebSearchService = volcengineWebSearchService;
         this.assistantQueryLogMapper = assistantQueryLogMapper;
         this.boardService = boardService;
         this.assistantProperties = assistantProperties;
-        this.miniMaxChatModelProvider = miniMaxChatModelProvider;
         this.objectMapper = objectMapper;
     }
 
@@ -119,7 +115,7 @@ public class AssistantAnswerService {
     private PreparedAsk prepareAsk(String authorization, AssistantDtos.AssistantAskRequest request) {
         String traceId = UUID.randomUUID().toString().replace("-", "");
         String openid = userService.requireUser(authorization).openid();
-        AssistantDtos.AdminAiConfig config = assistantConfigService.getAdminConfig();
+        AssistantDtos.AdminAiConfig config = assistantConfigService.getRuntimeConfig();
         if (!config.base().enabled()) {
             throw new ApiException(4000, "Assistant is disabled");
         }
@@ -217,6 +213,8 @@ public class AssistantAnswerService {
 
         StreamedAnswer streamedAnswer = streamPromptAnswer(
                 buildBoardRecommendationPrompt(request.message(), boards, prepared.config()),
+                prepared.config().provider(),
+                prepared.config().base().temperature(),
                 fallbackAnswer,
                 emitter
         );
@@ -277,32 +275,26 @@ public class AssistantAnswerService {
             suggestedQuestions = nextQuestions(prepared.config().base().quickQuestions(), request.message());
             streamedAnswer = streamPromptAnswer(
                     buildKnowledgePrompt(prepared, request.message(), hits),
+                    prepared.config().provider(),
+                    prepared.config().base().temperature(),
                     fallbackKnowledgeAnswer(hits),
                     emitter
             );
-        } else if (prepared.config().search().webSearchEnabled() && assistantProperties.isWebSearchEnabled()) {
-            AssistantSearchService.SearchResult searchResult = assistantSearchService.searchWeb(
-                    request.message(),
-                    prepared.config().base().chatModel(),
-                    prepared.config().base().temperature()
-            );
-            if (searchResult.answer() == null || searchResult.answer().isBlank()) {
+        } else if (shouldUseWebSearch(prepared.config())) {
+            VolcengineWebSearchService.SearchResult searchResult = volcengineWebSearchService.search(request.message());
+            if (searchResult.hasAnswer()) {
+                citations = searchResult.citations();
+                suggestedQuestions = nextQuestions(prepared.config().base().quickQuestions(), request.message());
+                answerType = AssistantConstants.ANSWER_WEB;
+                usedWebSearch = true;
+                streamedAnswer = emitStaticAnswer(buildWebMarkdownAnswer(searchResult.answer(), citations), emitter, searchResult.failureType());
+            } else {
                 citations = List.of();
                 suggestedQuestions = prepared.config().base().quickQuestions().stream()
                         .limit(assistantProperties.getMaxSuggestions())
                         .toList();
                 answerType = AssistantConstants.ANSWER_REFUSAL;
-                streamedAnswer = emitStaticAnswer(buildRefusalMarkdown(prepared.config().prompt().refusalPrompt()), emitter);
-            } else {
-                usedWebSearch = true;
-                answerType = AssistantConstants.ANSWER_WEB;
-                citations = searchResult.citations();
-                suggestedQuestions = searchResult.suggestedQuestions().isEmpty()
-                        ? nextQuestions(prepared.config().base().quickQuestions(), request.message())
-                        : searchResult.suggestedQuestions().stream()
-                        .limit(assistantProperties.getMaxSuggestions())
-                        .toList();
-                streamedAnswer = emitStaticAnswer(buildWebMarkdownAnswer(searchResult.answer(), citations), emitter);
+                streamedAnswer = emitStaticAnswer(buildRefusalMarkdown(prepared.config().prompt().refusalPrompt()), emitter, searchResult.failureType());
             }
         } else {
             citations = List.of();
@@ -373,25 +365,16 @@ public class AssistantAnswerService {
                     .toList();
             answer = synthesizeKnowledgeMarkdown(prepared, request.message(), hits);
             suggestedQuestions = nextQuestions(prepared.config().base().quickQuestions(), request.message());
-        } else if (prepared.config().search().webSearchEnabled() && assistantProperties.isWebSearchEnabled()) {
-            AssistantSearchService.SearchResult searchResult = assistantSearchService.searchWeb(
-                    request.message(),
-                    prepared.config().base().chatModel(),
-                    prepared.config().base().temperature()
-            );
-            if (searchResult.answer() != null && !searchResult.answer().isBlank()) {
-                usedWebSearch = true;
-                answerType = AssistantConstants.ANSWER_WEB;
-                citations = searchResult.citations();
-                answer = buildWebMarkdownAnswer(searchResult.answer(), citations);
-                suggestedQuestions = searchResult.suggestedQuestions().isEmpty()
-                        ? nextQuestions(prepared.config().base().quickQuestions(), request.message())
-                        : searchResult.suggestedQuestions().stream()
-                        .limit(assistantProperties.getMaxSuggestions())
-                        .toList();
-            } else {
+        } else if (shouldUseWebSearch(prepared.config())) {
+            VolcengineWebSearchService.SearchResult searchResult = volcengineWebSearchService.search(request.message());
+            if (!searchResult.hasAnswer()) {
                 return refusal(prepared.session(), prepared.config(), prepared.traceId(), prepared.config().prompt().refusalPrompt());
             }
+            citations = searchResult.citations();
+            answerType = AssistantConstants.ANSWER_WEB;
+            usedWebSearch = true;
+            answer = buildWebMarkdownAnswer(searchResult.answer(), citations);
+            suggestedQuestions = nextQuestions(prepared.config().base().quickQuestions(), request.message());
         } else {
             return refusal(prepared.session(), prepared.config(), prepared.traceId(), prepared.config().prompt().refusalPrompt());
         }
@@ -567,112 +550,21 @@ public class AssistantAnswerService {
                     """;
         }
 
-        MiniMaxChatModel chatModel = miniMaxChatModelProvider.getIfAvailable();
-        if (chatModel == null) {
-            return fallbackBoardAnswer(boards);
-        }
-
-        StringBuilder context = new StringBuilder();
-        for (int index = 0; index < boards.size(); index++) {
-            AssistantDtos.RecommendedBoardCard board = boards.get(index);
-            context.append(index + 1)
-                    .append(". ")
-                    .append(board.name())
-                    .append(" | ")
-                    .append(board.playerCount())
-                    .append("人 | ")
-                    .append(board.difficulty())
-                    .append(" | 标签：")
-                    .append(board.tags() == null || board.tags().isEmpty() ? "无" : String.join("、", board.tags()))
-                    .append(" | 推荐理由：")
-                    .append(board.reason())
-                    .append('\n');
-        }
-
-        Prompt prompt = new Prompt(
-                List.of(
-                        new SystemMessage(config.prompt().recommendationPrompt() + """
-
-                                请使用简洁 Markdown 输出，要求：
-                                1. 先输出 `## 推荐结果`
-                                2. 每个板子用 `### 板名` 开头
-                                3. 每个板子下面只保留 2-3 条要点
-                                4. 不要编造站内不存在的规则或角色
-                                5. 不要把候选板子机械地原样抄一遍
-                                """),
-                        new UserMessage("""
-                                用户问题：
-                                %s
-
-                                候选板子：
-                                %s
-                                """.formatted(query, context))
-                ),
-                MiniMaxChatOptions.builder()
-                        .model(config.base().chatModel())
-                        .temperature(config.base().temperature())
-                        .build()
+        String content = deepSeekChatService.complete(
+                buildBoardRecommendationPrompt(query, boards, config),
+                config.provider(),
+                config.base().temperature()
         );
-
-        try {
-            ChatResponse response = chatModel.call(prompt);
-            String content = response.getResult().getOutput().getText();
-            return content == null || content.isBlank() ? fallbackBoardAnswer(boards) : normalizeMarkdown(content);
-        } catch (Exception exception) {
-            return fallbackBoardAnswer(boards);
-        }
+        return content == null || content.isBlank() ? fallbackBoardAnswer(boards) : normalizeMarkdown(content);
     }
 
     private String synthesizeKnowledgeMarkdown(PreparedAsk prepared, String query, List<AssistantKnowledgeService.KnowledgeHit> hits) {
-        MiniMaxChatModel chatModel = miniMaxChatModelProvider.getIfAvailable();
-        StringBuilder context = new StringBuilder();
-        for (AssistantKnowledgeService.KnowledgeHit hit : hits) {
-            context.append("来源：").append(hit.title()).append('\n')
-                    .append(hit.snippet()).append("\n\n");
-        }
-
-        if (chatModel == null) {
-            return fallbackKnowledgeAnswer(hits);
-        }
-
-        List<String> recentMessages = assistantConversationService.recentContextMessages(prepared.openid(), prepared.session().getSessionId());
-        String history = recentMessages.isEmpty() ? "无" : String.join("\n", recentMessages);
-
-        Prompt prompt = new Prompt(
-                List.of(
-                        new SystemMessage(prepared.config().prompt().systemPrompt() + """
-
-                                请使用简洁 Markdown 回答，并遵守：
-                                1. 优先输出 `## 结论`
-                                2. 如需拆解规则，再输出 `### 规则拆解`
-                                3. 如需给操作建议，再输出 `### 你可以怎么做`
-                                4. 只能依据给定资料，不要编造
-                                5. 句子尽量短，优先用项目符号
-                                """),
-                        new UserMessage("""
-                                当前问题：
-                                %s
-
-                                最近上下文：
-                                %s
-
-                                站内资料：
-                                %s
-                                """.formatted(query, history, context))
-                ),
-                MiniMaxChatOptions.builder()
-                        .model(prepared.config().base().chatModel())
-                        .temperature(prepared.config().base().temperature())
-                        .build()
+        String content = deepSeekChatService.complete(
+                buildKnowledgePrompt(prepared, query, hits),
+                prepared.config().provider(),
+                prepared.config().base().temperature()
         );
-
-        try {
-            ChatResponse response = chatModel.call(prompt);
-            String content = response.getResult().getOutput().getText();
-            return content == null || content.isBlank() ? fallbackKnowledgeAnswer(hits) : normalizeMarkdown(content);
-        } catch (Exception exception) {
-            return fallbackKnowledgeAnswer(hits);
-        }
+        return content == null || content.isBlank() ? fallbackKnowledgeAnswer(hits) : normalizeMarkdown(content);
     }
 
     private Prompt buildBoardRecommendationPrompt(
@@ -719,11 +611,7 @@ public class AssistantAnswerService {
                                 候选板子：
                                 %s
                                 """.formatted(query, context))
-                ),
-                MiniMaxChatOptions.builder()
-                        .model(config.base().chatModel())
-                        .temperature(config.base().temperature())
-                        .build()
+                )
         );
     }
 
@@ -762,48 +650,45 @@ public class AssistantAnswerService {
                                 站内资料：
                                 %s
                                 """.formatted(query, history, context))
-                ),
-                MiniMaxChatOptions.builder()
-                        .model(prepared.config().base().chatModel())
-                        .temperature(prepared.config().base().temperature())
-                        .build()
+                )
         );
     }
 
-    private StreamedAnswer streamPromptAnswer(Prompt prompt, String fallbackAnswer, SseEmitter emitter) throws IOException {
-        MiniMaxChatModel chatModel = miniMaxChatModelProvider.getIfAvailable();
-        if (prompt == null || chatModel == null) {
+    private StreamedAnswer streamPromptAnswer(
+            Prompt prompt,
+            AssistantDtos.ProviderSection provider,
+            Double temperature,
+            String fallbackAnswer,
+            SseEmitter emitter
+    ) throws IOException {
+        if (prompt == null) {
             return emitStaticAnswer(fallbackAnswer, emitter);
         }
 
-        StringBuilder answer = new StringBuilder();
-        String failureType = null;
-
-        try {
-            for (ChatResponse chunkResponse : chatModel.stream(prompt).toIterable()) {
-                String chunkText = extractResponseText(chunkResponse);
-                String delta = resolveStreamDelta(chunkText, answer.toString());
-                if (delta == null || delta.isBlank()) {
-                    continue;
+        DeepSeekChatService.StreamResult result = deepSeekChatService.stream(
+                prompt,
+                provider,
+                temperature,
+                delta -> {
+                    try {
+                        emit(emitter, "delta", new AssistantDtos.AssistantStreamDelta(delta));
+                    } catch (IOException exception) {
+                        throw new RuntimeException(exception);
+                    }
                 }
-                answer.append(delta);
-                emit(emitter, "delta", new AssistantDtos.AssistantStreamDelta(delta));
-            }
-        } catch (Exception exception) {
-            failureType = exception.getClass().getSimpleName();
-            if (answer.length() == 0) {
-                return emitStaticAnswer(fallbackAnswer, emitter, failureType);
-            }
+        );
+
+        if (result.answer() == null || result.answer().isBlank()) {
+            return emitStaticAnswer(fallbackAnswer, emitter, result.failureType());
+        }
+
+        if (result.failureType() != null) {
             String degradedTail = "\n\n> 当前回答在生成过程中中断，以下是已生成内容。";
-            answer.append(degradedTail);
             emit(emitter, "delta", new AssistantDtos.AssistantStreamDelta(degradedTail));
+            return new StreamedAnswer(normalizeMarkdown(result.answer() + degradedTail), result.failureType());
         }
 
-        if (answer.length() == 0) {
-            return emitStaticAnswer(fallbackAnswer, emitter, failureType);
-        }
-
-        return new StreamedAnswer(normalizeMarkdown(answer.toString()), failureType);
+        return new StreamedAnswer(normalizeMarkdown(result.answer()), null);
     }
 
     private StreamedAnswer emitStaticAnswer(String markdown, SseEmitter emitter) throws IOException {
@@ -816,24 +701,6 @@ public class AssistantAnswerService {
             emit(emitter, "delta", new AssistantDtos.AssistantStreamDelta(chunk));
         }
         return new StreamedAnswer(normalized, failureType);
-    }
-
-    private String extractResponseText(ChatResponse response) {
-        if (response == null || response.getResult() == null || response.getResult().getOutput() == null) {
-            return "";
-        }
-        String text = response.getResult().getOutput().getText();
-        return text == null ? "" : text;
-    }
-
-    private String resolveStreamDelta(String chunkText, String currentAnswer) {
-        if (chunkText == null || chunkText.isBlank()) {
-            return "";
-        }
-        if (currentAnswer != null && !currentAnswer.isEmpty() && chunkText.startsWith(currentAnswer)) {
-            return chunkText.substring(currentAnswer.length());
-        }
-        return chunkText;
     }
 
     private String fallbackBoardAnswer(List<AssistantDtos.RecommendedBoardCard> boards) {
@@ -900,6 +767,12 @@ public class AssistantAnswerService {
                 .filter(item -> !item.equalsIgnoreCase(currentQuestion))
                 .limit(assistantProperties.getMaxSuggestions())
                 .toList();
+    }
+
+    private boolean shouldUseWebSearch(AssistantDtos.AdminAiConfig config) {
+        return config.search().webSearchEnabled()
+                && assistantProperties.isWebSearchEnabled()
+                && volcengineWebSearchService.isAvailable();
     }
 
     private Integer parsePlayerCount(String query) {

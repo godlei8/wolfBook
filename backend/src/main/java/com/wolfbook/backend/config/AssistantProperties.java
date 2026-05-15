@@ -1,11 +1,18 @@
 package com.wolfbook.backend.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.util.StringUtils;
 
 @ConfigurationProperties(prefix = "wolfbook.assistant")
 public class AssistantProperties {
 
-    public static final String OLLAMA_DEFAULT_EMBEDDING_MODEL = "qwen3-embedding:0.6b";
+    public static final String DEEPSEEK_PLATFORM = "DEEPSEEK";
+    public static final String DEEPSEEK_DEFAULT_MODEL = "deepseek-v4-flash";
+    public static final String DEEPSEEK_DEFAULT_BASE_URL = "https://api.deepseek.com";
+    public static final String VOLCENGINE_DEFAULT_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
+    public static final String VOLCENGINE_DEFAULT_EMBEDDING_MODEL = "doubao-embedding-large-text-250515";
+    public static final String VOLCENGINE_DEFAULT_SEARCH_MODEL = "doubao-seed-1-6-thinking-250715";
+    public static final int VOLCENGINE_DEFAULT_EMBEDDING_DIMENSIONS = 2048;
 
     private boolean enabled = true;
     private int historyWindow = 12;
@@ -15,10 +22,8 @@ public class AssistantProperties {
     private double similarityThreshold = 0.45;
     private double temperature = 0.35;
     private boolean webSearchEnabled = true;
-    private int webSearchTimeoutSeconds = 12;
-    private String embeddingProvider = "ollama";
-    private final MiniMax miniMax = new MiniMax();
-    private final Ollama ollama = new Ollama();
+    private final DeepSeek deepSeek = new DeepSeek();
+    private final Volcengine volcengine = new Volcengine();
     private final PgVector pgVector = new PgVector();
 
     public boolean isEnabled() {
@@ -85,57 +90,22 @@ public class AssistantProperties {
         this.webSearchEnabled = webSearchEnabled;
     }
 
-    public int getWebSearchTimeoutSeconds() {
-        return webSearchTimeoutSeconds;
+    public DeepSeek getDeepSeek() {
+        return deepSeek;
     }
 
-    public void setWebSearchTimeoutSeconds(int webSearchTimeoutSeconds) {
-        this.webSearchTimeoutSeconds = webSearchTimeoutSeconds;
-    }
-
-    public String getEmbeddingProvider() {
-        return embeddingProvider;
-    }
-
-    public void setEmbeddingProvider(String embeddingProvider) {
-        this.embeddingProvider = embeddingProvider;
-    }
-
-    public MiniMax getMiniMax() {
-        return miniMax;
-    }
-
-    public Ollama getOllama() {
-        return ollama;
+    public Volcengine getVolcengine() {
+        return volcengine;
     }
 
     public PgVector getPgVector() {
         return pgVector;
     }
 
-    public String getDefaultEmbeddingModelLabel() {
-        if ("ollama".equalsIgnoreCase(embeddingProvider)) {
-            return ollama.getEmbeddingModel();
-        }
-        if ("minimax".equalsIgnoreCase(embeddingProvider)) {
-            return miniMax.getEmbeddingModel();
-        }
-        return ollama.getEmbeddingModel();
-    }
-
-    public static class MiniMax {
-        private String apiKey;
-        private String baseUrl = "https://api.minimax.chat";
-        private String chatModel = "MiniMax-M2.7";
-        private String embeddingModel = "embo-01";
-
-        public String getApiKey() {
-            return apiKey;
-        }
-
-        public void setApiKey(String apiKey) {
-            this.apiKey = apiKey;
-        }
+    public static class DeepSeek {
+        private String baseUrl = DEEPSEEK_DEFAULT_BASE_URL;
+        private String model = DEEPSEEK_DEFAULT_MODEL;
+        private String defaultApiKey = "";
 
         public String getBaseUrl() {
             return baseUrl;
@@ -145,26 +115,30 @@ public class AssistantProperties {
             this.baseUrl = baseUrl;
         }
 
-        public String getChatModel() {
-            return chatModel;
+        public String getModel() {
+            return model;
         }
 
-        public void setChatModel(String chatModel) {
-            this.chatModel = chatModel;
+        public void setModel(String model) {
+            this.model = model;
         }
 
-        public String getEmbeddingModel() {
-            return embeddingModel;
+        public String getDefaultApiKey() {
+            return defaultApiKey;
         }
 
-        public void setEmbeddingModel(String embeddingModel) {
-            this.embeddingModel = embeddingModel;
+        public void setDefaultApiKey(String defaultApiKey) {
+            this.defaultApiKey = defaultApiKey;
         }
     }
 
-    public static class Ollama {
-        private String baseUrl = "http://127.0.0.1:11434";
-        private String embeddingModel = OLLAMA_DEFAULT_EMBEDDING_MODEL;
+    public static class Volcengine {
+        private String baseUrl = VOLCENGINE_DEFAULT_BASE_URL;
+        private String embeddingModel = VOLCENGINE_DEFAULT_EMBEDDING_MODEL;
+        private int embeddingDimensions = VOLCENGINE_DEFAULT_EMBEDDING_DIMENSIONS;
+        private String embeddingApiKey = "";
+        private String searchModel = VOLCENGINE_DEFAULT_SEARCH_MODEL;
+        private String searchApiKey = "";
 
         public String getBaseUrl() {
             return baseUrl;
@@ -180,15 +154,56 @@ public class AssistantProperties {
 
         public void setEmbeddingModel(String embeddingModel) {
             this.embeddingModel = embeddingModel;
+        }
+
+        public int getEmbeddingDimensions() {
+            return embeddingDimensions;
+        }
+
+        public void setEmbeddingDimensions(int embeddingDimensions) {
+            this.embeddingDimensions = embeddingDimensions;
+        }
+
+        public String getEmbeddingApiKey() {
+            return embeddingApiKey;
+        }
+
+        public void setEmbeddingApiKey(String embeddingApiKey) {
+            this.embeddingApiKey = embeddingApiKey;
+        }
+
+        public String getSearchModel() {
+            return searchModel;
+        }
+
+        public void setSearchModel(String searchModel) {
+            this.searchModel = searchModel;
+        }
+
+        public String getSearchApiKey() {
+            return searchApiKey;
+        }
+
+        public void setSearchApiKey(String searchApiKey) {
+            this.searchApiKey = searchApiKey;
+        }
+
+        public boolean hasEmbeddingConfig() {
+            return StringUtils.hasText(embeddingApiKey) && StringUtils.hasText(embeddingModel);
+        }
+
+        public boolean hasSearchConfig() {
+            return StringUtils.hasText(searchApiKey) && StringUtils.hasText(searchModel);
         }
     }
 
     public static class PgVector {
-        private boolean enabled;
-        private String url;
-        private String username;
-        private String password;
+        private boolean enabled = false;
+        private String url = "";
+        private String username = "";
+        private String password = "";
         private String tableName = "assistant_vector_store";
+        private String schemaName = "public";
 
         public boolean isEnabled() {
             return enabled;
@@ -228,6 +243,14 @@ public class AssistantProperties {
 
         public void setTableName(String tableName) {
             this.tableName = tableName;
+        }
+
+        public String getSchemaName() {
+            return schemaName;
+        }
+
+        public void setSchemaName(String schemaName) {
+            this.schemaName = schemaName;
         }
     }
 }

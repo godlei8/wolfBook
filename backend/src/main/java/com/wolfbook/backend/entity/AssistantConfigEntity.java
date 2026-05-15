@@ -12,6 +12,8 @@ public class AssistantConfigEntity {
     @TableId(type = IdType.AUTO)
     private Integer id;
     private String baseConfig;
+    private String providerConfig;
+    private String volcengineConfig;
     private String promptConfig;
     private String retrievalConfig;
     private String searchConfig;
@@ -38,6 +40,22 @@ public class AssistantConfigEntity {
 
     public String getPromptConfig() {
         return promptConfig;
+    }
+
+    public String getProviderConfig() {
+        return providerConfig;
+    }
+
+    public void setProviderConfig(String providerConfig) {
+        this.providerConfig = providerConfig;
+    }
+
+    public String getVolcengineConfig() {
+        return volcengineConfig;
+    }
+
+    public void setVolcengineConfig(String volcengineConfig) {
+        this.volcengineConfig = volcengineConfig;
     }
 
     public void setPromptConfig(String promptConfig) {

@@ -1,11 +1,6 @@
 import { BASE_URL } from './config'
-import { request, uploadFile } from './request'
+import { createAuthHeader, request, uploadFile } from './request'
 import storage from './storage'
-
-function authHeader() {
-  const token = storage.getAuthToken()
-  return token ? { Authorization: `Bearer ${token}` } : {}
-}
 
 function withBaseUrl(url) {
   if (!url) return url
@@ -114,45 +109,45 @@ function normalizePost(post) {
 
 export default {
   async getBoards(params = {}) {
-    const data = await request({ url: '/api/boards', data: params, header: authHeader() })
+    const data = await request({ url: '/api/boards', data: params, header: createAuthHeader() })
     return {
       ...data,
       list: (data.list || []).map(normalizeBoard),
     }
   },
   async getBoardDetail(id) {
-    return normalizeBoard(await request({ url: `/api/boards/${id}`, header: authHeader() }))
+    return normalizeBoard(await request({ url: `/api/boards/${id}`, header: createAuthHeader() }))
   },
   async getRoles(camp = '') {
-    return (await request({ url: '/api/roles', data: { camp }, header: authHeader() })).map(normalizeRole)
+    return (await request({ url: '/api/roles', data: { camp }, header: createAuthHeader() })).map(normalizeRole)
   },
   async getRoleDetail(id) {
-    return normalizeRole(await request({ url: `/api/roles/${id}`, header: authHeader() }))
+    return normalizeRole(await request({ url: `/api/roles/${id}`, header: createAuthHeader() }))
   },
   async getPosts(page = 1, size = 20) {
-    const data = await request({ url: '/api/posts', data: { page, size }, header: authHeader() })
+    const data = await request({ url: '/api/posts', data: { page, size }, header: createAuthHeader() })
     return {
       ...data,
       list: (data.list || []).map(normalizePost),
     }
   },
   async getPostDetail(id) {
-    return normalizePost(await request({ url: `/api/posts/${id}`, header: authHeader() }))
+    return normalizePost(await request({ url: `/api/posts/${id}`, header: createAuthHeader() }))
   },
   async createPost(payload) {
-    return request({ url: '/api/posts', method: 'POST', data: payload, header: authHeader() })
+    return request({ url: '/api/posts', method: 'POST', data: payload, header: createAuthHeader() })
   },
   async togglePostLike(id) {
-    return request({ url: `/api/posts/${id}/like`, method: 'POST', header: authHeader() })
+    return request({ url: `/api/posts/${id}/like`, method: 'POST', header: createAuthHeader() })
   },
   async createComment(payload) {
-    return request({ url: '/api/comments', method: 'POST', data: payload, header: authHeader() })
+    return request({ url: '/api/comments', method: 'POST', data: payload, header: createAuthHeader() })
   },
   async toggleCommentLike(id) {
-    return request({ url: `/api/comments/${id}/like`, method: 'POST', header: authHeader() })
+    return request({ url: `/api/comments/${id}/like`, method: 'POST', header: createAuthHeader() })
   },
   async createReport(payload) {
-    return request({ url: '/api/reports', method: 'POST', data: payload, header: authHeader() })
+    return request({ url: '/api/reports', method: 'POST', data: payload, header: createAuthHeader() })
   },
   async login(code) {
     const result = await request({ url: '/api/login', method: 'POST', data: { code } })
@@ -162,37 +157,37 @@ export default {
     }
   },
   async getUserInfo() {
-    return normalizeUser(await request({ url: '/api/user/info', header: authHeader() }))
+    return normalizeUser(await request({ url: '/api/user/info', header: createAuthHeader() }))
   },
   async updateUserInfo(payload) {
-    return normalizeUser(await request({ url: '/api/user/info', method: 'PUT', data: payload, header: authHeader() }))
+    return normalizeUser(await request({ url: '/api/user/info', method: 'PUT', data: payload, header: createAuthHeader() }))
   },
   async getFavoriteBoards() {
-    const data = await request({ url: '/api/user/favorites', header: authHeader() })
+    const data = await request({ url: '/api/user/favorites', header: createAuthHeader() })
     return {
       boardIds: data.boardIds || [],
       boards: (data.boards || []).map(normalizeBoard),
     }
   },
   async addFavoriteBoard(boardId) {
-    const data = await request({ url: `/api/user/favorites/${boardId}`, method: 'POST', header: authHeader() })
+    const data = await request({ url: `/api/user/favorites/${boardId}`, method: 'POST', header: createAuthHeader() })
     return {
       boardIds: data.boardIds || [],
       boards: (data.boards || []).map(normalizeBoard),
     }
   },
   async removeFavoriteBoard(boardId) {
-    const data = await request({ url: `/api/user/favorites/${boardId}`, method: 'DELETE', header: authHeader() })
+    const data = await request({ url: `/api/user/favorites/${boardId}`, method: 'DELETE', header: createAuthHeader() })
     return {
       boardIds: data.boardIds || [],
       boards: (data.boards || []).map(normalizeBoard),
     }
   },
   async getUserSessions() {
-    return (await request({ url: '/api/user/sessions', header: authHeader() })).map(normalizeNoteSession)
+    return (await request({ url: '/api/user/sessions', header: createAuthHeader() })).map(normalizeNoteSession)
   },
   async getUserSessionDetail(sessionId) {
-    return normalizeNoteSession(await request({ url: `/api/user/sessions/${sessionId}`, header: authHeader() }))
+    return normalizeNoteSession(await request({ url: `/api/user/sessions/${sessionId}`, header: createAuthHeader() }))
   },
   async saveUserSession(session) {
     return normalizeNoteSession(
@@ -200,12 +195,12 @@ export default {
         url: `/api/user/sessions/${session.sessionId}`,
         method: 'PUT',
         data: session,
-        header: authHeader(),
+        header: createAuthHeader(),
       }),
     )
   },
   async deleteUserSession(sessionId) {
-    return request({ url: `/api/user/sessions/${sessionId}`, method: 'DELETE', header: authHeader() })
+    return request({ url: `/api/user/sessions/${sessionId}`, method: 'DELETE', header: createAuthHeader() })
   },
   async uploadImage(filePath) {
     const result = await uploadFile(filePath, storage.getAuthToken())

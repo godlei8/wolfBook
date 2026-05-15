@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus'
 import type { UploadRequestOptions } from 'element-plus'
 import { api } from '../services/api'
 import type { Board, Role } from '../types'
+import { clampPage, paginate } from '../utils/pagination'
 
 const emit = defineEmits<{ changed: [] }>()
 
@@ -101,14 +102,18 @@ const filteredBoards = computed(() => {
   })
 })
 
-const pagedBoards = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  return filteredBoards.value.slice(start, start + pageSize.value)
-})
+const pagedBoards = computed(() => paginate(filteredBoards.value, currentPage.value, pageSize.value))
 
 watch([keyword, difficultyFilter, playerCountFilter, pageSize], () => {
   currentPage.value = 1
 })
+
+watch(
+  () => filteredBoards.value.length,
+  (total) => {
+    currentPage.value = clampPage(currentPage.value, pageSize.value, total)
+  },
+)
 
 function normalizeBoard(board?: Board): Board {
   if (!board) {
@@ -161,9 +166,6 @@ async function load() {
     const [boardData, roleData] = await Promise.all([api.getBoards(), api.getRoles()])
     boards.value = boardData
     roles.value = roleData
-    if ((currentPage.value - 1) * pageSize.value >= filteredBoards.value.length) {
-      currentPage.value = 1
-    }
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '板子数据加载失败')
   } finally {

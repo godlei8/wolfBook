@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../services/api'
 import type { CommentView, PostSummary, ReportItem } from '../types'
+import { clampPage, paginate } from '../utils/pagination'
 
 const emit = defineEmits<{ changed: [] }>()
 
@@ -58,20 +59,9 @@ const filteredReports = computed(() =>
   }),
 )
 
-const pagedPosts = computed(() => {
-  const start = (postPage.value - 1) * postPageSize.value
-  return filteredPosts.value.slice(start, start + postPageSize.value)
-})
-
-const pagedComments = computed(() => {
-  const start = (commentPage.value - 1) * commentPageSize.value
-  return filteredComments.value.slice(start, start + commentPageSize.value)
-})
-
-const pagedReports = computed(() => {
-  const start = (reportPage.value - 1) * reportPageSize.value
-  return filteredReports.value.slice(start, start + reportPageSize.value)
-})
+const pagedPosts = computed(() => paginate(filteredPosts.value, postPage.value, postPageSize.value))
+const pagedComments = computed(() => paginate(filteredComments.value, commentPage.value, commentPageSize.value))
+const pagedReports = computed(() => paginate(filteredReports.value, reportPage.value, reportPageSize.value))
 
 watch([postKeyword, postStatusFilter, postPageSize], () => {
   postPage.value = 1
@@ -84,6 +74,27 @@ watch([commentKeyword, commentPageSize], () => {
 watch([reportKeyword, reportStatusFilter, reportPageSize], () => {
   reportPage.value = 1
 })
+
+watch(
+  () => filteredPosts.value.length,
+  (total) => {
+    postPage.value = clampPage(postPage.value, postPageSize.value, total)
+  },
+)
+
+watch(
+  () => filteredComments.value.length,
+  (total) => {
+    commentPage.value = clampPage(commentPage.value, commentPageSize.value, total)
+  },
+)
+
+watch(
+  () => filteredReports.value.length,
+  (total) => {
+    reportPage.value = clampPage(reportPage.value, reportPageSize.value, total)
+  },
+)
 
 function resetPostFilters() {
   postKeyword.value = ''

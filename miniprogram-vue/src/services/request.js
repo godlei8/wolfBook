@@ -1,6 +1,15 @@
 import { BASE_URL } from './config'
 import storage from './storage'
 
+export function clearAuthState() {
+  storage.clearAuthToken()
+  storage.setUserProfile(null)
+}
+
+export function createAuthHeader(token = storage.getAuthToken()) {
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
 function unwrap(response, options = {}) {
   if (response.statusCode !== 200) {
     throw new Error(`Request failed: ${response.statusCode}`)
@@ -8,8 +17,7 @@ function unwrap(response, options = {}) {
   const payload = response.data
   if (!payload || payload.code !== 0) {
     if (payload?.code === 4001 && options.hasAuthorization) {
-      storage.clearAuthToken()
-      storage.setUserProfile(null)
+      clearAuthState()
     }
     throw new Error(payload?.msg || 'Request failed')
   }
@@ -42,7 +50,7 @@ export function uploadFile(filePath, token) {
       url: `${BASE_URL}/api/upload`,
       filePath,
       name: 'file',
-      header: token ? { Authorization: `Bearer ${token}` } : {},
+      header: createAuthHeader(token),
       success: (response) => {
         try {
           resolve(
