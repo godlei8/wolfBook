@@ -16,12 +16,9 @@ public final class AssistantDtos {
 
     public record AssistantBootstrapResponse(
             boolean enabled,
-            String welcomeMessage,
             List<String> quickQuestions,
-            String latestSessionId,
-            Appearance appearance,
-            FeatureFlags featureFlags
-    ) {
+            String latestSessionId
+        ) {
     }
 
     public record Appearance(String mascot, String accentColor, String dockLabel) {
@@ -45,10 +42,6 @@ public final class AssistantDtos {
             String answer,
             String contentFormat,
             String answerType,
-            List<AssistantCitation> citations,
-            List<RecommendedBoardCard> recommendedBoards,
-            List<String> suggestedQuestions,
-            boolean usedWebSearch,
             String traceId
     ) {
     }
@@ -107,10 +100,6 @@ public final class AssistantDtos {
             String content,
             String contentFormat,
             String answerType,
-            List<AssistantCitation> citations,
-            List<RecommendedBoardCard> recommendedBoards,
-            List<String> suggestedQuestions,
-            boolean usedWebSearch,
             String traceId,
             LocalDateTime createTime
     ) {

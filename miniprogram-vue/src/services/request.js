@@ -32,6 +32,7 @@ export function request({ url, method = 'GET', data, header = {} }) {
       method,
       data,
       header,
+      timeout: 10000,
       success: (response) => {
         try {
           resolve(unwrap(response, { hasAuthorization }))
@@ -51,6 +52,7 @@ export function uploadFile(filePath, token) {
       filePath,
       name: 'file',
       header: createAuthHeader(token),
+      timeout: 20000,
       success: (response) => {
         try {
           resolve(

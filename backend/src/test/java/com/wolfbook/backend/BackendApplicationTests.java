@@ -12,6 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
@@ -37,6 +38,9 @@ class BackendApplicationTests {
 
     @Autowired
     private AssistantConfigService assistantConfigService;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Test
     void boardsEndpointShouldReturnPagedPayload() throws Exception {
@@ -66,7 +70,10 @@ class BackendApplicationTests {
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.enabled").value(true))
                 .andExpect(jsonPath("$.data.quickQuestions").isArray())
-                .andExpect(jsonPath("$.data.featureFlags.historyEnabled").value(true));
+                .andExpect(jsonPath("$.data.latestSessionId").doesNotExist())
+                .andExpect(jsonPath("$.data.welcomeMessage").doesNotExist())
+                .andExpect(jsonPath("$.data.appearance").doesNotExist())
+                .andExpect(jsonPath("$.data.featureFlags").doesNotExist());
 
         String askBody = """
                 {
@@ -87,6 +94,10 @@ class BackendApplicationTests {
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.sessionId").isNotEmpty())
                 .andExpect(jsonPath("$.data.answerType").isNotEmpty())
+                .andExpect(jsonPath("$.data.citations").doesNotExist())
+                .andExpect(jsonPath("$.data.recommendedBoards").doesNotExist())
+                .andExpect(jsonPath("$.data.suggestedQuestions").doesNotExist())
+                .andExpect(jsonPath("$.data.usedWebSearch").doesNotExist())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
@@ -117,7 +128,11 @@ class BackendApplicationTests {
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data[0].role").value("USER"))
                 .andExpect(jsonPath("$.data[1].role").value("ASSISTANT"))
-                .andExpect(jsonPath("$.data[1].answerType").isNotEmpty());
+                .andExpect(jsonPath("$.data[1].answerType").isNotEmpty())
+                .andExpect(jsonPath("$.data[1].citations").doesNotExist())
+                .andExpect(jsonPath("$.data[1].recommendedBoards").doesNotExist())
+                .andExpect(jsonPath("$.data[1].suggestedQuestions").doesNotExist())
+                .andExpect(jsonPath("$.data[1].usedWebSearch").doesNotExist());
 
         mockMvc.perform(post("/api/assistant/sessions/{id}/reset", sessionId).header("Authorization", authorization))
                 .andExpect(status().isOk())
@@ -355,7 +370,8 @@ class BackendApplicationTests {
         mockMvc.perform(get("/api/assistant/bootstrap").header("Authorization", "Bearer " + userToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.featureFlags.webSearchEnabled").value(true));
+                .andExpect(jsonPath("$.data.quickQuestions[0]").value("can witch save herself?"))
+                .andExpect(jsonPath("$.data.featureFlags").doesNotExist());
     }
 
     @Test
@@ -382,6 +398,17 @@ class BackendApplicationTests {
                 .andExpect(jsonPath("$.data.boardIds").isEmpty())
                 .andExpect(jsonPath("$.data.boards").isArray())
                 .andExpect(jsonPath("$.data.boards").isEmpty());
+    }
+
+    @Test
+    void adminCommentsEndpointShouldSupportStringStatusValues() throws Exception {
+        String adminToken = loginAndGetAdminToken();
+        jdbcTemplate.update("UPDATE comments SET status = ?", "VISIBLE");
+
+        mockMvc.perform(get("/admin/comments").header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.list[0].status").value("VISIBLE"));
     }
 
     private String loginAndGetToken() throws Exception {

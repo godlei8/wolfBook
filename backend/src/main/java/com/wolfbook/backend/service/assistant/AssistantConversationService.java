@@ -210,10 +210,6 @@ public class AssistantConversationService {
                 entity.getContent(),
                 "ASSISTANT".equals(entity.getRole()) ? AssistantConstants.CONTENT_MARKDOWN : AssistantConstants.CONTENT_PLAIN,
                 entity.getAnswerType(),
-                readList(entity.getCitations(), CITATION_LIST),
-                readList(entity.getRecommendedBoards(), BOARD_LIST),
-                readList(entity.getSuggestedQuestions(), STRING_LIST),
-                entity.getUsedWebSearch() != null && entity.getUsedWebSearch() == 1,
                 entity.getTraceId(),
                 entity.getCreateTime()
         );

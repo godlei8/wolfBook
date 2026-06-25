@@ -220,14 +220,14 @@ public class DatabaseSeeder {
         postMapper.insert(post);
     }
 
-    private void saveComment(int id, int postId, String openid, String content, int likeCount, int status, LocalDateTime createTime) {
+    private void saveComment(int id, int postId, String openid, String content, int likeCount, Object status, LocalDateTime createTime) {
         CommentEntity comment = new CommentEntity();
         comment.setId(id);
         comment.setPostId(postId);
         comment.setOpenid(openid);
         comment.setContent(content);
         comment.setLikeCount(likeCount);
-        comment.setStatus(status);
+        comment.setStatus(status == null ? null : String.valueOf(status));
         comment.setCreateTime(createTime);
         commentMapper.insert(comment);
     }

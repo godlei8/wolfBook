@@ -76,9 +76,9 @@ public class CommunityService {
         List<WolfbookDtos.CommentView> comments = commentMapper.selectList(
                         new LambdaQueryWrapper<CommentEntity>()
                                 .eq(CommentEntity::getPostId, id)
-                                .eq(CommentEntity::getStatus, 1)
                 ).stream()
                 .map(converter::toComment)
+                .filter(comment -> isVisibleComment(comment.status()))
                 .sorted(Comparator.comparing(Comment::likeCount).reversed().thenComparing(Comment::createTime).reversed())
                 .map(comment -> toCommentView(comment, currentUser))
                 .toList();
@@ -137,7 +137,7 @@ public class CommunityService {
         entity.setOpenid(openid);
         entity.setContent(request.content());
         entity.setLikeCount(0);
-        entity.setStatus(1);
+        entity.setStatus(CommentEntity.STATUS_VISIBLE);
         entity.setCreateTime(LocalDateTime.now());
         commentMapper.insert(entity);
 
@@ -235,6 +235,13 @@ public class CommunityService {
                 .map(comment -> toCommentView(comment, null))
                 .toList();
         return page(list, page, size);
+    }
+
+    private boolean isVisibleComment(String status) {
+        if (status == null || status.isBlank()) {
+            return true;
+        }
+        return CommentEntity.STATUS_VISIBLE.equalsIgnoreCase(status) || "1".equals(status);
     }
 
     public PageResponse<WolfbookDtos.PostSummaryView> listAllPosts(int page, int size) {

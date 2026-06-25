@@ -110,19 +110,8 @@ public class AssistantConfigService {
         );
         return new AssistantDtos.AssistantBootstrapResponse(
                 config.base().enabled(),
-                config.base().welcomeMessage(),
                 config.base().quickQuestions(),
-                latestSession == null ? null : latestSession.getSessionId(),
-                new AssistantDtos.Appearance(
-                        config.ui().mascot(),
-                        config.ui().accentColor(),
-                        config.ui().dockLabel()
-                ),
-                new AssistantDtos.FeatureFlags(
-                        config.search().webSearchEnabled() && assistantProperties.isWebSearchEnabled(),
-                        true,
-                        true
-                )
+                latestSession == null ? null : latestSession.getSessionId()
         );
     }
 

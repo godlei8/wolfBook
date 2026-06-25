@@ -7,7 +7,8 @@ const CODE_BLOCK_STYLE = 'margin:0 0 18rpx 0;padding:18rpx;border-radius:18rpx;b
 const INLINE_CODE_STYLE = 'display:inline-block;padding:2rpx 10rpx;border-radius:10rpx;background:rgba(255,192,0,0.1);color:#ffd86b;font-size:24rpx;'
 const LINK_STYLE = 'color:#ffd86b;text-decoration:underline;'
 const STRONG_STYLE = 'font-weight:700;color:#fff9eb;'
-const CURSOR_HTML = '<span style="display:inline-block;margin-left:8rpx;color:#ffd86b;font-weight:700;">▍</span>'
+const CURSOR_HTML = '<span style="display:inline-block;margin-left:8rpx;color:#ffd86b;font-weight:700;">|</span>'
+const DEFAULT_SEGMENT_CHAR_LIMIT = 520
 
 function escapeHtml(value = '') {
   return String(value)
@@ -44,12 +45,7 @@ function codeBlockToHtml(lines) {
   return `<pre style="${CODE_BLOCK_STYLE}"><code>${escapeHtml(lines.join('\n'))}</code></pre>`
 }
 
-export function plainTextToRichText(text = '') {
-  const escaped = escapeHtml(text).replace(/\n/g, '<br/>')
-  return `<p style="${BODY_STYLE}">${escaped || '&nbsp;'}</p>`
-}
-
-export function markdownToRichText(markdown = '', options = {}) {
+function markdownToHtmlBlocks(markdown = '', options = {}) {
   const source = String(markdown || '').replace(/\r\n/g, '\n')
   const lines = source.split('\n')
   const blocks = []
@@ -146,9 +142,9 @@ export function markdownToRichText(markdown = '', options = {}) {
       paragraphLines.push(currentTrimmed)
       index += 1
     }
+
     if (paragraphLines.length) {
       blocks.push(paragraphToHtml(paragraphLines))
-      continue
     }
   }
 
@@ -161,5 +157,39 @@ export function markdownToRichText(markdown = '', options = {}) {
     blocks[lastIndex] = blocks[lastIndex].replace(/<\/(p|blockquote|pre)>$/, `${CURSOR_HTML}</$1>`)
   }
 
-  return blocks.join('')
+  return blocks
+}
+
+export function plainTextToRichText(text = '') {
+  const escaped = escapeHtml(text).replace(/\n/g, '<br/>')
+  return `<p style="${BODY_STYLE}">${escaped || '&nbsp;'}</p>`
+}
+
+export function markdownToRichTextSegments(markdown = '', options = {}) {
+  const blocks = markdownToHtmlBlocks(markdown, options)
+  if (!blocks.length) {
+    return []
+  }
+
+  const segmentCharLimit = Number(options.segmentCharLimit || DEFAULT_SEGMENT_CHAR_LIMIT)
+  const segments = []
+  let currentSegment = ''
+
+  blocks.forEach((block) => {
+    if (currentSegment && currentSegment.length + block.length > segmentCharLimit) {
+      segments.push(currentSegment)
+      currentSegment = ''
+    }
+    currentSegment += block
+  })
+
+  if (currentSegment) {
+    segments.push(currentSegment)
+  }
+
+  return segments
+}
+
+export function markdownToRichText(markdown = '', options = {}) {
+  return markdownToHtmlBlocks(markdown, options).join('')
 }

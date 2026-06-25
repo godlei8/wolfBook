@@ -97,7 +97,7 @@ export interface CommentView {
   content: string
   likeCount: number
   liked: boolean
-  status: number
+  status: string
   createTime: string
 }
 

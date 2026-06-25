@@ -8,6 +8,7 @@ import com.wolfbook.backend.mapper.UserMapper;
 import com.wolfbook.backend.support.AuthProvider;
 import com.wolfbook.backend.support.DomainConverter;
 import com.wolfbook.backend.support.TokenService;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -38,7 +39,11 @@ public class UserService {
             user.setAvatar(resolveAvatar(authUser, null));
             user.setStatus(1);
             user.setCreateTime(LocalDateTime.now());
-            userMapper.insert(user);
+            try {
+                userMapper.insert(user);
+            } catch (DuplicateKeyException exception) {
+                user = getRequiredUserEntity(authUser.openid());
+            }
         } else {
             if (StringUtils.hasText(authUser.nickname()) && !authUser.nickname().equals(user.getNickname())) {
                 user.setNickname(authUser.nickname());

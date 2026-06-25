@@ -95,7 +95,7 @@ CREATE TABLE comments (
   openid VARCHAR(100) NOT NULL,
   content VARCHAR(200) NOT NULL,
   like_count INT DEFAULT 0,
-  status TINYINT DEFAULT 1,
+  status VARCHAR(20) DEFAULT 'VISIBLE',
   create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

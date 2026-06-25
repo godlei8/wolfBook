@@ -255,7 +255,7 @@ public final class WolfbookDtos {
             String content,
             Integer likeCount,
             boolean liked,
-            Integer status,
+            String status,
             LocalDateTime createTime
     ) {
     }

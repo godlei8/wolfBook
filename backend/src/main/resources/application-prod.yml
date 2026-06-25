@@ -25,6 +25,7 @@ wolfbook:
       app-id: ${WECHAT_MINI_APP_ID}
       app-secret: ${WECHAT_MINI_APP_SECRET}
       code2-session-url: ${WECHAT_CODE2SESSION_URL:https://api.weixin.qq.com/sns/jscode2session}
+      mock-login-enabled: ${WECHAT_MOCK_LOGIN_ENABLED:false}
   upload:
     provider: cos
     cos:

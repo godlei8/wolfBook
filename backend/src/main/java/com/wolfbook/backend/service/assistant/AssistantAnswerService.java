@@ -235,7 +235,7 @@ public class AssistantAnswerService {
     }
 
     private StreamExecution streamUnsupported(PreparedAsk prepared, SseEmitter emitter) throws IOException {
-        String markdown = buildRefusalMarkdown(prepared.config().safety().unsupportedMessage());
+        String markdown = buildMinimalRefusalMarkdown(prepared.config().safety().unsupportedMessage());
         List<String> suggestedQuestions = prepared.config().base().quickQuestions().stream()
                 .limit(assistantProperties.getMaxSuggestions())
                 .toList();
@@ -287,14 +287,14 @@ public class AssistantAnswerService {
                 suggestedQuestions = nextQuestions(prepared.config().base().quickQuestions(), request.message());
                 answerType = AssistantConstants.ANSWER_WEB;
                 usedWebSearch = true;
-                streamedAnswer = emitStaticAnswer(buildWebMarkdownAnswer(searchResult.answer(), citations), emitter, searchResult.failureType());
+                streamedAnswer = emitStaticAnswer(buildMinimalWebMarkdownAnswer(searchResult.answer()), emitter, searchResult.failureType());
             } else {
                 citations = List.of();
                 suggestedQuestions = prepared.config().base().quickQuestions().stream()
                         .limit(assistantProperties.getMaxSuggestions())
                         .toList();
                 answerType = AssistantConstants.ANSWER_REFUSAL;
-                streamedAnswer = emitStaticAnswer(buildRefusalMarkdown(prepared.config().prompt().refusalPrompt()), emitter, searchResult.failureType());
+                streamedAnswer = emitStaticAnswer(buildMinimalRefusalMarkdown(prepared.config().prompt().refusalPrompt()), emitter, searchResult.failureType());
             }
         } else {
             citations = List.of();
@@ -302,7 +302,7 @@ public class AssistantAnswerService {
                     .limit(assistantProperties.getMaxSuggestions())
                     .toList();
             answerType = AssistantConstants.ANSWER_REFUSAL;
-            streamedAnswer = emitStaticAnswer(buildRefusalMarkdown(prepared.config().prompt().refusalPrompt()), emitter);
+            streamedAnswer = emitStaticAnswer(buildMinimalRefusalMarkdown(prepared.config().prompt().refusalPrompt()), emitter);
         }
 
         return new StreamExecution(
@@ -341,10 +341,6 @@ public class AssistantAnswerService {
                 answer,
                 AssistantConstants.CONTENT_MARKDOWN,
                 AssistantConstants.ANSWER_STRUCTURED,
-                citations,
-                boards,
-                suggestedQuestions,
-                false,
                 prepared.traceId()
         );
     }
@@ -373,7 +369,7 @@ public class AssistantAnswerService {
             citations = searchResult.citations();
             answerType = AssistantConstants.ANSWER_WEB;
             usedWebSearch = true;
-            answer = buildWebMarkdownAnswer(searchResult.answer(), citations);
+            answer = buildMinimalWebMarkdownAnswer(searchResult.answer());
             suggestedQuestions = nextQuestions(prepared.config().base().quickQuestions(), request.message());
         } else {
             return refusal(prepared.session(), prepared.config(), prepared.traceId(), prepared.config().prompt().refusalPrompt());
@@ -395,10 +391,6 @@ public class AssistantAnswerService {
                 answer,
                 AssistantConstants.CONTENT_MARKDOWN,
                 answerType,
-                citations,
-                boards,
-                suggestedQuestions,
-                usedWebSearch,
                 prepared.traceId()
         );
     }
@@ -409,7 +401,7 @@ public class AssistantAnswerService {
             String traceId,
             String message
     ) {
-        String markdown = buildRefusalMarkdown(message);
+        String markdown = buildMinimalRefusalMarkdown(message);
         List<String> suggestedQuestions = config.base().quickQuestions().stream()
                 .limit(assistantProperties.getMaxSuggestions())
                 .toList();
@@ -429,10 +421,6 @@ public class AssistantAnswerService {
                 markdown,
                 AssistantConstants.CONTENT_MARKDOWN,
                 AssistantConstants.ANSWER_REFUSAL,
-                List.of(),
-                List.of(),
-                suggestedQuestions,
-                false,
                 traceId
         );
     }
@@ -463,10 +451,6 @@ public class AssistantAnswerService {
                 answer,
                 AssistantConstants.CONTENT_MARKDOWN,
                 answerType,
-                citations,
-                boards,
-                suggestedQuestions,
-                usedWebSearch,
                 traceId
         );
     }
@@ -762,6 +746,21 @@ public class AssistantAnswerService {
                 """.formatted(body).trim();
     }
 
+    private String buildMinimalWebMarkdownAnswer(String answer) {
+        return normalizeMarkdown(answer);
+    }
+
+    private String buildMinimalRefusalMarkdown(String message) {
+        String body = (message == null || message.isBlank())
+                ? "褰撳墠闂瓒呭嚭浜嗙嫾浜烘潃鐭ヨ瘑鍔╂墜鐨勮兘鍔涜竟鐣屻€?"
+                : message.trim();
+        return """
+                ## 褰撳墠杩欓鎴戝厛涓嶄贡绛?
+
+                %s
+                """.formatted(body).trim();
+    }
+
     private List<String> nextQuestions(List<String> quickQuestions, String currentQuestion) {
         return quickQuestions.stream()
                 .filter(item -> !item.equalsIgnoreCase(currentQuestion))
@@ -867,8 +866,8 @@ public class AssistantAnswerService {
         entity.setSessionId(sessionId);
         entity.setUserMessage(userMessage);
         entity.setAnswerType(response.answerType());
-        entity.setHitSources(write(response.citations().stream().map(citation -> citation.sourceType() + ":" + citation.title()).toList()));
-        entity.setUsedWebSearch(response.usedWebSearch() ? 1 : 0);
+        entity.setHitSources("[]");
+        entity.setUsedWebSearch(AssistantConstants.ANSWER_WEB.equals(response.answerType()) ? 1 : 0);
         entity.setLatencyMs(latencyMs);
         entity.setSuccess(failureType == null ? 1 : 0);
         entity.setFailureType(failureType);
