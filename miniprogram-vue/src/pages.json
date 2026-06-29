@@ -25,6 +25,24 @@
       }
     },
     {
+      "path": "pages/judge/index",
+      "style": {
+        "navigationBarTitleText": "电子法官"
+      }
+    },
+    {
+      "path": "pages/judge/create",
+      "style": {
+        "navigationBarTitleText": "创建法官房间"
+      }
+    },
+    {
+      "path": "pages/judge/room",
+      "style": {
+        "navigationBarTitleText": "法官房间"
+      }
+    },
+    {
       "path": "pages/boards/detail",
       "style": {
         "navigationBarTitleText": "板子详情"
@@ -108,6 +126,12 @@
         "text": "社区",
         "iconPath": "static/tabbar/community-inactive.png",
         "selectedIconPath": "static/tabbar/community-active.png"
+      },
+      {
+        "pagePath": "pages/judge/index",
+        "text": "法官",
+        "iconPath": "static/tabbar/judge-inactive.png",
+        "selectedIconPath": "static/tabbar/judge-active.png"
       },
       {
         "pagePath": "pages/sessions/index",

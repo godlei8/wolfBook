@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 public final class WolfbookDtos {
 
@@ -182,7 +183,8 @@ public final class WolfbookDtos {
             List<FaqInput> faqs,
             String winCondition,
             String ruleType,
-            List<BoardRoleView> roles
+            List<BoardRoleView> roles,
+            String judgeSupportLevel
     ) {
     }
 
@@ -288,6 +290,147 @@ public final class WolfbookDtos {
             long postCount,
             long commentCount,
             long openReportCount
+    ) {
+    }
+
+    public record JudgeRoomCreateRequest(
+            @NotNull(message = "boardId is required") Integer boardId,
+            @NotBlank(message = "judgeMode is required") String judgeMode
+    ) {
+    }
+
+    public record JudgeRoomAdvanceRequest(
+            @NotBlank(message = "action is required") String action,
+            List<Integer> deadSeatNos,
+            Integer eliminatedSeatNo,
+            String winnerCamp,
+            @Size(max = 500, message = "announcement is too long") String announcement
+    ) {
+    }
+
+    public record JudgeNightActionRequest(
+            @Size(max = 50, message = "actionType is too long") String actionType,
+            Integer targetSeatNo,
+            @Size(max = 500, message = "note is too long") String note
+    ) {
+    }
+
+    public record JudgeVoteRequest(@NotNull(message = "targetSeatNo is required") Integer targetSeatNo) {
+    }
+
+    public record JudgeRoomSummaryView(
+            String roomId,
+            Integer boardId,
+            String boardName,
+            Integer playerCount,
+            String judgeMode,
+            String judgeSupportLevel,
+            String roomStatus,
+            Integer currentDay,
+            String currentPhase,
+            String winnerCamp,
+            Integer joinedCount,
+            Integer readyCount,
+            boolean owned,
+            boolean joined,
+            String latestAnnouncement,
+            LocalDateTime createTime,
+            LocalDateTime updateTime
+    ) {
+    }
+
+    public record JudgePlayerView(
+            String playerId,
+            String userId,
+            String nickname,
+            String avatar,
+            Integer seatNo,
+            boolean roomOwner,
+            boolean judgeObserver,
+            boolean playing,
+            boolean ready,
+            boolean alive,
+            Integer roleId,
+            String roleName,
+            String faction,
+            Integer deathDay,
+            String deathPhase
+    ) {
+    }
+
+    public record JudgeEventView(
+            String eventId,
+            Integer dayNo,
+            String phase,
+            String actorPlayerId,
+            Integer actorSeatNo,
+            List<Integer> targetSeatNos,
+            String actionType,
+            Map<String, Object> payload,
+            Map<String, Object> resultPayload,
+            String visibility,
+            LocalDateTime createTime
+    ) {
+    }
+
+    public record JudgeVoteTallyView(
+            Integer targetSeatNo,
+            String targetNickname,
+            Integer voteCount,
+            List<Integer> voterSeatNos
+    ) {
+    }
+
+    public record JudgeNightActionView(
+            String actorPlayerId,
+            Integer actorSeatNo,
+            String actorNickname,
+            Integer targetSeatNo,
+            String actionType,
+            String note,
+            LocalDateTime createTime
+    ) {
+    }
+
+    public record JudgePendingActionView(
+            boolean submitted,
+            Integer targetSeatNo,
+            String note
+    ) {
+    }
+
+    public record JudgeRoomSnapshotView(
+            String roomId,
+            Integer boardId,
+            String boardName,
+            Integer playerCount,
+            String judgeMode,
+            String judgeSupportLevel,
+            String roomStatus,
+            Integer currentDay,
+            String currentPhase,
+            String winnerCamp,
+            String latestAnnouncement,
+            boolean judgeViewer,
+            boolean joinedViewer,
+            boolean canJoin,
+            boolean canReady,
+            boolean canStart,
+            boolean canAdvance,
+            boolean canVote,
+            boolean canSubmitNightAction,
+            Integer joinedCount,
+            Integer readyCount,
+            String roomTip,
+            String winnerSuggestion,
+            JudgePlayerView selfPlayer,
+            List<JudgePlayerView> players,
+            List<JudgeEventView> timeline,
+            List<JudgeVoteTallyView> voteTallies,
+            List<JudgeNightActionView> nightActions,
+            JudgePendingActionView pendingNightAction,
+            LocalDateTime createTime,
+            LocalDateTime updateTime
     ) {
     }
 }

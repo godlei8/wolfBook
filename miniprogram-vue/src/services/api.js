@@ -107,6 +107,36 @@ function normalizePost(post) {
   }
 }
 
+function normalizeJudgePlayer(player) {
+  if (!player) return player
+  return {
+    ...player,
+    avatar: withBaseUrl(player.avatar),
+  }
+}
+
+function normalizeJudgeRoomSummary(room) {
+  if (!room) return room
+  return {
+    ...room,
+    judgeSupportLevel: room.judgeSupportLevel || 'manual_only',
+  }
+}
+
+function normalizeJudgeRoomSnapshot(snapshot) {
+  if (!snapshot) return snapshot
+  return {
+    ...snapshot,
+    judgeSupportLevel: snapshot.judgeSupportLevel || 'manual_only',
+    selfPlayer: normalizeJudgePlayer(snapshot.selfPlayer),
+    players: (snapshot.players || []).map(normalizeJudgePlayer),
+    timeline: snapshot.timeline || [],
+    voteTallies: snapshot.voteTallies || [],
+    nightActions: snapshot.nightActions || [],
+    pendingNightAction: snapshot.pendingNightAction || { submitted: false, targetSeatNo: null, note: '' },
+  }
+}
+
 export default {
   async getBoards(params = {}) {
     const data = await request({ url: '/api/boards', data: params, header: createAuthHeader() })
@@ -201,6 +231,52 @@ export default {
   },
   async deleteUserSession(sessionId) {
     return request({ url: `/api/user/sessions/${sessionId}`, method: 'DELETE', header: createAuthHeader() })
+  },
+  async getJudgeRecentRooms() {
+    return (await request({ url: '/api/judge/rooms/recent', header: createAuthHeader() })).map(normalizeJudgeRoomSummary)
+  },
+  async createJudgeRoom(payload) {
+    return normalizeJudgeRoomSnapshot(
+      await request({ url: '/api/judge/rooms', method: 'POST', data: payload, header: createAuthHeader() }),
+    )
+  },
+  async getJudgeRoom(roomId) {
+    return normalizeJudgeRoomSnapshot(await request({ url: `/api/judge/rooms/${roomId}`, header: createAuthHeader() }))
+  },
+  async joinJudgeRoom(roomId) {
+    return normalizeJudgeRoomSnapshot(
+      await request({ url: `/api/judge/rooms/${roomId}/join`, method: 'POST', header: createAuthHeader() }),
+    )
+  },
+  async toggleJudgeReady(roomId) {
+    return normalizeJudgeRoomSnapshot(
+      await request({ url: `/api/judge/rooms/${roomId}/ready`, method: 'POST', header: createAuthHeader() }),
+    )
+  },
+  async startJudgeRoom(roomId) {
+    return normalizeJudgeRoomSnapshot(
+      await request({ url: `/api/judge/rooms/${roomId}/start`, method: 'POST', header: createAuthHeader() }),
+    )
+  },
+  async advanceJudgeRoom(roomId, payload) {
+    return normalizeJudgeRoomSnapshot(
+      await request({ url: `/api/judge/rooms/${roomId}/advance`, method: 'POST', data: payload, header: createAuthHeader() }),
+    )
+  },
+  async submitJudgeNightAction(roomId, payload) {
+    return normalizeJudgeRoomSnapshot(
+      await request({
+        url: `/api/judge/rooms/${roomId}/night-action`,
+        method: 'POST',
+        data: payload,
+        header: createAuthHeader(),
+      }),
+    )
+  },
+  async submitJudgeVote(roomId, payload) {
+    return normalizeJudgeRoomSnapshot(
+      await request({ url: `/api/judge/rooms/${roomId}/vote`, method: 'POST', data: payload, header: createAuthHeader() }),
+    )
   },
   async uploadImage(filePath) {
     const result = await uploadFile(filePath, storage.getAuthToken())
