@@ -138,7 +138,7 @@ onLoad((options) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  min-height: 88rpx;
+  min-height: 84rpx;
 }
 
 .picker-value {
@@ -152,9 +152,9 @@ onLoad((options) => {
 }
 
 .board-preview {
-  margin-top: 18rpx;
+  margin-top: 16rpx;
   overflow: hidden;
-  border-radius: 20rpx;
+  border-radius: 22rpx;
   background: rgba(255, 255, 255, 0.04);
 }
 
@@ -165,7 +165,7 @@ onLoad((options) => {
 }
 
 .board-copy {
-  padding: 22rpx;
+  padding: 24rpx;
 }
 
 .board-top {
@@ -174,9 +174,10 @@ onLoad((options) => {
 }
 
 .board-name {
-  margin-top: 16rpx;
+  margin-top: 14rpx;
   font-size: 34rpx;
   font-weight: 700;
+  line-height: 1.24;
 }
 
 .board-meta {
@@ -189,20 +190,20 @@ onLoad((options) => {
   margin-top: 12rpx;
   color: #8f8f8f;
   font-size: 24rpx;
-  line-height: 1.7;
+  line-height: 1.76;
 }
 
 .mode-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16rpx;
-  margin-top: 20rpx;
+  margin-top: 18rpx;
 }
 
 .mode-card {
   min-height: 180rpx;
-  padding: 22rpx;
-  border-radius: 20rpx;
+  padding: 24rpx;
+  border-radius: 22rpx;
   background: rgba(255, 255, 255, 0.04);
   border: 1rpx solid rgba(255, 255, 255, 0.08);
 }
@@ -225,10 +226,10 @@ onLoad((options) => {
   margin-top: 12rpx;
   color: #9d9d9d;
   font-size: 22rpx;
-  line-height: 1.7;
+  line-height: 1.72;
 }
 
 .create-button {
-  margin-top: 28rpx;
+  margin-top: 24rpx;
 }
 </style>

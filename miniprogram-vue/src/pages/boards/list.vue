@@ -222,15 +222,15 @@ onPullDownRefresh(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20rpx;
+  gap: 18rpx;
 }
 
 .hero-role-entry {
   min-width: 112rpx;
-  height: 72rpx;
+  height: 70rpx;
   padding: 0 28rpx;
-  border-radius: 14rpx;
-  background: rgba(255, 192, 0, 0.16);
+  border-radius: 16rpx;
+  background: rgba(255, 192, 0, 0.14);
   color: #ffc000;
   display: flex;
   align-items: center;
@@ -243,23 +243,23 @@ onPullDownRefresh(async () => {
 .search-box {
   display: flex;
   align-items: center;
-  gap: 16rpx;
+  gap: 14rpx;
 }
 
 .search-input {
   flex: 1;
-  height: 76rpx;
+  min-height: 84rpx;
   padding: 0 24rpx;
-  border-radius: 16rpx;
+  border-radius: 18rpx;
   background: rgba(255, 255, 255, 0.05);
   color: #ffffff;
   box-sizing: border-box;
 }
 
 .search-action {
-  width: 120rpx;
-  height: 76rpx;
-  border-radius: 16rpx;
+  width: 118rpx;
+  min-height: 84rpx;
+  border-radius: 18rpx;
   background: linear-gradient(135deg, rgba(255, 213, 77, 0.96), rgba(166, 127, 8, 0.96));
   color: #1b1506;
   display: flex;
@@ -272,16 +272,17 @@ onPullDownRefresh(async () => {
 }
 
 .filter-title {
-  margin: 18rpx 0 10rpx;
+  margin: 22rpx 0 12rpx;
 }
 
 .chip-row {
-  margin: 0 -6rpx;
-  padding: 4rpx 10rpx 8rpx 6rpx;
+  margin: 0;
+  padding: 2rpx 0 10rpx;
   box-sizing: border-box;
 }
 
 .chip {
-  padding: 10rpx 24rpx;
+  min-width: 112rpx;
+  padding: 0 24rpx;
 }
 </style>

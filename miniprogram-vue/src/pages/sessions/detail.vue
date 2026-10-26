@@ -308,7 +308,7 @@ onShow(() => {
 </script>
 
 <template>
-  <view v-if="session" class="page-shell">
+  <view v-if="session" class="page-shell page-shell--with-fixed-bar">
     <view class="glass-card section-card">
       <view class="hero-title" style="font-size: 46rpx;">{{ session.boardName }}</view>
       <view class="hero-subtitle">{{ session.playerCount }} 人局 · 最近更新 {{ formatDateTime(session.updateTime) }}</view>
@@ -334,6 +334,8 @@ onShow(() => {
         <button class="record-remove" @tap="removeRecord(item.id)">删除</button>
       </view>
     </view>
+
+    <view class="page-bottom-spacer" />
 
     <view class="tool-grid glass-card">
       <view class="tool-item" @tap="openEditor('seer')">查验</view>
@@ -557,14 +559,14 @@ onShow(() => {
 
 <style scoped lang="scss">
 .hero-status-row {
-  margin-top: 18rpx;
+  margin-top: 16rpx;
   display: flex;
   flex-wrap: wrap;
   gap: 12rpx;
 }
 
 .record-item {
-  margin-top: 18rpx;
+  margin-top: 16rpx;
   padding: 22rpx 22rpx 20rpx;
   border-radius: 18rpx;
   background: rgba(255, 255, 255, 0.04);
@@ -587,7 +589,7 @@ onShow(() => {
 .record-content {
   margin-top: 14rpx;
   font-size: 28rpx;
-  line-height: 1.8;
+  line-height: 1.82;
 }
 
 .record-player {
@@ -615,16 +617,16 @@ onShow(() => {
   position: fixed;
   left: 24rpx;
   right: 24rpx;
-  bottom: calc(env(safe-area-inset-bottom) + 24rpx);
+  bottom: calc(env(safe-area-inset-bottom) + 20rpx);
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12rpx;
-  padding: 18rpx;
+  padding: 16rpx;
 }
 
 .tool-item {
-  height: 80rpx;
-  border-radius: 14rpx;
+  height: 84rpx;
+  border-radius: 16rpx;
   background: rgba(255, 255, 255, 0.05);
   display: flex;
   align-items: center;
@@ -645,7 +647,7 @@ onShow(() => {
 .editor-panel {
   width: 100%;
   max-height: 82vh;
-  padding: 28rpx 24rpx calc(env(safe-area-inset-bottom) + 26rpx);
+  padding: 30rpx 24rpx calc(env(safe-area-inset-bottom) + 30rpx);
   border-radius: 28rpx 28rpx 0 0;
   overflow-y: auto;
 }

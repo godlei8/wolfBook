@@ -355,15 +355,11 @@ onShow(() => {
 </template>
 
 <style scoped lang="scss">
-.profile-card {
-  margin-top: 20rpx;
-}
-
 .profile-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 20rpx;
+  gap: 18rpx;
 }
 
 .profile-header-copy {
@@ -391,8 +387,8 @@ onShow(() => {
 .profile-body {
   display: flex;
   align-items: center;
-  gap: 24rpx;
-  margin-top: 24rpx;
+  gap: 22rpx;
+  margin-top: 22rpx;
 }
 
 .profile-avatar,
@@ -419,8 +415,8 @@ onShow(() => {
 }
 
 .profile-name {
-  font-size: 48rpx;
-  line-height: 1.04;
+  font-size: 46rpx;
+  line-height: 1.08;
   font-weight: 700;
   color: #ffffff;
 }
@@ -459,7 +455,7 @@ onShow(() => {
 
 .entry-stack {
   display: grid;
-  gap: 12rpx;
+  gap: 14rpx;
   margin-top: 18rpx;
 }
 
@@ -467,10 +463,10 @@ onShow(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14rpx;
-  min-height: 112rpx;
-  padding-top: 20rpx;
-  padding-bottom: 20rpx;
+  gap: 18rpx;
+  min-height: 120rpx;
+  padding-top: 22rpx;
+  padding-bottom: 22rpx;
 }
 
 .entry-copy {
@@ -524,10 +520,10 @@ onShow(() => {
 }
 
 .action-button {
-  height: 72rpx;
-  line-height: 72rpx;
+  height: 76rpx;
+  line-height: 76rpx;
   padding: 0 24rpx;
-  border-radius: 14rpx;
+  border-radius: 16rpx;
   font-size: 24rpx;
   font-weight: 700;
 }
@@ -558,7 +554,7 @@ onShow(() => {
 
 .editor-panel {
   width: 100%;
-  padding: 18rpx 24rpx calc(env(safe-area-inset-bottom) + 28rpx);
+  padding: 22rpx 24rpx calc(env(safe-area-inset-bottom) + 30rpx);
   border-top-left-radius: 28rpx;
   border-top-right-radius: 28rpx;
 }
@@ -603,7 +599,7 @@ onShow(() => {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
   gap: 18rpx;
-  margin-top: 28rpx;
+  margin-top: 24rpx;
 }
 
 .editor-avatar-card,
@@ -651,7 +647,7 @@ onShow(() => {
 }
 
 .editor-field {
-  margin-top: 24rpx;
+  margin-top: 22rpx;
   padding: 20rpx 22rpx 18rpx;
   border-radius: 22rpx;
   background: rgba(255, 255, 255, 0.028);
@@ -708,7 +704,7 @@ onShow(() => {
 }
 
 .editor-actions {
-  margin-top: 28rpx;
+  margin-top: 24rpx;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16rpx;

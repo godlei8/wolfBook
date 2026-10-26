@@ -143,10 +143,20 @@ export function buildJudgeVoiceScript(snapshot) {
 }
 
 export function createJudgeVoicePlayer() {
-  const supported = typeof requirePlugin === 'function'
-    && typeof uni !== 'undefined'
+  const canLoadPlugin = typeof requirePlugin === 'function'
+  const canCreateAudio = typeof uni !== 'undefined'
     && typeof uni.createInnerAudioContext === 'function'
-  const plugin = supported ? requirePlugin('WechatSI') : null
+  let plugin = null
+
+  if (canLoadPlugin) {
+    try {
+      plugin = requirePlugin('WechatSI')
+    } catch (error) {
+      console.warn('WechatSI plugin unavailable, judge voice will be disabled', error)
+    }
+  }
+
+  const supported = !!plugin?.textToSpeech && canCreateAudio
   const audio = supported ? uni.createInnerAudioContext() : null
   let playToken = 0
 

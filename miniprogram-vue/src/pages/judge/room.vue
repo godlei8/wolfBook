@@ -550,6 +550,7 @@ onUnload(() => {
 <style scoped lang="scss">
 .room-hero-title {
   font-size: 44rpx;
+  line-height: 1.12;
 }
 
 .hero-top,
@@ -559,7 +560,7 @@ onUnload(() => {
 .result-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 14rpx;
+  gap: 12rpx;
 }
 
 .hero-top {
@@ -570,15 +571,15 @@ onUnload(() => {
 .room-subtitle,
 .hero-announcement,
 .pending-text {
-  margin-top: 10rpx;
+  margin-top: 12rpx;
   color: #cbb58a;
   font-size: 24rpx;
-  line-height: 1.7;
+  line-height: 1.76;
 }
 
 .voice-status {
-  margin-top: 14rpx;
-  padding: 16rpx 18rpx;
+  margin-top: 16rpx;
+  padding: 18rpx 20rpx;
   border-radius: 18rpx;
   background: rgba(255, 192, 0, 0.08);
   color: #f7d977;
@@ -590,8 +591,8 @@ onUnload(() => {
 .player-card,
 .tally-item,
 .timeline-item {
-  margin-top: 18rpx;
-  padding: 18rpx 20rpx;
+  margin-top: 16rpx;
+  padding: 20rpx 22rpx;
   border-radius: 18rpx;
   background: rgba(255, 255, 255, 0.04);
 }
@@ -616,7 +617,7 @@ onUnload(() => {
 }
 
 .action-button {
-  margin-top: 16rpx;
+  margin-top: 18rpx;
   width: 100%;
 }
 
@@ -629,14 +630,18 @@ onUnload(() => {
 }
 
 .console-block {
-  margin-top: 22rpx;
+  margin-top: 18rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 18rpx;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1rpx solid rgba(255, 255, 255, 0.04);
 }
 
 .player-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14rpx;
-  margin-top: 16rpx;
+  gap: 12rpx;
+  margin-top: 14rpx;
 }
 
 .player-card {

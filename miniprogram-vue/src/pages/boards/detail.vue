@@ -90,7 +90,7 @@ onLoad((options) => {
 
 .detail-cover {
   width: 100%;
-  height: 420rpx;
+  height: 432rpx;
   display: block;
 }
 
@@ -100,8 +100,8 @@ onLoad((options) => {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: 28rpx;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.08) 6%, rgba(0, 0, 0, 0.86) 100%);
+  padding: 30rpx;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.05) 4%, rgba(0, 0, 0, 0.88) 100%);
 }
 
 .detail-cover-top {
@@ -110,27 +110,29 @@ onLoad((options) => {
 }
 
 .detail-title {
-  margin-top: 18rpx;
-  font-size: 48rpx;
+  margin-top: 16rpx;
+  font-size: 50rpx;
   font-weight: 700;
+  line-height: 1.12;
 }
 
 .detail-subtitle {
-  margin-top: 10rpx;
-  color: #d4d4d4;
+  margin-top: 12rpx;
+  color: #d8d8d8;
   font-size: 24rpx;
+  line-height: 1.7;
 }
 
 .role-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18rpx;
-  margin-top: 22rpx;
+  gap: 16rpx;
+  margin-top: 20rpx;
 }
 
 .role-cell {
-  padding: 18rpx 12rpx;
-  border-radius: 16rpx;
+  padding: 22rpx 14rpx 18rpx;
+  border-radius: 18rpx;
   background: rgba(255, 255, 255, 0.04);
   text-align: center;
 }
@@ -142,8 +144,9 @@ onLoad((options) => {
 }
 
 .role-name {
-  margin-top: 14rpx;
+  margin-top: 12rpx;
   font-size: 24rpx;
+  line-height: 1.45;
 }
 
 .role-count {
@@ -155,11 +158,11 @@ onLoad((options) => {
 .rule-item,
 .tip-item,
 .faq-item {
-  margin-top: 16rpx;
+  margin-top: 14rpx;
   padding: 18rpx 20rpx;
-  border-radius: 16rpx;
+  border-radius: 18rpx;
   background: rgba(255, 255, 255, 0.04);
-  line-height: 1.7;
+  line-height: 1.76;
   font-size: 26rpx;
 }
 
@@ -172,5 +175,6 @@ onLoad((options) => {
 .faq-a {
   margin-top: 10rpx;
   color: #d4d4d4;
+  line-height: 1.75;
 }
 </style>

@@ -80,7 +80,7 @@ onLoad((options) => loadRole(Number(options?.id || 0)))
 
 .role-banner {
   width: 100%;
-  height: 500rpx;
+  height: 510rpx;
   display: block;
 }
 
@@ -90,8 +90,8 @@ onLoad((options) => loadRole(Number(options?.id || 0)))
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: 28rpx;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.12) 6%, rgba(0, 0, 0, 0.88) 100%);
+  padding: 30rpx;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.08) 4%, rgba(0, 0, 0, 0.9) 100%);
 }
 
 .role-chip-row {
@@ -100,22 +100,24 @@ onLoad((options) => loadRole(Number(options?.id || 0)))
 }
 
 .role-title {
-  margin-top: 18rpx;
+  margin-top: 16rpx;
   font-size: 50rpx;
   font-weight: 700;
+  line-height: 1.12;
 }
 
 .role-alias,
 .role-camp {
-  margin-top: 10rpx;
+  margin-top: 12rpx;
   color: #d0d0d0;
   font-size: 24rpx;
+  line-height: 1.68;
 }
 
 .faq-item {
-  margin-top: 16rpx;
+  margin-top: 14rpx;
   padding: 18rpx 20rpx;
-  border-radius: 16rpx;
+  border-radius: 18rpx;
   background: rgba(255, 255, 255, 0.04);
 }
 
@@ -128,29 +130,30 @@ onLoad((options) => loadRole(Number(options?.id || 0)))
 .faq-a {
   margin-top: 10rpx;
   color: #d0d0d0;
-  line-height: 1.7;
+  line-height: 1.76;
 }
 
 .related-row {
-  margin-top: 18rpx;
+  margin-top: 16rpx;
   white-space: nowrap;
 }
 
 .related-board {
   display: inline-block;
   width: 260rpx;
-  margin-right: 18rpx;
+  margin-right: 16rpx;
 }
 
 .related-cover {
   width: 260rpx;
   height: 160rpx;
-  border-radius: 16rpx;
+  border-radius: 18rpx;
 }
 
 .related-name {
   margin-top: 12rpx;
   font-size: 26rpx;
   font-weight: 700;
+  line-height: 1.4;
 }
 </style>

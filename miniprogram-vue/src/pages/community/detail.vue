@@ -116,13 +116,13 @@ onLoad((options) => {
 .comment-head {
   display: flex;
   align-items: center;
-  gap: 16rpx;
+  gap: 18rpx;
 }
 
 .post-avatar,
 .comment-avatar {
-  width: 80rpx;
-  height: 80rpx;
+  width: 84rpx;
+  height: 84rpx;
   border-radius: 999rpx;
 }
 
@@ -134,38 +134,38 @@ onLoad((options) => {
 
 .post-content,
 .comment-content {
-  margin-top: 18rpx;
+  margin-top: 16rpx;
   font-size: 28rpx;
-  line-height: 1.8;
+  line-height: 1.82;
 }
 
 .post-images {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12rpx;
-  margin-top: 18rpx;
+  margin-top: 16rpx;
 }
 
 .post-image {
   width: 100%;
   height: 180rpx;
-  border-radius: 16rpx;
+  border-radius: 18rpx;
 }
 
 .detail-actions {
   display: flex;
   gap: 12rpx;
-  margin-top: 18rpx;
+  margin-top: 16rpx;
 }
 
 .comment-item {
-  margin-top: 20rpx;
+  margin-top: 16rpx;
   padding: 18rpx 20rpx;
-  border-radius: 16rpx;
+  border-radius: 18rpx;
   background: rgba(255, 255, 255, 0.04);
 }
 
 .submit-btn {
-  margin-top: 18rpx;
+  margin-top: 20rpx;
 }
 </style>

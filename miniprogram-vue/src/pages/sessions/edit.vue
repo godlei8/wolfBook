@@ -339,13 +339,13 @@ onLoad((options) => {
 .mode-switch {
   display: flex;
   gap: 16rpx;
-  margin-top: 24rpx;
+  margin-top: 22rpx;
 }
 
 .mode-chip {
   flex: 1;
-  height: 78rpx;
-  border-radius: 18rpx;
+  min-height: 80rpx;
+  border-radius: 20rpx;
   background: rgba(255, 255, 255, 0.04);
   color: #c7c7c7;
   display: flex;
@@ -362,7 +362,7 @@ onLoad((options) => {
 }
 
 .section-space {
-  margin-top: 24rpx;
+  margin-top: 22rpx;
 }
 
 .picker-field {
@@ -391,10 +391,10 @@ onLoad((options) => {
 }
 
 .picker-value {
-  margin-top: 6rpx;
+  margin-top: 8rpx;
   color: #ffffff;
   font-size: 28rpx;
-  line-height: 1.4;
+  line-height: 1.48;
 }
 
 .picker-arrow {
@@ -407,7 +407,7 @@ onLoad((options) => {
 .helper-text {
   margin-top: 12rpx;
   font-size: 22rpx;
-  line-height: 1.6;
+  line-height: 1.68;
 }
 
 .helper-warning {
@@ -416,9 +416,9 @@ onLoad((options) => {
 
 .board-preview,
 .custom-preview {
-  margin-top: 18rpx;
-  padding: 22rpx;
-  border-radius: 20rpx;
+  margin-top: 16rpx;
+  padding: 24rpx;
+  border-radius: 22rpx;
   background:
     radial-gradient(circle at top right, rgba(255, 192, 0, 0.1), transparent 40%),
     rgba(255, 255, 255, 0.04);
@@ -443,7 +443,7 @@ onLoad((options) => {
 }
 
 .board-preview-content {
-  padding: 22rpx;
+  padding: 24rpx;
 }
 
 .board-preview-head {
@@ -462,10 +462,10 @@ onLoad((options) => {
 
 .board-preview-meta,
 .custom-meta {
-  margin-top: 10rpx;
+  margin-top: 12rpx;
   color: #b5b5b5;
   font-size: 24rpx;
-  line-height: 1.7;
+  line-height: 1.74;
 }
 
 .board-preview-desc,
@@ -473,7 +473,7 @@ onLoad((options) => {
   margin-top: 12rpx;
   color: #8f8f8f;
   font-size: 24rpx;
-  line-height: 1.7;
+  line-height: 1.76;
 }
 
 .board-preview-tags {
@@ -501,7 +501,7 @@ onLoad((options) => {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12rpx;
-  margin-top: 18rpx;
+  margin-top: 16rpx;
 }
 
 .board-stat-card {
@@ -529,7 +529,7 @@ onLoad((options) => {
   display: flex;
   flex-wrap: wrap;
   gap: 12rpx;
-  margin-top: 18rpx;
+  margin-top: 16rpx;
 }
 
 .board-role-pill {
@@ -587,7 +587,7 @@ onLoad((options) => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14rpx;
-  margin-top: 16rpx;
+  margin-top: 18rpx;
 }
 
 .player-summary-card {
@@ -613,6 +613,6 @@ onLoad((options) => {
 }
 
 .save-button {
-  margin-top: 28rpx;
+  margin-top: 24rpx;
 }
 </style>

@@ -95,10 +95,6 @@ onShow(() => {
 </template>
 
 <style scoped lang="scss">
-.session-card {
-  margin-top: 24rpx;
-}
-
 .session-top,
 .session-footer {
   display: flex;
@@ -107,9 +103,10 @@ onShow(() => {
 }
 
 .session-name {
-  margin-top: 18rpx;
+  margin-top: 16rpx;
   font-size: 38rpx;
   font-weight: 700;
+  line-height: 1.24;
 }
 
 .session-meta {
@@ -119,9 +116,9 @@ onShow(() => {
 }
 
 .session-preview {
-  margin-top: 18rpx;
-  padding: 18rpx 20rpx;
-  border-radius: 16rpx;
+  margin-top: 16rpx;
+  padding: 20rpx 22rpx;
+  border-radius: 18rpx;
   background: rgba(255, 255, 255, 0.04);
 }
 
@@ -134,19 +131,19 @@ onShow(() => {
 .session-preview-text {
   margin-top: 10rpx;
   font-size: 26rpx;
-  line-height: 1.7;
+  line-height: 1.76;
 }
 
 .session-footer {
-  margin-top: 20rpx;
+  margin-top: 18rpx;
 }
 
 .session-remove {
   margin: 0;
-  height: 64rpx;
-  line-height: 64rpx;
+  min-height: 68rpx;
+  line-height: 68rpx;
   padding: 0 24rpx;
-  border-radius: 12rpx;
+  border-radius: 14rpx;
   background: rgba(255, 255, 255, 0.06);
   color: #ffffff;
   font-size: 24rpx;

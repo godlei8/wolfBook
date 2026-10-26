@@ -624,7 +624,7 @@ onUnload(() => {
 <style scoped lang="scss">
 .assistant-page {
   height: 100vh;
-  padding: 24rpx 24rpx calc(env(safe-area-inset-bottom) + 20rpx);
+  padding: 28rpx 24rpx calc(env(safe-area-inset-bottom) + 24rpx);
   overflow: hidden;
 }
 
@@ -632,7 +632,7 @@ onUnload(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 18rpx;
+  gap: 16rpx;
 }
 
 .assistant-toolbar,
@@ -643,7 +643,7 @@ onUnload(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16rpx;
+  gap: 14rpx;
 }
 
 .assistant-toolbar {
@@ -660,13 +660,13 @@ onUnload(() => {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 12rpx;
+  gap: 10rpx;
 }
 
 .toolbar-action,
 .state-button {
   min-width: 112rpx;
-  height: 60rpx;
+  height: 56rpx;
   padding: 0 20rpx;
   border-radius: 999rpx;
   background: rgba(255, 192, 0, 0.16);
@@ -719,25 +719,25 @@ onUnload(() => {
 
 .session-panel {
   flex-shrink: 0;
-  padding: 20rpx 22rpx;
+  padding: 22rpx 24rpx;
   background: linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(10, 10, 10, 0.96));
 }
 
 .session-scroll {
-  margin-top: 16rpx;
+  margin-top: 14rpx;
   white-space: nowrap;
 }
 
 .session-row {
   display: inline-flex;
-  gap: 14rpx;
-  padding-bottom: 4rpx;
+  gap: 12rpx;
+  padding-bottom: 6rpx;
 }
 
 .session-pill {
   min-width: 220rpx;
   max-width: 280rpx;
-  padding: 18rpx 20rpx;
+  padding: 18rpx 18rpx;
   border-radius: 18rpx;
   background: rgba(255, 255, 255, 0.05);
   border: 1rpx solid rgba(255, 255, 255, 0.04);
@@ -766,15 +766,15 @@ onUnload(() => {
 
 .assistant-chat-content {
   display: grid;
-  gap: 16rpx;
-  padding-bottom: 8rpx;
+  gap: 18rpx;
+  padding-bottom: 10rpx;
 }
 
 .empty-panel,
 .state-panel,
 .hydrate-panel,
 .composer-panel {
-  padding: 22rpx;
+  padding: 24rpx;
   background: linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(10, 10, 10, 0.96));
 }
 
@@ -817,12 +817,12 @@ onUnload(() => {
 
 .message-card {
   width: 100%;
-  padding: 20rpx 22rpx;
+  padding: 22rpx 22rpx;
   background: linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(10, 10, 10, 0.96));
 }
 
 .message-card--assistant {
-  max-width: 92%;
+  max-width: 90%;
   border: 1rpx solid rgba(255, 192, 0, 0.12);
   background:
     linear-gradient(180deg, rgba(255, 192, 0, 0.05), rgba(255, 255, 255, 0.02)),
@@ -830,7 +830,7 @@ onUnload(() => {
 }
 
 .message-card--self {
-  max-width: 88%;
+  max-width: 86%;
   background: linear-gradient(180deg, rgba(36, 36, 36, 0.98), rgba(18, 18, 18, 0.98));
 }
 
@@ -858,7 +858,7 @@ onUnload(() => {
 
 .composer-panel {
   flex-shrink: 0;
-  padding: 20rpx;
+  padding: 22rpx 22rpx 20rpx;
   background: linear-gradient(180deg, rgba(17, 17, 17, 0.98), rgba(8, 8, 8, 0.98));
 }
 
@@ -868,7 +868,7 @@ onUnload(() => {
 
 .quick-row {
   display: inline-flex;
-  gap: 12rpx;
+  gap: 10rpx;
   padding-bottom: 6rpx;
 }
 
@@ -882,8 +882,8 @@ onUnload(() => {
 }
 
 .composer-editor {
-  margin-top: 14rpx;
-  padding: 12rpx 14rpx;
+  margin-top: 12rpx;
+  padding: 14rpx 16rpx;
   border-radius: 18rpx;
   background: rgba(255, 255, 255, 0.05);
   border: 1rpx solid rgba(255, 255, 255, 0.04);
@@ -891,8 +891,8 @@ onUnload(() => {
 
 .assistant-input {
   width: 100%;
-  min-height: 88rpx;
-  max-height: 180rpx;
+  min-height: 92rpx;
+  max-height: 196rpx;
   padding: 0;
   background: transparent;
   color: #ffffff;
@@ -902,14 +902,14 @@ onUnload(() => {
 }
 
 .composer-footer {
-  margin-top: 14rpx;
+  margin-top: 16rpx;
 }
 
 .composer-submit {
   margin: 0;
   width: 168rpx;
-  height: 84rpx;
-  line-height: 84rpx;
+  height: 80rpx;
+  line-height: 80rpx;
   border-radius: 16rpx;
   background: linear-gradient(135deg, #ffd24f, #f3b91f);
   color: #171105;

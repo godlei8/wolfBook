@@ -221,20 +221,16 @@ onShow(() => {
 </template>
 
 <style scoped lang="scss">
-.launch-card {
-  margin-top: 24rpx;
-}
-
 .launch-button,
 .auth-button {
-  margin-top: 22rpx;
+  margin-top: 18rpx;
   width: 100%;
 }
 
 .join-row {
   display: flex;
-  gap: 16rpx;
-  margin-top: 18rpx;
+  gap: 14rpx;
+  margin-top: 16rpx;
   align-items: center;
 }
 
@@ -246,14 +242,6 @@ onShow(() => {
 .join-button {
   width: 144rpx;
   flex-shrink: 0;
-}
-
-.room-card {
-  margin-top: 22rpx;
-}
-
-.invite-card {
-  margin-top: 22rpx;
 }
 
 .invite-room-id {
@@ -272,9 +260,10 @@ onShow(() => {
 }
 
 .room-title {
-  margin-top: 16rpx;
+  margin-top: 14rpx;
   font-size: 38rpx;
   font-weight: 700;
+  line-height: 1.24;
 }
 
 .room-meta {
@@ -284,15 +273,16 @@ onShow(() => {
 }
 
 .room-progress {
-  margin-top: 16rpx;
+  margin-top: 14rpx;
   color: #f1ddb1;
   font-size: 22rpx;
+  line-height: 1.55;
 }
 
 .room-desc {
-  margin-top: 14rpx;
+  margin-top: 12rpx;
   color: #8f8f8f;
   font-size: 24rpx;
-  line-height: 1.7;
+  line-height: 1.76;
 }
 </style>

@@ -60,19 +60,15 @@ onPullDownRefresh(async () => {
 </template>
 
 <style scoped lang="scss">
-.post-card {
-  margin-top: 24rpx;
-}
-
 .post-head {
   display: flex;
   align-items: center;
-  gap: 16rpx;
+  gap: 18rpx;
 }
 
 .post-avatar {
-  width: 88rpx;
-  height: 88rpx;
+  width: 84rpx;
+  height: 84rpx;
   border-radius: 999rpx;
 }
 
@@ -82,26 +78,29 @@ onPullDownRefresh(async () => {
 }
 
 .post-content {
-  margin-top: 18rpx;
-  line-height: 1.8;
+  margin-top: 16rpx;
+  line-height: 1.82;
   font-size: 28rpx;
 }
 
 .post-images {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12rpx;
-  margin-top: 18rpx;
+  margin-top: 16rpx;
 }
 
 .post-image {
-  flex: 1;
+  display: block;
+  width: 100%;
   height: 180rpx;
-  border-radius: 16rpx;
+  border-radius: 18rpx;
 }
 
 .post-meta {
-  margin-top: 16rpx;
+  margin-top: 14rpx;
   color: #8f8f8f;
   font-size: 24rpx;
+  line-height: 1.55;
 }
 </style>

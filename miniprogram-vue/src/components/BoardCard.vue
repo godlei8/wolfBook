@@ -101,7 +101,7 @@ function shouldShowCount(role) {
 
 <style scoped lang="scss">
 .board-card {
-  margin-top: 24rpx;
+  margin-top: 22rpx;
   overflow: hidden;
   background: linear-gradient(180deg, rgba(18, 18, 18, 0.98) 0%, rgba(7, 7, 7, 0.98) 100%);
 }
@@ -112,19 +112,20 @@ function shouldShowCount(role) {
 
 .board-cover {
   width: 100%;
-  height: 320rpx;
+  height: 328rpx;
   display: block;
 }
 
 .board-favorite {
   position: absolute;
-  top: 20rpx;
-  right: 20rpx;
-  width: 64rpx;
-  height: 64rpx;
+  top: 18rpx;
+  right: 18rpx;
+  width: 60rpx;
+  height: 60rpx;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 18rpx;
   background: rgba(0, 0, 0, 0.52);
   color: rgba(255, 255, 255, 0.88);
   font-size: 32rpx;
@@ -137,7 +138,7 @@ function shouldShowCount(role) {
 }
 
 .board-overlay {
-  padding: 24rpx;
+  padding: 26rpx;
   background: linear-gradient(180deg, rgba(16, 16, 16, 0.98) 0%, rgba(8, 8, 8, 0.98) 100%);
 }
 
@@ -145,15 +146,15 @@ function shouldShowCount(role) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 16rpx;
+  gap: 14rpx;
 }
 
 .board-title-row {
-  margin-top: 16rpx;
+  margin-top: 18rpx;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 20rpx;
+  gap: 18rpx;
 }
 
 .board-name {
@@ -162,7 +163,7 @@ function shouldShowCount(role) {
   font-size: 38rpx;
   font-weight: 700;
   color: #ffffff;
-  line-height: 1.2;
+  line-height: 1.26;
 }
 
 .board-player-badge {
@@ -209,15 +210,17 @@ function shouldShowCount(role) {
   display: flex;
   flex-wrap: wrap;
   gap: 12rpx;
-  margin-top: 20rpx;
+  margin-top: 18rpx;
 }
 
 .board-role-chip {
   display: inline-flex;
   align-items: center;
   gap: 8rpx;
-  padding: 10rpx 16rpx 10rpx 10rpx;
+  min-height: 56rpx;
+  padding: 0 16rpx 0 10rpx;
   border-radius: 999rpx;
+  box-sizing: border-box;
 }
 
 .role-tone-good {
@@ -244,9 +247,9 @@ function shouldShowCount(role) {
 }
 
 .board-summary {
-  margin-top: 18rpx;
-  color: #8f8f8f;
+  margin-top: 16rpx;
+  color: #939393;
   font-size: 24rpx;
-  line-height: 1.7;
+  line-height: 1.78;
 }
 </style>

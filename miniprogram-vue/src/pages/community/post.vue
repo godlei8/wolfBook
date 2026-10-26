@@ -78,14 +78,14 @@ async function submitPost() {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14rpx;
-  margin-top: 18rpx;
+  margin-top: 16rpx;
 }
 
 .pick-image,
 .pick-add {
   width: 100%;
   height: 190rpx;
-  border-radius: 16rpx;
+  border-radius: 18rpx;
 }
 
 .pick-add {
@@ -96,5 +96,6 @@ async function submitPost() {
   color: #ffc000;
   font-size: 26rpx;
   font-weight: 700;
+  line-height: 1.4;
 }
 </style>

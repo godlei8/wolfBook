@@ -50,19 +50,20 @@ onLoad(loadRoles)
 .role-row {
   display: flex;
   align-items: center;
-  gap: 16rpx;
-  margin-top: 18rpx;
-  padding: 12rpx 0;
+  gap: 18rpx;
+  margin-top: 16rpx;
+  padding: 14rpx 2rpx;
 }
 
 .role-avatar {
-  width: 88rpx;
-  height: 88rpx;
+  width: 84rpx;
+  height: 84rpx;
   border-radius: 999rpx;
 }
 
 .role-name {
   font-size: 28rpx;
   font-weight: 700;
+  line-height: 1.4;
 }
 </style>

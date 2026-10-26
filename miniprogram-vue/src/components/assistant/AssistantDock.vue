@@ -1,6 +1,7 @@
 <script setup>
 import { computed, reactive } from 'vue'
 import storage from '../../services/storage'
+import { buildAssistantDockStyle, resolveAssistantDockTopRpx } from '../../utils/assistant-dock'
 
 const props = defineProps({
   scene: {
@@ -24,11 +25,7 @@ const gesture = reactive({
   dragging: false,
 })
 
-const dockStyle = computed(() => ({
-  top: `${dockState.top}rpx`,
-  left: dockState.side === 'left' ? '16rpx' : 'auto',
-  right: dockState.side === 'right' ? '16rpx' : 'auto',
-}))
+const dockStyle = computed(() => buildAssistantDockStyle({ side: dockState.side, topRpx: dockState.top }))
 
 function openAssistant() {
   if (!storage.getAuthToken()) {
@@ -60,8 +57,11 @@ function handleTouchMove(event) {
     gesture.dragging = true
   }
   dockState.side = touch.clientX < systemInfo.windowWidth / 2 ? 'left' : 'right'
-  const nextTopPx = Math.min(Math.max(touch.clientY - 40, 88), systemInfo.windowHeight - 140)
-  dockState.top = Math.round((nextTopPx / systemInfo.windowWidth) * 750)
+  dockState.top = resolveAssistantDockTopRpx({
+    clientY: touch.clientY,
+    windowWidth: systemInfo.windowWidth,
+    windowHeight: systemInfo.windowHeight,
+  })
 }
 
 function handleTouchEnd() {
@@ -98,18 +98,18 @@ function handleTouchEnd() {
 <style scoped lang="scss">
 .assistant-dock {
   position: fixed;
-  z-index: 40;
-  width: 120rpx;
+  z-index: 24;
+  width: 108rpx;
   display: grid;
   justify-items: center;
-  gap: 8rpx;
+  gap: 10rpx;
 }
 
 .wolf-ears {
-  width: 84rpx;
+  width: 80rpx;
   display: flex;
   justify-content: space-between;
-  margin-bottom: -14rpx;
+  margin-bottom: -12rpx;
   z-index: 2;
 }
 
@@ -122,12 +122,12 @@ function handleTouchEnd() {
 }
 
 .wolf-face {
-  width: 96rpx;
-  height: 96rpx;
-  border-radius: 26rpx;
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 24rpx;
   background: linear-gradient(180deg, rgba(24, 24, 24, 0.98), rgba(6, 6, 6, 0.98));
   border: 2rpx solid rgba(255, 192, 0, 0.45);
-  box-shadow: 0 16rpx 28rpx rgba(0, 0, 0, 0.28);
+  box-shadow: 0 14rpx 26rpx rgba(0, 0, 0, 0.28);
   display: grid;
   align-content: center;
   justify-items: center;
@@ -156,11 +156,13 @@ function handleTouchEnd() {
 }
 
 .dock-text {
-  padding: 6rpx 14rpx;
+  min-height: 40rpx;
+  padding: 6rpx 12rpx;
   border-radius: 999rpx;
   background: rgba(255, 192, 0, 0.14);
   color: #ffc000;
   font-size: 20rpx;
   font-weight: 700;
+  line-height: 1.2;
 }
 </style>
