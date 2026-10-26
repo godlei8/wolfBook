@@ -14,7 +14,7 @@ const snapshot = ref(null)
 const loading = ref(false)
 const actionLoading = ref(false)
 const announcement = ref('')
-const nightActionType = ref('night_action')
+const nightActionType = ref('')
 const nightTargetSeat = ref('')
 const nightNote = ref('')
 const voteTargetSeat = ref('')
@@ -27,6 +27,8 @@ const voiceCurrentLine = ref('')
 const lastVoiceScriptKey = ref('')
 
 let pollTimer = null
+let pollFailures = 0
+const connectionLost = ref(false)
 const voicePlayer = createJudgeVoicePlayer()
 
 const supportMeta = computed(() => getJudgeSupportMeta(snapshot.value?.judgeSupportLevel))
@@ -61,6 +63,7 @@ function redirectInviteToLogin() {
 
 function startPolling() {
   stopPolling()
+  if (snapshot.value?.roomStatus === 'finished') return
   pollTimer = setInterval(() => {
     refreshRoom()
   }, 3000)
@@ -79,16 +82,19 @@ async function refreshRoom(showError = false) {
     redirectInviteToLogin()
     return
   }
-  if (!snapshot.value) {
+  const firstLoad = !snapshot.value
+  if (firstLoad) {
     loading.value = true
   }
   const previousVoiceKey = judgeVoiceScript.value?.key || ''
   try {
     const data = await api.getJudgeRoom(roomId.value)
     snapshot.value = data
+    pollFailures = 0
+    connectionLost.value = false
     storage.clearPendingJudgeInvite()
-    if (!announcement.value && data.latestAnnouncement) {
-      announcement.value = data.latestAnnouncement
+    if (data.roomStatus === 'finished') {
+      stopPolling()
     }
     const nextVoiceScript = buildJudgeVoiceScript(data)
     if (
@@ -101,6 +107,10 @@ async function refreshRoom(showError = false) {
       playJudgeVoice(nextVoiceScript)
     }
   } catch (error) {
+    pollFailures += 1
+    if (pollFailures >= 3) {
+      connectionLost.value = true
+    }
     if (showError) {
       uni.showToast({ title: error?.message || '房间加载失败', icon: 'none' })
     }
@@ -110,6 +120,7 @@ async function refreshRoom(showError = false) {
 }
 
 async function runAction(task) {
+  if (actionLoading.value) return false
   actionLoading.value = true
   try {
     const previousVoiceKey = judgeVoiceScript.value?.key || ''
@@ -123,11 +134,33 @@ async function runAction(task) {
     ) {
       playJudgeVoice(nextVoiceScript)
     }
+    return true
   } catch (error) {
     uni.showToast({ title: error?.message || '操作失败', icon: 'none' })
+    return false
   } finally {
     actionLoading.value = false
   }
+}
+
+function clearConsoleInputs() {
+  announcement.value = ''
+  nightDeadSeats.value = ''
+  voteOutSeat.value = ''
+  finishWinnerCamp.value = ''
+}
+
+function confirmJudgeAction(title, content) {
+  return new Promise((resolve) => {
+    uni.showModal({
+      title,
+      content,
+      confirmText: '确认',
+      confirmColor: '#ff4d4f',
+      success: (res) => resolve(!!res.confirm),
+      fail: () => resolve(false),
+    })
+  })
 }
 
 function parseSeatNos(text) {
@@ -170,45 +203,67 @@ async function submitVote() {
 }
 
 async function judgeBroadcast() {
+  if (actionLoading.value) return
   if (!announcement.value.trim()) {
     uni.showToast({ title: '请输入公告内容', icon: 'none' })
     return
   }
-  await runAction(() => api.advanceJudgeRoom(roomId.value, { action: 'broadcast', announcement: announcement.value.trim() }))
+  const ok = await runAction(() => api.advanceJudgeRoom(roomId.value, { action: 'broadcast', announcement: announcement.value.trim() }))
+  if (ok) clearConsoleInputs()
 }
 
 async function judgeStartVote() {
-  await runAction(() => api.advanceJudgeRoom(roomId.value, { action: 'start_vote', announcement: announcement.value.trim() }))
+  if (actionLoading.value) return
+  const ok = await runAction(() => api.advanceJudgeRoom(roomId.value, { action: 'start_vote', announcement: announcement.value.trim() }))
+  if (ok) clearConsoleInputs()
 }
 
 async function judgeResolveNight() {
-  await runAction(() =>
+  if (actionLoading.value) return
+  const deadSeatNos = parseSeatNos(nightDeadSeats.value)
+  const summary = deadSeatNos.length ? `昨夜出局：${deadSeatNos.map((seat) => `${seat}号`).join('、')}` : '昨夜平安夜，无人出局'
+  const confirmed = await confirmJudgeAction('结算夜晚', `${summary}。结算后无法撤销，确认继续？`)
+  if (!confirmed) return
+  const ok = await runAction(() =>
     api.advanceJudgeRoom(roomId.value, {
       action: 'resolve_night',
-      deadSeatNos: parseSeatNos(nightDeadSeats.value),
+      deadSeatNos,
       announcement: announcement.value.trim(),
     }),
   )
+  if (ok) clearConsoleInputs()
 }
 
 async function judgeResolveVote() {
-  await runAction(() =>
+  if (actionLoading.value) return
+  const eliminatedSeatNo = Number(voteOutSeat.value) || null
+  const summary = eliminatedSeatNo ? `放逐 ${eliminatedSeatNo} 号` : '按当前票型自动判定（平票则无人出局）'
+  const confirmed = await confirmJudgeAction('结算投票', `${summary}。结算后无法撤销，确认继续？`)
+  if (!confirmed) return
+  const ok = await runAction(() =>
     api.advanceJudgeRoom(roomId.value, {
       action: 'resolve_vote',
-      eliminatedSeatNo: Number(voteOutSeat.value) || null,
+      eliminatedSeatNo,
       announcement: announcement.value.trim(),
     }),
   )
+  if (ok) clearConsoleInputs()
 }
 
 async function judgeFinish() {
-  await runAction(() =>
+  if (actionLoading.value) return
+  const winnerCamp = finishWinnerCamp.value.trim()
+  const summary = winnerCamp ? `胜利阵营：${winnerCamp}` : '未填写胜利阵营，将记为待法官判定'
+  const confirmed = await confirmJudgeAction('结束对局', `${summary}。结束后整局不可恢复，确认结束？`)
+  if (!confirmed) return
+  const ok = await runAction(() =>
     api.advanceJudgeRoom(roomId.value, {
       action: 'finish',
-      winnerCamp: finishWinnerCamp.value.trim(),
+      winnerCamp,
       announcement: announcement.value.trim(),
     }),
   )
+  if (ok) clearConsoleInputs()
 }
 
 async function playJudgeVoice(script = judgeVoiceScript.value) {
@@ -288,12 +343,13 @@ function openNote() {
 
 function openCommunity() {
   if (!snapshot.value?.boardId) return
+  // 社区是 tabBar 页面，navigateTo 带参数会静默失败；上下文走 storage 传一次
+  storage.setCommunityFilterContext({
+    boardId: snapshot.value.boardId,
+    boardName: snapshot.value.boardName || '',
+    source: 'judge',
+  })
   uni.switchTab({ url: '/pages/community/index' })
-  setTimeout(() => {
-    uni.navigateTo({
-      url: `/pages/community/index?boardId=${snapshot.value.boardId}&boardName=${encodeURIComponent(snapshot.value.boardName || '')}`,
-    })
-  }, 60)
 }
 
 function playerRoleText(player) {
@@ -376,6 +432,7 @@ onUnload(() => {
 
 <template>
   <view class="page-shell">
+    <view v-if="connectionLost" class="connection-hint">连接中断，正在重试…</view>
     <view v-if="snapshot" class="hero-card glass-card section-card">
       <view class="hero-top">
         <view>
@@ -401,7 +458,7 @@ onUnload(() => {
     <view v-if="snapshot?.canJoin" class="glass-card section-card">
       <view class="section-title">加入房间</view>
       <view class="section-desc">当前房间仍在大厅阶段，你可以直接加入并等待法官发身份。</view>
-      <button class="button-primary action-button" :loading="actionLoading" @tap="joinRoom">加入并分配座位</button>
+      <button class="button-primary action-button" :loading="actionLoading" :disabled="actionLoading" @tap="joinRoom">加入并分配座位</button>
     </view>
 
     <view v-if="snapshot && !snapshot.selfPlayer && !snapshot.canJoin" class="glass-card section-card empty-state">
@@ -412,10 +469,10 @@ onUnload(() => {
       <view class="section-title">大厅状态</view>
       <view class="section-desc">已入座 {{ snapshot.joinedCount }}/{{ snapshot.playerCount }}，已准备 {{ snapshot.readyCount }}/{{ snapshot.playerCount }}</view>
       <view class="lobby-actions">
-        <button v-if="snapshot.canReady" class="button-primary" :loading="actionLoading" @tap="toggleReady">
+        <button v-if="snapshot.canReady" class="button-primary" :loading="actionLoading" :disabled="actionLoading" @tap="toggleReady">
           {{ selfPlayer?.ready ? '取消准备' : '我已准备' }}
         </button>
-        <button v-if="snapshot.canStart" class="button-primary" :loading="actionLoading" @tap="startRoom">开始发身份</button>
+        <button v-if="snapshot.canStart" class="button-primary" :loading="actionLoading" :disabled="actionLoading" @tap="startRoom">开始发身份</button>
       </view>
     </view>
 
@@ -455,24 +512,24 @@ onUnload(() => {
       <view v-if="snapshot.currentPhase === 'night_action'" class="console-block">
         <view class="section-meta">昨夜死亡座位</view>
         <input v-model="nightDeadSeats" class="field-input" placeholder="例如 3, 8" />
-        <button class="button-primary action-button" :loading="actionLoading" @tap="judgeResolveNight">结算夜晚</button>
+        <button class="button-primary action-button" :loading="actionLoading" :disabled="actionLoading" @tap="judgeResolveNight">结算夜晚</button>
       </view>
 
       <view v-if="snapshot.currentPhase === 'day_speech'" class="console-block">
-        <button class="button-ghost action-button" :loading="actionLoading" @tap="judgeBroadcast">发送公告</button>
-        <button class="button-primary action-button" :loading="actionLoading" @tap="judgeStartVote">开启投票</button>
+        <button class="button-ghost action-button" :loading="actionLoading" :disabled="actionLoading" @tap="judgeBroadcast">发送公告</button>
+        <button class="button-primary action-button" :loading="actionLoading" :disabled="actionLoading" @tap="judgeStartVote">开启投票</button>
       </view>
 
       <view v-if="snapshot.currentPhase === 'exile_vote'" class="console-block">
         <view class="section-meta">放逐目标座位</view>
         <input v-model="voteOutSeat" class="field-input" placeholder="留空则按唯一最高票自动判定" />
-        <button class="button-primary action-button" :loading="actionLoading" @tap="judgeResolveVote">结算投票</button>
+        <button class="button-primary action-button" :loading="actionLoading" :disabled="actionLoading" @tap="judgeResolveVote">结算投票</button>
       </view>
 
       <view class="console-block">
         <view class="section-meta">直接结束对局</view>
         <input v-model="finishWinnerCamp" class="field-input" placeholder="例如 好人 / 狼人 / 第三方" />
-        <button class="button-danger action-button" :loading="actionLoading" @tap="judgeFinish">结束并进入结果</button>
+        <button class="button-danger action-button" :loading="actionLoading" :disabled="actionLoading" @tap="judgeFinish">结束并进入结果</button>
       </view>
     </view>
 
@@ -485,13 +542,13 @@ onUnload(() => {
       <view class="pending-text">
         {{ snapshot.pendingNightAction?.submitted ? `已提交：目标 ${snapshot.pendingNightAction.targetSeatNo || '-'}，${snapshot.pendingNightAction.note || '无备注'}` : '当前还没有提交夜间动作' }}
       </view>
-      <button class="button-primary action-button" :loading="actionLoading" @tap="submitNightAction">提交夜间动作</button>
+      <button class="button-primary action-button" :loading="actionLoading" :disabled="actionLoading" @tap="submitNightAction">提交夜间动作</button>
     </view>
 
     <view v-if="snapshot?.canVote" class="glass-card section-card">
       <view class="section-title">放逐投票</view>
       <input v-model="voteTargetSeat" class="field-input" placeholder="输入你要投票的座位号" />
-      <button class="button-primary action-button" :loading="actionLoading" @tap="submitVote">提交投票</button>
+      <button class="button-primary action-button" :loading="actionLoading" :disabled="actionLoading" @tap="submitVote">提交投票</button>
     </view>
 
     <view v-if="snapshot?.voteTallies?.length" class="glass-card section-card">
@@ -652,5 +709,15 @@ onUnload(() => {
   .player-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.connection-hint {
+  margin-bottom: var(--content-gap);
+  padding: 16rpx 22rpx;
+  border-radius: 16rpx;
+  background: rgba(255, 192, 0, 0.14);
+  color: #ffc000;
+  font-size: 24rpx;
+  line-height: 1.5;
 }
 </style>

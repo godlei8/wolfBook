@@ -1,6 +1,8 @@
 package com.wolfbook.backend.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wolfbook.backend.common.ApiException;
 import com.wolfbook.backend.common.PageResponse;
 import com.wolfbook.backend.domain.Comment;
@@ -21,8 +23,12 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class CommunityService {
@@ -56,22 +62,43 @@ public class CommunityService {
         this.converter = converter;
     }
 
+    public static final int MAX_PAGE_SIZE = 50;
+    public static final int ADMIN_MAX_PAGE_SIZE = 500;
+
     public PageResponse<WolfbookDtos.PostSummaryView> listPosts(int page, int size, String authorization) {
         String currentUser = tokenService.resolveUser(authorization);
-        List<WolfbookDtos.PostSummaryView> items = postMapper.selectList(
-                        new LambdaQueryWrapper<PostEntity>()
-                                .eq(PostEntity::getStatus, 1)
-                                .orderByDesc(PostEntity::getCreateTime)
-                ).stream()
-                .map(converter::toPost)
-                .map(post -> toPostSummary(post, currentUser))
+        return pagePosts(
+                new LambdaQueryWrapper<PostEntity>()
+                        .eq(PostEntity::getStatus, 1)
+                        .orderByDesc(PostEntity::getCreateTime),
+                page,
+                size,
+                currentUser,
+                false
+        );
+    }
+
+    private PageResponse<WolfbookDtos.PostSummaryView> pagePosts(
+            LambdaQueryWrapper<PostEntity> wrapper,
+            int page,
+            int size,
+            String currentUser,
+            boolean includeAuthorOpenid
+    ) {
+        int safePage = Math.max(page, 1);
+        int safeSize = Math.min(Math.max(size, 1), includeAuthorOpenid ? ADMIN_MAX_PAGE_SIZE : MAX_PAGE_SIZE);
+        Page<PostEntity> result = postMapper.selectPage(new Page<>(safePage, safeSize), wrapper);
+        List<Post> posts = result.getRecords().stream().map(converter::toPost).toList();
+        Map<String, UserProfile> authors = loadUsers(posts.stream().map(Post::openid).collect(Collectors.toSet()));
+        List<WolfbookDtos.PostSummaryView> items = posts.stream()
+                .map(post -> toPostSummary(post, currentUser, authors.get(post.openid()), includeAuthorOpenid))
                 .toList();
-        return page(items, page, size);
+        return new PageResponse<>(items, (int) result.getTotal(), safePage, safeSize);
     }
 
     public WolfbookDtos.PostDetailView getPostDetail(Integer id, String authorization) {
         String currentUser = tokenService.resolveUser(authorization);
-        Post post = getPost(id);
+        Post post = converter.toPost(getVisiblePostEntity(id));
         UserProfile author = getUser(post.openid());
         List<WolfbookDtos.CommentView> comments = commentMapper.selectList(
                         new LambdaQueryWrapper<CommentEntity>()
@@ -84,7 +111,7 @@ public class CommunityService {
                 .toList();
         return new WolfbookDtos.PostDetailView(
                 post.id(),
-                author.openid(),
+                null,
                 author.nickname(),
                 author.avatar(),
                 post.content(),
@@ -121,15 +148,16 @@ public class CommunityService {
         PostEntity post = getPostEntity(postId);
         boolean liked = toggleLike("post", postId, openid);
         int likeCount = countLikes("post", postId);
-        post.setLikeCount(likeCount);
-        post.setUpdateTime(LocalDateTime.now());
-        postMapper.updateById(post);
+        postMapper.update(null, new LambdaUpdateWrapper<PostEntity>()
+                .eq(PostEntity::getId, post.getId())
+                .set(PostEntity::getLikeCount, likeCount)
+                .set(PostEntity::getUpdateTime, LocalDateTime.now()));
         return new WolfbookDtos.ToggleLikeResponse(liked, likeCount);
     }
 
     public WolfbookDtos.CommentView createComment(String authorization, WolfbookDtos.CreateCommentRequest request) {
         String openid = tokenService.requireUser(authorization);
-        PostEntity post = getPostEntity(request.postId());
+        PostEntity post = getVisiblePostEntity(request.postId());
         contentSafetyProvider.ensureSafeText(request.content());
 
         CommentEntity entity = new CommentEntity();
@@ -141,9 +169,7 @@ public class CommunityService {
         entity.setCreateTime(LocalDateTime.now());
         commentMapper.insert(entity);
 
-        post.setCommentCount(post.getCommentCount() + 1);
-        post.setUpdateTime(LocalDateTime.now());
-        postMapper.updateById(post);
+        adjustCommentCount(post.getId(), 1);
         return toCommentView(converter.toComment(entity), openid);
     }
 
@@ -152,8 +178,9 @@ public class CommunityService {
         CommentEntity comment = getCommentEntity(commentId);
         boolean liked = toggleLike("comment", commentId, openid);
         int likeCount = countLikes("comment", commentId);
-        comment.setLikeCount(likeCount);
-        commentMapper.updateById(comment);
+        commentMapper.update(null, new LambdaUpdateWrapper<CommentEntity>()
+                .eq(CommentEntity::getId, comment.getId())
+                .set(CommentEntity::getLikeCount, likeCount));
         return new WolfbookDtos.ToggleLikeResponse(liked, likeCount);
     }
 
@@ -194,10 +221,14 @@ public class CommunityService {
     }
 
     public WolfbookDtos.PostSummaryView toPostSummary(Post post, String currentUser) {
-        UserProfile author = getUser(post.openid());
+        return toPostSummary(post, currentUser, null, true);
+    }
+
+    private WolfbookDtos.PostSummaryView toPostSummary(Post post, String currentUser, UserProfile loadedAuthor, boolean includeAuthorOpenid) {
+        UserProfile author = loadedAuthor != null ? loadedAuthor : getUser(post.openid());
         return new WolfbookDtos.PostSummaryView(
                 post.id(),
-                author.openid(),
+                includeAuthorOpenid ? author.openid() : null,
                 author.nickname(),
                 author.avatar(),
                 post.content(),
@@ -211,11 +242,15 @@ public class CommunityService {
     }
 
     public WolfbookDtos.CommentView toCommentView(Comment comment, String currentUser) {
+        return toCommentView(comment, currentUser, false);
+    }
+
+    private WolfbookDtos.CommentView toCommentView(Comment comment, String currentUser, boolean includeAuthorOpenid) {
         UserProfile author = getUser(comment.openid());
         return new WolfbookDtos.CommentView(
                 comment.id(),
                 comment.postId(),
-                author.openid(),
+                includeAuthorOpenid ? author.openid() : null,
                 author.nickname(),
                 author.avatar(),
                 comment.content(),
@@ -232,7 +267,7 @@ public class CommunityService {
                                 .orderByDesc(CommentEntity::getCreateTime)
                 ).stream()
                 .map(converter::toComment)
-                .map(comment -> toCommentView(comment, null))
+                .map(comment -> toCommentView(comment, null, true))
                 .toList();
         return page(list, page, size);
     }
@@ -245,14 +280,7 @@ public class CommunityService {
     }
 
     public PageResponse<WolfbookDtos.PostSummaryView> listAllPosts(int page, int size) {
-        List<WolfbookDtos.PostSummaryView> list = postMapper.selectList(
-                        new LambdaQueryWrapper<PostEntity>()
-                                .orderByDesc(PostEntity::getCreateTime)
-                ).stream()
-                .map(converter::toPost)
-                .map(post -> toPostSummary(post, null))
-                .toList();
-        return page(list, page, size);
+        return pagePosts(new LambdaQueryWrapper<PostEntity>().orderByDesc(PostEntity::getCreateTime), page, size, null, true);
     }
 
     public PageResponse<Report> listAllReports(int page, int size) {
@@ -277,10 +305,16 @@ public class CommunityService {
         commentMapper.deleteById(commentId);
         likeMapper.delete(new LambdaQueryWrapper<LikeEntity>().eq(LikeEntity::getTargetType, "comment").eq(LikeEntity::getTargetId, commentId));
 
-        PostEntity post = getPostEntity(comment.getPostId());
-        post.setCommentCount(Math.max(0, post.getCommentCount() - 1));
-        post.setUpdateTime(LocalDateTime.now());
-        postMapper.updateById(post);
+        adjustCommentCount(comment.getPostId(), -1);
+    }
+
+    private void adjustCommentCount(Integer postId, int delta) {
+        postMapper.update(null, new LambdaUpdateWrapper<PostEntity>()
+                .eq(PostEntity::getId, postId)
+                .setSql(delta > 0
+                        ? "comment_count = comment_count + " + delta
+                        : "comment_count = GREATEST(comment_count - " + (-delta) + ", 0)")
+                .set(PostEntity::getUpdateTime, LocalDateTime.now()));
     }
 
     private boolean toggleLike(String targetType, Integer targetId, String openid) {
@@ -329,6 +363,29 @@ public class CommunityService {
             throw new ApiException(4004, "帖子不存在");
         }
         return entity;
+    }
+
+    /** 小程序端只允许访问在线（status = 1）的帖子；下线帖子对用户等同于不存在。 */
+    private PostEntity getVisiblePostEntity(Integer id) {
+        PostEntity entity = getPostEntity(id);
+        if (!Integer.valueOf(1).equals(entity.getStatus())) {
+            throw new ApiException(4004, "帖子不存在或已下线");
+        }
+        return entity;
+    }
+
+    private Map<String, UserProfile> loadUsers(Set<String> openids) {
+        if (openids.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, UserProfile> result = new HashMap<>();
+        for (UserEntity entity : userMapper.selectBatchIds(openids)) {
+            result.put(entity.getOpenid(), converter.toUserProfile(entity));
+        }
+        for (String openid : openids) {
+            result.computeIfAbsent(openid, this::getUser);
+        }
+        return result;
     }
 
     private CommentEntity getCommentEntity(Integer id) {

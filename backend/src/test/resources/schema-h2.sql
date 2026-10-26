@@ -212,3 +212,61 @@ CREATE TABLE assistant_query_logs (
   trace_id VARCHAR(64),
   create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE judge_rooms (
+  room_id VARCHAR(64) PRIMARY KEY,
+  board_id INT NOT NULL,
+  board_name VARCHAR(100) NOT NULL,
+  player_count TINYINT NOT NULL,
+  judge_mode VARCHAR(20) DEFAULT 'observer',
+  judge_support_level VARCHAR(20) DEFAULT 'manual_only',
+  owner_user_id VARCHAR(100) NOT NULL,
+  owner_player_id VARCHAR(64),
+  owner_seat_no TINYINT,
+  room_status VARCHAR(20) DEFAULT 'lobby',
+  current_day TINYINT DEFAULT 1,
+  current_phase VARCHAR(30) DEFAULT 'lobby',
+  auto_judge_enabled TINYINT DEFAULT 0,
+  can_rollback TINYINT DEFAULT 1,
+  winner_camp VARCHAR(30),
+  latest_announcement VARCHAR(500),
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE judge_room_players (
+  player_id VARCHAR(64) PRIMARY KEY,
+  room_id VARCHAR(64) NOT NULL,
+  user_id VARCHAR(100) NOT NULL,
+  nickname VARCHAR(50) NOT NULL,
+  avatar VARCHAR(500),
+  seat_no TINYINT,
+  is_room_owner TINYINT DEFAULT 0,
+  is_judge_observer TINYINT DEFAULT 0,
+  is_playing TINYINT DEFAULT 1,
+  ready TINYINT DEFAULT 0,
+  alive TINYINT DEFAULT 1,
+  role_id INT,
+  role_name VARCHAR(50),
+  faction VARCHAR(30),
+  death_day TINYINT,
+  death_phase VARCHAR(30),
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uk_judge_room_user UNIQUE (room_id, user_id),
+  CONSTRAINT uk_judge_room_seat UNIQUE (room_id, seat_no)
+);
+
+CREATE TABLE judge_action_events (
+  event_id VARCHAR(64) PRIMARY KEY,
+  room_id VARCHAR(64) NOT NULL,
+  day_no TINYINT DEFAULT 1,
+  phase VARCHAR(30) NOT NULL,
+  actor_player_id VARCHAR(64),
+  target_player_ids_json CLOB,
+  action_type VARCHAR(50) NOT NULL,
+  payload_json CLOB,
+  result_payload_json CLOB,
+  visibility VARCHAR(20) DEFAULT 'public',
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

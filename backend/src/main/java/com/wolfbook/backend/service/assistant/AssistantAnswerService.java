@@ -16,6 +16,8 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.http.MediaType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -34,6 +36,8 @@ import java.util.regex.Pattern;
 
 @Service
 public class AssistantAnswerService {
+
+    private static final Logger log = LoggerFactory.getLogger(AssistantAnswerService.class);
 
     private static final Pattern PLAYER_COUNT_PATTERN = Pattern.compile("(\\d{1,2})\\s*人");
     private static final Pattern MULTI_BLANK_LINES = Pattern.compile("\\n{3,}");
@@ -183,10 +187,7 @@ public class AssistantAnswerService {
             emitter.complete();
         } catch (Exception exception) {
             try {
-                emit(emitter, "error", new AssistantDtos.AssistantStreamError(
-                        exception.getMessage() == null ? "AI 流式返回失败" : exception.getMessage(),
-                        prepared.traceId()
-                ));
+                emit(emitter, "error", toStreamError(exception, prepared.traceId()));
                 emitter.complete();
             } catch (IOException ignored) {
                 emitter.completeWithError(exception);
@@ -850,14 +851,20 @@ public class AssistantAnswerService {
 
     private void emitStreamError(SseEmitter emitter, Exception exception, String traceId) {
         try {
-            emit(emitter, "error", new AssistantDtos.AssistantStreamError(
-                    exception.getMessage() == null ? "AI stream failed" : exception.getMessage(),
-                    traceId
-            ));
+            emit(emitter, "error", toStreamError(exception, traceId));
             emitter.complete();
         } catch (IOException ignored) {
             emitter.completeWithError(exception);
         }
+    }
+
+    /** 业务异常原样带 code 下发（小程序靠 4001 清登录态）；其他异常只给通用文案，不泄露内部信息。 */
+    private AssistantDtos.AssistantStreamError toStreamError(Exception exception, String traceId) {
+        if (exception instanceof ApiException apiException) {
+            return new AssistantDtos.AssistantStreamError(apiException.getCode(), apiException.getMessage(), traceId);
+        }
+        log.error("assistant stream failed, traceId={}", traceId, exception);
+        return new AssistantDtos.AssistantStreamError(5000, "AI 回答失败，请稍后重试", traceId);
     }
 
     private void writeLog(String openid, String sessionId, String userMessage, AssistantDtos.AssistantAskResponse response, long latencyMs, String failureType) {

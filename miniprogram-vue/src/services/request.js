@@ -1,5 +1,6 @@
 import { BASE_URL } from './config'
 import storage from './storage'
+import { createRequestError, isApiPayload, isAuthErrorCode } from './request-errors'
 
 export function clearAuthState() {
   storage.clearAuthToken()
@@ -10,18 +11,33 @@ export function createAuthHeader(token = storage.getAuthToken()) {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
-function unwrap(response, options = {}) {
-  if (response.statusCode !== 200) {
-    throw new Error(`Request failed: ${response.statusCode}`)
+function parseBody(data) {
+  if (typeof data !== 'string') {
+    return data
   }
-  const payload = response.data
-  if (!payload || payload.code !== 0) {
-    if (payload?.code === 4001 && options.hasAuthorization) {
+  try {
+    return JSON.parse(data)
+  } catch (error) {
+    return data
+  }
+}
+
+function unwrap(response, options = {}) {
+  const payload = parseBody(response.data)
+  if (response.statusCode !== 200 || !isApiPayload(payload)) {
+    throw createRequestError({ statusCode: response.statusCode, payload })
+  }
+  if (payload.code !== 0) {
+    if (isAuthErrorCode(payload.code) && options.hasAuthorization) {
       clearAuthState()
     }
-    throw new Error(payload?.msg || 'Request failed')
+    throw createRequestError({ statusCode: response.statusCode, payload })
   }
   return payload.data
+}
+
+function toTransportError(error) {
+  return createRequestError({ errMsg: error?.errMsg || error?.message || '' })
 }
 
 export function request({ url, method = 'GET', data, header = {} }) {
@@ -40,7 +56,7 @@ export function request({ url, method = 'GET', data, header = {} }) {
           reject(error)
         }
       },
-      fail: reject,
+      fail: (error) => reject(toTransportError(error)),
     })
   })
 }
@@ -55,17 +71,12 @@ export function uploadFile(filePath, token) {
       timeout: 20000,
       success: (response) => {
         try {
-          resolve(
-            unwrap(
-              { statusCode: response.statusCode, data: JSON.parse(response.data) },
-              { hasAuthorization: !!token },
-            ),
-          )
+          resolve(unwrap(response, { hasAuthorization: !!token }))
         } catch (error) {
           reject(error)
         }
       },
-      fail: reject,
+      fail: (error) => reject(toTransportError(error)),
     })
   })
 }

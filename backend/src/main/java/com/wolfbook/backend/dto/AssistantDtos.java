@@ -59,6 +59,7 @@ public final class AssistantDtos {
     }
 
     public record AssistantStreamError(
+            int code,
             String message,
             String traceId
     ) {

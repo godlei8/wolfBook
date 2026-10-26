@@ -20,6 +20,7 @@ const activeSessionId = ref('')
 const scene = ref('general')
 const pageContext = ref({})
 const draft = ref('')
+let activeStream = null
 const chatScrollIntoView = ref('')
 const loadError = ref('')
 
@@ -329,13 +330,18 @@ async function loadAll() {
   }
 }
 
-async function sendQuestion(question = draft.value) {
+async function sendQuestion(question) {
   if (sending.value || !assistantEnabled.value) return
 
-  const message = (question || '').trim()
+  // 只有发送的是输入框草稿时才清空草稿；快捷提问不能把用户正在写的内容清掉
+  const usingDraft = question === undefined || question === null
+  const message = (usingDraft ? draft.value : question || '').trim()
   if (!message) {
     uni.showToast({ title: '请输入问题', icon: 'none' })
     return
+  }
+  if (usingDraft) {
+    draft.value = ''
   }
 
   loadError.value = ''
@@ -377,17 +383,23 @@ async function sendQuestion(question = draft.value) {
           streamBuffer.flush()
           replaceStreamingMessage(streamingMessageId, event)
         },
+        onRequestTask(task) {
+          activeStream = task
+        },
       },
     )
 
     activeSessionId.value = response.sessionId
-    draft.value = ''
     loadSessionList().catch(() => {})
   } catch (error) {
     const messageText = error instanceof Error && error.message ? error.message : '发送失败，请稍后再试'
     markStreamingFailed(streamingMessageId, messageText)
     uni.showToast({ title: messageText.slice(0, 18), icon: 'none' })
+    if (usingDraft && !draft.value) {
+      draft.value = message
+    }
   } finally {
+    activeStream = null
     streamBuffer.dispose()
     sending.value = false
   }
@@ -419,11 +431,25 @@ function startNewSession() {
   draft.value = ''
 }
 
-async function resetCurrentSession() {
+function resetCurrentSession() {
   if (!activeSessionId.value) {
     startNewSession()
     return
   }
+  uni.showModal({
+    title: '清空当前会话',
+    content: '会删除这个会话里的全部对话记录，且无法恢复。',
+    confirmText: '清空',
+    confirmColor: '#ff4d4f',
+    success: (res) => {
+      if (res.confirm) {
+        resetCurrentSessionNow()
+      }
+    },
+  })
+}
+
+async function resetCurrentSessionNow() {
   try {
     await assistant.resetSession(activeSessionId.value)
     startNewSession()
@@ -462,6 +488,10 @@ onLoad((options) => {
 
 onUnload(() => {
   cancelPendingHydration()
+  if (activeStream) {
+    activeStream.abort()
+    activeStream = null
+  }
 })
 </script>
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import AdminLogin from './components/AdminLogin.vue'
 import OverviewPanel from './components/OverviewPanel.vue'
@@ -7,7 +7,7 @@ import BoardManagement from './components/BoardManagement.vue'
 import RoleManagement from './components/RoleManagement.vue'
 import CommunityManagement from './components/CommunityManagement.vue'
 import AiAssistantManagement from './components/AiAssistantManagement.vue'
-import { api, clearStoredToken, getStoredToken } from './services/api'
+import { UNAUTHORIZED_EVENT, api, clearStoredToken, getStoredToken, isUnauthorizedError } from './services/api'
 import type { DashboardSummary, LoginResponse } from './types'
 
 const activeMenu = ref<'overview' | 'boards' | 'roles' | 'community' | 'ai'>('overview')
@@ -61,10 +61,13 @@ async function loadSummary() {
   try {
     summary.value = await api.getSummary()
   } catch (error) {
-    clearStoredToken()
-    authenticated.value = false
-    summary.value = null
-    ElMessage.error(error instanceof Error ? error.message : '后台连接失败，请重新登录')
+    // 只有未认证才退出登录；网络抖动、后端 5xx 不该把管理员踢出去
+    if (isUnauthorizedError(error)) {
+      logout()
+      ElMessage.error('登录已失效，请重新登录')
+    } else {
+      ElMessage.error(error instanceof Error ? error.message : '后台连接失败，请稍后重试')
+    }
   } finally {
     loadingSummary.value = false
   }
@@ -89,8 +92,19 @@ watch(
   { immediate: true },
 )
 
+function handleUnauthorized() {
+  if (!authenticated.value) return
+  logout()
+  ElMessage.warning('登录已失效，请重新登录')
+}
+
 onMounted(() => {
+  window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized)
   void loadSummary()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized)
 })
 </script>
 

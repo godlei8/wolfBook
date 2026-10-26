@@ -8,6 +8,7 @@ import { formatDateTime } from '../../utils/format'
 
 const post = ref(null)
 const commentText = ref('')
+const busy = ref(false)
 let postId = 0
 
 async function loadDetail() {
@@ -34,27 +35,64 @@ function ensureLogin() {
   return true
 }
 
+function showActionError(error, fallback) {
+  uni.showToast({ title: (error?.message || fallback).slice(0, 30), icon: 'none' })
+}
+
 async function toggleLike() {
+  if (busy.value) return
   if (!ensureLogin()) return
-  await api.togglePostLike(postId)
-  await loadDetail()
+  busy.value = true
+  try {
+    await api.togglePostLike(postId)
+    await loadDetail()
+  } catch (error) {
+    showActionError(error, '点赞失败')
+  } finally {
+    busy.value = false
+  }
 }
 
 async function submitComment() {
+  if (busy.value) return
   if (!ensureLogin()) return
   if (!commentText.value.trim()) {
     uni.showToast({ title: '请输入评论内容', icon: 'none' })
     return
   }
-  await api.createComment({ postId, content: commentText.value })
-  commentText.value = ''
-  await loadDetail()
+  busy.value = true
+  try {
+    await api.createComment({ postId, content: commentText.value })
+    // 只有成功才清空，失败时保留用户输入
+    commentText.value = ''
+    await loadDetail()
+  } catch (error) {
+    showActionError(error, '评论失败')
+  } finally {
+    busy.value = false
+  }
 }
 
-async function reportPost() {
+function reportPost() {
+  if (busy.value) return
   if (!ensureLogin()) return
-  await api.createReport({ targetType: 'post', targetId: postId, reason: '需要管理员复核' })
-  uni.showToast({ title: '已提交举报', icon: 'none' })
+  uni.showModal({
+    title: '举报这条帖子',
+    content: '确认举报吗？管理员会复核内容并处理。',
+    confirmText: '举报',
+    success: async (res) => {
+      if (!res.confirm) return
+      busy.value = true
+      try {
+        await api.createReport({ targetType: 'post', targetId: postId, reason: '需要管理员复核' })
+        uni.showToast({ title: '已提交举报', icon: 'none' })
+      } catch (error) {
+        showActionError(error, '举报失败')
+      } finally {
+        busy.value = false
+      }
+    },
+  })
 }
 
 onLoad((options) => {
@@ -101,7 +139,7 @@ onLoad((options) => {
     <view class="glass-card section-card">
       <view class="section-title">发表评论</view>
       <textarea v-model="commentText" class="field-textarea" placeholder="输入你的判断或复盘结论" />
-      <button class="button-primary submit-btn" @tap="submitComment">发送评论</button>
+      <button class="button-primary submit-btn" :loading="busy" :disabled="busy" @tap="submitComment">发送评论</button>
     </view>
 
     <AssistantDock

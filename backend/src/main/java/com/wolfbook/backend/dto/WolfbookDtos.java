@@ -1,5 +1,6 @@
 package com.wolfbook.backend.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -235,7 +236,7 @@ public final class WolfbookDtos {
 
     public record PostSummaryView(
             Integer id,
-            String openid,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String openid,
             String nickname,
             String avatar,
             String content,
@@ -251,7 +252,7 @@ public final class WolfbookDtos {
     public record CommentView(
             Integer id,
             Integer postId,
-            String openid,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String openid,
             String nickname,
             String avatar,
             String content,
@@ -264,7 +265,7 @@ public final class WolfbookDtos {
 
     public record PostDetailView(
             Integer id,
-            String openid,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String openid,
             String nickname,
             String avatar,
             String content,
@@ -341,7 +342,7 @@ public final class WolfbookDtos {
 
     public record JudgePlayerView(
             String playerId,
-            String userId,
+            boolean self,
             String nickname,
             String avatar,
             Integer seatNo,

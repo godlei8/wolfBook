@@ -49,6 +49,7 @@ function chooseMode(mode) {
 }
 
 async function createRoom() {
+  if (creating.value) return
   if (!selectedBoard.value) {
     uni.showToast({ title: '请先选择板子', icon: 'none' })
     return
@@ -124,7 +125,7 @@ onLoad((options) => {
       </view>
     </view>
 
-    <button class="button-primary create-button" :loading="creating" @tap="createRoom">创建并进入房间</button>
+    <button class="button-primary create-button" :loading="creating" :disabled="creating" @tap="createRoom">创建并进入房间</button>
 
     <AssistantDock
       scene="judge_create"

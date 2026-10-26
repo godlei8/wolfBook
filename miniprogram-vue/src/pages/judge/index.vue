@@ -180,7 +180,7 @@ onShow(() => {
       <view class="section-title">微信邀请</view>
       <view class="section-desc">{{ sharedInviteText() }}</view>
       <view class="invite-room-id">房间号：{{ sharedRoomId }}</view>
-      <button class="button-primary launch-button" @tap="enterRoom">
+      <button class="button-primary launch-button" @tap="openRoom(sharedRoomId)">
         {{ hasAuth ? '通过邀请进入房间' : '登录后进入房间' }}
       </button>
     </view>

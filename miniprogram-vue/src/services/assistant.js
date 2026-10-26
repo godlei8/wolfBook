@@ -1,5 +1,6 @@
 import { BASE_URL } from './config'
 import { clearAuthState, createAuthHeader, request } from './request'
+import { createRequestError, isAuthErrorCode } from './request-errors'
 
 function decodeChunkData(data) {
   if (!data) return ''
@@ -62,13 +63,6 @@ function supportsStreamingRequest() {
   return typeof wx !== 'undefined' && typeof uni.request === 'function'
 }
 
-function shouldClearAuthFromMessage(message) {
-  if (!message || typeof message !== 'string') {
-    return false
-  }
-  return /token|authorization|auth|登录/i.test(message)
-}
-
 function fallbackAsk(payload, handlers = {}) {
   return request({
     url: '/api/assistant/ask',
@@ -107,6 +101,8 @@ function streamAsk(payload, handlers = {}) {
     let finalResponse = null
     let settled = false
     let requestTask = null
+    let receivedDelta = false
+    let abortedByCaller = false
 
     function resolveOnce(value) {
       if (settled) return
@@ -144,6 +140,7 @@ function streamAsk(payload, handlers = {}) {
         }
 
         if (parsed.event === 'delta') {
+          receivedDelta = true
           handlers.onDelta?.(parsed.data)
           return
         }
@@ -155,8 +152,8 @@ function streamAsk(payload, handlers = {}) {
         }
 
         if (parsed.event === 'error') {
-          const message = parsed.data?.message || 'stream response failed'
-          if (shouldClearAuthFromMessage(message)) {
+          const message = parsed.data?.message || 'AI 回复失败，请稍后再试'
+          if (isAuthErrorCode(parsed.data?.code)) {
             clearAuthState()
           }
           rejectOnce(new Error(message))
@@ -198,16 +195,42 @@ function streamAsk(payload, handlers = {}) {
           return
         }
 
+        // 已经收到增量内容却没有 done：流中途断了，不能把同一个问题再发一遍
+        if (receivedDelta) {
+          rejectOnce(new Error('回复中断，请重试'))
+          return
+        }
+
         fallbackOnce()
       },
       fail: (error) => {
         if (settled) return
         const message = error?.errMsg || ''
+        if (abortedByCaller || message.includes('abort')) {
+          rejectOnce(createRequestError({ errMsg: 'request:fail abort' }))
+          return
+        }
+        if (receivedDelta) {
+          rejectOnce(new Error('回复中断，请重试'))
+          return
+        }
         if (message.includes('404') || message.includes('fail')) {
           fallbackOnce()
           return
         }
-        rejectOnce(error)
+        rejectOnce(createRequestError({ errMsg: message }))
+      },
+    })
+
+    handlers.onRequestTask?.({
+      abort() {
+        if (settled) return
+        abortedByCaller = true
+        settled = true
+        if (requestTask && typeof requestTask.abort === 'function') {
+          requestTask.abort()
+        }
+        reject(createRequestError({ errMsg: 'request:fail abort' }))
       },
     })
 

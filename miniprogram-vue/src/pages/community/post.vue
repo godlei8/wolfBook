@@ -25,13 +25,14 @@ function chooseImages() {
 }
 
 async function submitPost() {
+  if (submitting.value) return
   if (!ensureLogin()) return
   if (!content.value.trim()) {
     uni.showToast({ title: '请输入帖子内容', icon: 'none' })
     return
   }
+  submitting.value = true
   try {
-    submitting.value = true
     const uploadedImages = []
     for (const image of images.value) {
       const result = await api.uploadImage(image)
@@ -39,13 +40,13 @@ async function submitPost() {
     }
     await api.createPost({ content: content.value, images: uploadedImages })
     uni.showToast({ title: '发布成功', icon: 'success' })
+    // 成功后保持 submitting，等待返回期间不能再次点击发布
     setTimeout(() => {
       uni.navigateBack()
     }, 500)
   } catch (error) {
-    uni.showToast({ title: '发布失败', icon: 'none' })
-  } finally {
     submitting.value = false
+    uni.showToast({ title: error?.message || '发布失败', icon: 'none' })
   }
 }
 </script>

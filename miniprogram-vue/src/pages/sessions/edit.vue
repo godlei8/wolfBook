@@ -14,6 +14,7 @@ const selectedBoardId = ref(0)
 
 const customBoardName = ref('')
 const customPlayerCount = ref(12)
+const saving = ref(false)
 
 function makeId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
@@ -149,9 +150,12 @@ function buildSessionPayload() {
 }
 
 async function saveSession() {
+  if (saving.value) return
   const base = buildSessionPayload()
   if (!base) return
 
+  // 成功后 redirectTo 会卸载本页，saving 保持 true 避免连点生成两条笔记
+  saving.value = true
   try {
     const current = sessionId.value ? await userData.getSessionById(sessionId.value) : null
     const now = new Date().toISOString()
@@ -165,7 +169,31 @@ async function saveSession() {
     const saved = await userData.saveSession(session)
     uni.redirectTo({ url: `/pages/sessions/detail?id=${saved.sessionId}` })
   } catch (error) {
+    saving.value = false
     uni.showToast({ title: error?.message || '保存失败', icon: 'none' })
+  }
+}
+
+function preselectBoard(options) {
+  const boardId = Number(options?.boardId || 0)
+  let boardName = ''
+  try {
+    boardName = decodeURIComponent(options?.boardName || '')
+  } catch (error) {
+    boardName = options?.boardName || ''
+  }
+  if (boardId > 0) {
+    const index = boards.value.findIndex((item) => item.id === boardId)
+    if (index >= 0) {
+      sessionMode.value = 'library'
+      selectedBoardIndex.value = index
+      selectedBoardId.value = boardId
+      return
+    }
+  }
+  if (boardName) {
+    sessionMode.value = 'custom'
+    customBoardName.value = boardName
   }
 }
 
@@ -181,6 +209,9 @@ async function initialize(options) {
   await loadBoardOptions()
   if (editingSession) {
     hydrateSession(editingSession)
+  } else if (options?.boardId || options?.boardName) {
+    // 从法官房间"记笔记"进来时带上板子，直接预选
+    preselectBoard(options)
   }
 }
 
@@ -331,7 +362,7 @@ onLoad((options) => {
       </template>
     </view>
 
-    <button class="button-primary save-button" @tap="saveSession">保存并进入记录</button>
+    <button class="button-primary save-button" :loading="saving" :disabled="saving" @tap="saveSession">保存并进入记录</button>
   </view>
 </template>
 

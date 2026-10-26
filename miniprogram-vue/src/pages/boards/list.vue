@@ -1,13 +1,18 @@
 <script setup>
 import { ref } from 'vue'
-import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
+import { onLoad, onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
 import BoardCard from '../../components/BoardCard.vue'
 import AssistantDock from '../../components/assistant/AssistantDock.vue'
 import api from '../../services/api'
 import userData from '../../services/user-data'
 
+const PAGE_SIZE = 20
+
 const boards = ref([])
 const total = ref(0)
+const page = ref(1)
+const hasMore = ref(false)
+const loadingMore = ref(false)
 const keyword = ref('')
 const playerFilter = ref('all')
 const difficultyFilter = ref('all')
@@ -51,22 +56,36 @@ function isFavorite(boardId) {
   return favoriteIds.value.includes(boardId)
 }
 
-async function loadBoards() {
+// 模板里 @confirm / @tap 会把事件对象传进来，所以只认显式的 { append: true }
+async function loadBoards(options = {}) {
+  const append = options.append === true
+  if (append && (loadingMore.value || !hasMore.value)) return
+  const nextPage = append ? page.value + 1 : 1
+  if (append) {
+    loadingMore.value = true
+  }
   try {
     const data = await api.getBoards({
-      page: 1,
-      size: 20,
+      page: nextPage,
+      size: PAGE_SIZE,
       playerCount: playerFilter.value,
       difficulty: difficultyFilter.value,
       tag: tagFilter.value,
       keyword: keyword.value,
     })
-    boards.value = data.list || []
+    const list = data.list || []
+    boards.value = append ? boards.value.concat(list) : list
     total.value = data.total || 0
-    await syncFavoritesSafely()
+    page.value = nextPage
+    hasMore.value = list.length > 0 && boards.value.length < total.value
+    if (!append) {
+      await syncFavoritesSafely()
+    }
   } catch (error) {
     console.error('load boards failed', error)
     uni.showToast({ title: error?.message || '板子加载失败', icon: 'none' })
+  } finally {
+    loadingMore.value = false
   }
 }
 
@@ -122,6 +141,8 @@ onPullDownRefresh(async () => {
   await loadBoards()
   uni.stopPullDownRefresh()
 })
+
+onReachBottom(() => loadBoards({ append: true }))
 </script>
 
 <template>
@@ -204,6 +225,10 @@ onPullDownRefresh(async () => {
       @favorite-toggle="toggleFavorite"
     />
 
+    <view v-if="boards.length" class="list-footer">
+      {{ loadingMore ? '加载中…' : hasMore ? '上拉加载更多' : '没有更多了' }}
+    </view>
+
     <AssistantDock
       scene="boards_list"
       :page-context="{
@@ -284,5 +309,12 @@ onPullDownRefresh(async () => {
 .chip {
   min-width: 112rpx;
   padding: 0 24rpx;
+}
+
+.list-footer {
+  padding: 28rpx 0 8rpx;
+  text-align: center;
+  color: #8f8f8f;
+  font-size: 24rpx;
 }
 </style>

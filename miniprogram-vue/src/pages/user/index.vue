@@ -76,10 +76,15 @@ async function refreshData() {
     user.value = latestUser
     fillProfileForm(latestUser)
   } catch (error) {
-    storage.clearAuthToken()
-    storage.setUserProfile(null)
-    user.value = null
-    fillProfileForm(null)
+    // 4001 已由 request.js 统一清登录态；其余错误（超时、5xx、断网）保留本地缓存，不能把用户踢下线
+    const cached = storage.getUserProfile()
+    user.value = cached || null
+    fillProfileForm(cached || null)
+    if (cached) {
+      uni.showToast({ title: '资料刷新失败，已显示本地缓存', icon: 'none' })
+    } else if (storage.getAuthToken()) {
+      showRequestError(error, '资料加载失败')
+    }
   }
 
   await refreshCounts()
@@ -145,6 +150,7 @@ function handleNicknameInput(event) {
 }
 
 async function saveWechatProfile() {
+  if (profileSaving.value) return
   if (!storage.getAuthToken()) {
     uni.showToast({ title: '请先登录', icon: 'none' })
     return
@@ -238,7 +244,7 @@ onShow(() => {
           <view class="login-title">未登录</view>
           <view class="login-desc">登录后可发帖、评论、点赞，并同步你的微信资料。</view>
         </view>
-        <button class="action-button action-button--primary profile-action" :loading="loginLoading" @tap="handleLogin">
+        <button class="action-button action-button--primary profile-action" :loading="loginLoading" :disabled="loginLoading" @tap="handleLogin">
           微信登录
         </button>
       </template>
@@ -340,7 +346,7 @@ onShow(() => {
 
         <view class="editor-actions">
           <button class="action-button action-button--ghost half-button" @tap="profileEditorVisible = false">稍后再说</button>
-          <button class="action-button action-button--primary half-button" :loading="profileSaving" @tap="saveWechatProfile">
+          <button class="action-button action-button--primary half-button" :loading="profileSaving" :disabled="profileSaving" @tap="saveWechatProfile">
             保存资料
           </button>
         </view>

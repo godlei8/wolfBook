@@ -88,14 +88,17 @@ function resetForm(rawSession) {
   Object.assign(recordForm, makeDefaultForm(players.value, latestRound(rawSession)))
 }
 
-function syncSessionView(rawSession) {
+function syncSessionView(rawSession, options = {}) {
   if (!rawSession) return
   session.value = {
     ...rawSession,
     records: (rawSession.records || []).slice(),
   }
   players.value = buildPlayers(rawSession.playerCount)
-  resetForm(rawSession)
+  // 编辑弹层打开时（比如切到微信聊天再回来）不能重置表单，否则正在填的记录会丢
+  if (!options.keepForm) {
+    resetForm(rawSession)
+  }
 }
 
 const displayRecords = computed(() => {
@@ -116,7 +119,7 @@ const latestWolfPack = computed(() => {
   return latest?.content || '暂无狼坑记录'
 })
 
-async function refreshSession() {
+async function refreshSession(options = {}) {
   if (!sessionId.value) return
   try {
     const current = await userData.getSessionById(sessionId.value)
@@ -125,7 +128,7 @@ async function refreshSession() {
       uni.showToast({ title: '对局不存在', icon: 'none' })
       return
     }
-    syncSessionView(current)
+    syncSessionView(current, options)
   } catch (error) {
     uni.showToast({ title: error?.message || '笔记加载失败', icon: 'none' })
   }
@@ -303,7 +306,7 @@ onLoad((options) => {
 })
 
 onShow(() => {
-  refreshSession()
+  refreshSession({ keepForm: showEditor.value })
 })
 </script>
 

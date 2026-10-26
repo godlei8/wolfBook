@@ -6,6 +6,7 @@ import com.wolfbook.backend.domain.Board;
 import com.wolfbook.backend.domain.Report;
 import com.wolfbook.backend.dto.WolfbookDtos;
 import com.wolfbook.backend.service.AdminService;
+import com.wolfbook.backend.support.ImageUploadValidator;
 import com.wolfbook.backend.support.UploadProvider;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
@@ -19,10 +20,12 @@ public class AdminController {
 
     private final AdminService adminService;
     private final UploadProvider uploadProvider;
+    private final ImageUploadValidator imageUploadValidator;
 
-    public AdminController(AdminService adminService, UploadProvider uploadProvider) {
+    public AdminController(AdminService adminService, UploadProvider uploadProvider, ImageUploadValidator imageUploadValidator) {
         this.adminService = adminService;
         this.uploadProvider = uploadProvider;
+        this.imageUploadValidator = imageUploadValidator;
     }
 
     @PostMapping("/login")
@@ -133,6 +136,7 @@ public class AdminController {
     @PostMapping("/upload")
     public ApiResponse<WolfbookDtos.UploadResponse> upload(@RequestHeader("Authorization") String authorization, @RequestPart("file") MultipartFile file) {
         adminService.requireAdmin(authorization);
+        imageUploadValidator.validate(file);
         return ApiResponse.success(new WolfbookDtos.UploadResponse(uploadProvider.upload(file, "admin/assets")));
     }
 }

@@ -213,6 +213,64 @@ CREATE TABLE `assistant_query_logs` (
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE `judge_rooms` (
+  `room_id` VARCHAR(64) PRIMARY KEY,
+  `board_id` INT NOT NULL,
+  `board_name` VARCHAR(100) NOT NULL,
+  `player_count` TINYINT NOT NULL,
+  `judge_mode` VARCHAR(20) NOT NULL DEFAULT 'observer',
+  `judge_support_level` VARCHAR(20) NOT NULL DEFAULT 'manual_only',
+  `owner_user_id` VARCHAR(100) NOT NULL,
+  `owner_player_id` VARCHAR(64),
+  `owner_seat_no` TINYINT,
+  `room_status` VARCHAR(20) NOT NULL DEFAULT 'lobby',
+  `current_day` TINYINT DEFAULT 1,
+  `current_phase` VARCHAR(30) DEFAULT 'lobby',
+  `auto_judge_enabled` TINYINT DEFAULT 0,
+  `can_rollback` TINYINT DEFAULT 1,
+  `winner_camp` VARCHAR(30),
+  `latest_announcement` VARCHAR(500),
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE `judge_room_players` (
+  `player_id` VARCHAR(64) PRIMARY KEY,
+  `room_id` VARCHAR(64) NOT NULL,
+  `user_id` VARCHAR(100) NOT NULL,
+  `nickname` VARCHAR(50) NOT NULL,
+  `avatar` VARCHAR(500),
+  `seat_no` TINYINT,
+  `is_room_owner` TINYINT DEFAULT 0,
+  `is_judge_observer` TINYINT DEFAULT 0,
+  `is_playing` TINYINT DEFAULT 1,
+  `ready` TINYINT DEFAULT 0,
+  `alive` TINYINT DEFAULT 1,
+  `role_id` INT,
+  `role_name` VARCHAR(50),
+  `faction` VARCHAR(30),
+  `death_day` TINYINT,
+  `death_phase` VARCHAR(30),
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_judge_room_user` (`room_id`, `user_id`),
+  UNIQUE KEY `uk_judge_room_seat` (`room_id`, `seat_no`)
+);
+
+CREATE TABLE `judge_action_events` (
+  `event_id` VARCHAR(64) PRIMARY KEY,
+  `room_id` VARCHAR(64) NOT NULL,
+  `day_no` TINYINT DEFAULT 1,
+  `phase` VARCHAR(30) NOT NULL,
+  `actor_player_id` VARCHAR(64),
+  `target_player_ids_json` JSON,
+  `action_type` VARCHAR(50) NOT NULL,
+  `payload_json` JSON,
+  `result_payload_json` JSON,
+  `visibility` VARCHAR(20) NOT NULL DEFAULT 'public',
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX `idx_boards_status` ON `boards` (`status`);
 CREATE INDEX `idx_roles_faction_type` ON `roles` (`faction`, `role_type`);
 CREATE INDEX `idx_user_favorite_openid` ON `user_favorite_boards` (`openid`, `create_time`);
@@ -225,3 +283,8 @@ CREATE INDEX `idx_assistant_documents_publish` ON `assistant_documents` (`publis
 CREATE INDEX `idx_assistant_sessions_openid` ON `assistant_sessions` (`openid`, `update_time`);
 CREATE INDEX `idx_assistant_messages_session` ON `assistant_messages` (`session_id`, `create_time`);
 CREATE INDEX `idx_assistant_logs_openid` ON `assistant_query_logs` (`openid`, `create_time`);
+CREATE INDEX `idx_judge_rooms_owner_update` ON `judge_rooms` (`owner_user_id`, `update_time`);
+CREATE INDEX `idx_judge_rooms_status_update` ON `judge_rooms` (`room_status`, `update_time`);
+CREATE INDEX `idx_judge_room_players_room` ON `judge_room_players` (`room_id`, `seat_no`);
+CREATE INDEX `idx_judge_room_players_user` ON `judge_room_players` (`user_id`, `update_time`);
+CREATE INDEX `idx_judge_events_room_phase` ON `judge_action_events` (`room_id`, `day_no`, `phase`, `create_time`);

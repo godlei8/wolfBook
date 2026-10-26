@@ -179,7 +179,8 @@ class BackendApplicationTests {
 
         mockMvc.perform(asyncDispatch(result))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("event:error")));
+                .andExpect(content().string(containsString("event:error")))
+                .andExpect(content().string(containsString("\"code\":4001")));
     }
 
     @Test

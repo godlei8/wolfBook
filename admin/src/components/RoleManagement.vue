@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadRequestOptions } from 'element-plus'
 import { api } from '../services/api'
 import type { Role } from '../types'
@@ -192,6 +192,15 @@ async function submit() {
 }
 
 async function removeRole(id: number) {
+  try {
+    await ElMessageBox.confirm('删除后引用该角色的板子配置会失效，且不可恢复。', '删除角色', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
   try {
     await api.deleteRole(id)
     ElMessage.success('角色已删除')

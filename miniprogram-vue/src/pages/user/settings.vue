@@ -2,9 +2,21 @@
 import storage from '../../services/storage'
 
 function clearData() {
+  const loggedIn = !!storage.getAuthToken()
+  const localSessions = storage.getSessions().length
+  const localFavorites = storage.getFavorites().length
+  const hasLocalOnlyData = !loggedIn && (localSessions > 0 || localFavorites > 0)
+
+  // 未登录时笔记和收藏只存在本地，清理就是永久删除，必须说清楚
+  const content = hasLocalOnlyData
+    ? `你当前未登录，本地的 ${localSessions} 条对局笔记和 ${localFavorites} 个收藏没有云端备份，清理后将永久删除。建议先登录同步再清理。`
+    : '将清除登录态、缓存和本地记录。已同步到云端的收藏和笔记会在重新登录后恢复。'
+
   uni.showModal({
-    title: '清理本地数据',
-    content: '确认清理本地缓存、登录态和临时记录吗？云端收藏和云端笔记不会被删除。',
+    title: hasLocalOnlyData ? '确认永久删除本地数据？' : '清理本地数据',
+    content,
+    confirmText: hasLocalOnlyData ? '仍要删除' : '清理',
+    confirmColor: hasLocalOnlyData ? '#ff4d4f' : '#ffc000',
     success: (res) => {
       if (!res.confirm) return
       storage.clearAllLocalData()
@@ -27,7 +39,7 @@ function clearData() {
 
     <view class="glass-card section-card" @tap="clearData">
       <view class="section-title">清理本地数据</view>
-      <view class="section-desc">会清理登录缓存与本地临时数据，不会删除已经同步到云端的收藏和笔记。</view>
+      <view class="section-desc">会清除登录态、缓存和本地记录。未登录时本地笔记和收藏没有云端备份，清理前请先登录同步。</view>
     </view>
   </view>
 </template>

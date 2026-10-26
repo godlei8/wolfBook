@@ -83,8 +83,18 @@ public class AdminService {
         return new WolfbookDtos.LoginResponse(tokenService.issueAdminToken(adminUser.getUsername()), userView);
     }
 
-    public void requireAdmin(String authorization) {
-        tokenService.requireAdmin(authorization);
+    /**
+     * 校验管理员 token，并确认账号仍然存在且未被禁用；返回管理员用户名。
+     */
+    public String requireAdmin(String authorization) {
+        String username = tokenService.requireAdmin(authorization);
+        AdminUserEntity adminUser = adminUserMapper.selectOne(
+                new LambdaQueryWrapper<AdminUserEntity>().eq(AdminUserEntity::getUsername, username)
+        );
+        if (adminUser == null || !Integer.valueOf(1).equals(adminUser.getStatus())) {
+            throw new ApiException(4001, "管理员账号不可用，请重新登录");
+        }
+        return username;
     }
 
     public WolfbookDtos.DashboardSummary summary() {
@@ -220,7 +230,7 @@ public class AdminService {
     }
 
     public Report processReport(Integer id, WolfbookDtos.ReportProcessRequest request, String authorization) {
-        String adminUsername = tokenService.requireAdmin(authorization);
+        String adminUsername = requireAdmin(authorization);
         ReportEntity entity = reportMapper.selectById(id);
         if (entity == null) {
             throw new ApiException(4004, "举报不存在");

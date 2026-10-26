@@ -4,6 +4,7 @@ const FAVORITES_KEY = 'favorite_boards'
 const SESSIONS_KEY = 'werewolf_sessions'
 const ASSISTANT_DOCK_KEY = 'assistant_dock_state'
 const JUDGE_INVITE_KEY = 'judge_invite_room'
+const COMMUNITY_CONTEXT_KEY = 'community_filter_context'
 
 function parseMaybeJson(value) {
   if (typeof value !== 'string') {
@@ -279,6 +280,24 @@ export default {
   },
   clearPendingJudgeInvite() {
     uni.removeStorageSync(JUDGE_INVITE_KEY)
+  },
+  // 法官房间 → 社区 tab 的跳转上下文（tabBar 页面不能带 query，只能借 storage 传一次）
+  setCommunityFilterContext(value) {
+    const boardId = Number(value?.boardId) || 0
+    const boardName = typeof value?.boardName === 'string' ? value.boardName.trim() : ''
+    if (!boardId && !boardName) {
+      uni.removeStorageSync(COMMUNITY_CONTEXT_KEY)
+      return
+    }
+    setJson(COMMUNITY_CONTEXT_KEY, { boardId, boardName, source: value?.source || '' })
+  },
+  consumeCommunityFilterContext() {
+    const raw = getJson(COMMUNITY_CONTEXT_KEY, null)
+    uni.removeStorageSync(COMMUNITY_CONTEXT_KEY)
+    if (!raw || typeof raw !== 'object') {
+      return null
+    }
+    return raw
   },
   clearAllLocalData() {
     uni.removeStorageSync(AUTH_TOKEN_KEY)

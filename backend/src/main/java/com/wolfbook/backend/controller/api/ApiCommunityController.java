@@ -4,6 +4,8 @@ import com.wolfbook.backend.common.ApiResponse;
 import com.wolfbook.backend.common.PageResponse;
 import com.wolfbook.backend.dto.WolfbookDtos;
 import com.wolfbook.backend.service.CommunityService;
+import com.wolfbook.backend.support.ImageUploadValidator;
+import com.wolfbook.backend.support.TokenService;
 import com.wolfbook.backend.support.UploadProvider;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
@@ -18,10 +20,19 @@ public class ApiCommunityController {
 
     private final CommunityService communityService;
     private final UploadProvider uploadProvider;
+    private final ImageUploadValidator imageUploadValidator;
+    private final TokenService tokenService;
 
-    public ApiCommunityController(CommunityService communityService, UploadProvider uploadProvider) {
+    public ApiCommunityController(
+            CommunityService communityService,
+            UploadProvider uploadProvider,
+            ImageUploadValidator imageUploadValidator,
+            TokenService tokenService
+    ) {
         this.communityService = communityService;
         this.uploadProvider = uploadProvider;
+        this.imageUploadValidator = imageUploadValidator;
+        this.tokenService = tokenService;
     }
 
     @GetMapping("/posts")
@@ -84,6 +95,8 @@ public class ApiCommunityController {
 
     @PostMapping("/upload")
     public ApiResponse<WolfbookDtos.UploadResponse> upload(@RequestHeader("Authorization") String authorization, @RequestPart("file") MultipartFile file) {
+        tokenService.requireUser(authorization);
+        imageUploadValidator.validate(file);
         return ApiResponse.success(new WolfbookDtos.UploadResponse(uploadProvider.upload(file, "community/media")));
     }
 }

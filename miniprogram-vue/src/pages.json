@@ -3,13 +3,17 @@
     {
       "path": "pages/boards/list",
       "style": {
-        "navigationBarTitleText": "板子库"
+        "navigationBarTitleText": "板子库",
+        "enablePullDownRefresh": true,
+        "backgroundTextStyle": "light"
       }
     },
     {
       "path": "pages/community/index",
       "style": {
-        "navigationBarTitleText": "社区"
+        "navigationBarTitleText": "社区",
+        "enablePullDownRefresh": true,
+        "backgroundTextStyle": "light"
       }
     },
     {

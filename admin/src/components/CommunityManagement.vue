@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../services/api'
 import type { CommentView, PostSummary, ReportItem } from '../types'
 import { clampPage, paginate } from '../utils/pagination'
@@ -144,6 +144,15 @@ async function toggleStatus(post: PostSummary) {
 
 async function removePost(id: number) {
   try {
+    await ElMessageBox.confirm('将同时删除该帖子的全部评论和点赞，且不可恢复。', '删除帖子', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+  try {
     await api.deletePost(id)
     ElMessage.success('帖子已删除')
     await load()
@@ -154,6 +163,15 @@ async function removePost(id: number) {
 }
 
 async function removeComment(id: number) {
+  try {
+    await ElMessageBox.confirm('删除后不可恢复。', '删除评论', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
   try {
     await api.deleteComment(id)
     ElMessage.success('评论已删除')

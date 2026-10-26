@@ -1,6 +1,6 @@
 ﻿<script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadRequestOptions } from 'element-plus'
 import { api } from '../services/api'
 import type { Board, Role } from '../types'
@@ -226,6 +226,15 @@ async function submit() {
 }
 
 async function removeBoard(id: number) {
+  try {
+    await ElMessageBox.confirm('将同时删除该板子的角色配置；引用它的法官房间将无法开局。此操作不可恢复。', '删除板子', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
   try {
     await api.deleteBoard(id)
     ElMessage.success('板子已删除')
