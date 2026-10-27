@@ -39,6 +39,23 @@ public class DomainConverter {
         return read(json, FAQ_LIST);
     }
 
+    /** 空规则存成 NULL，避免库里出现一堆空对象。 */
+    public String writeRuleDetail(BoardRuleDetail detail) {
+        return detail == null || detail.isEmpty() ? null : write(detail);
+    }
+
+    public BoardRuleDetail readRuleDetail(String json) {
+        if (json == null || json.isBlank()) {
+            return BoardRuleDetail.empty();
+        }
+        try {
+            BoardRuleDetail detail = objectMapper.readValue(json, BoardRuleDetail.class);
+            return detail == null ? BoardRuleDetail.empty() : detail;
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed to read json column", exception);
+        }
+    }
+
     public Board toBoard(BoardEntity entity, List<BoardRoleEntity> roleEntities) {
         return new Board(
                 entity.getId(),
@@ -47,11 +64,13 @@ public class DomainConverter {
                 entity.getDifficulty(),
                 readStringList(entity.getTags()),
                 entity.getCoverImage(),
+                entity.getBackgroundImage(),
                 entity.getCardDescription(),
                 entity.getBriefConfig(),
                 readStringList(entity.getSpecialRules()),
                 readStringList(entity.getTips()),
                 readFaqList(entity.getFaqs()),
+                readRuleDetail(entity.getRuleDetail()),
                 entity.getWinCondition(),
                 entity.getRuleType(),
                 entity.getStatus(),
@@ -71,7 +90,8 @@ public class DomainConverter {
                 entity.getBackground(),
                 readFaqList(entity.getFaqs()),
                 entity.getPortrait(),
-                entity.getFullIllustration()
+                entity.getFullIllustration(),
+                entity.getThemeColor()
         );
     }
 

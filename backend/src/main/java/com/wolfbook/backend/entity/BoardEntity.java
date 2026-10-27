@@ -16,11 +16,13 @@ public class BoardEntity {
     private String difficulty;
     private String tags;
     private String coverImage;
+    private String backgroundImage;
     private String cardDescription;
     private String briefConfig;
     private String specialRules;
     private String tips;
     private String faqs;
+    private String ruleDetail;
     private String winCondition;
     private String ruleType;
     private Integer status;
@@ -75,6 +77,14 @@ public class BoardEntity {
         this.coverImage = coverImage;
     }
 
+    public String getBackgroundImage() {
+        return backgroundImage;
+    }
+
+    public void setBackgroundImage(String backgroundImage) {
+        this.backgroundImage = backgroundImage;
+    }
+
     public String getCardDescription() {
         return cardDescription;
     }
@@ -113,6 +123,14 @@ public class BoardEntity {
 
     public void setFaqs(String faqs) {
         this.faqs = faqs;
+    }
+
+    public String getRuleDetail() {
+        return ruleDetail;
+    }
+
+    public void setRuleDetail(String ruleDetail) {
+        this.ruleDetail = ruleDetail;
     }
 
     public String getWinCondition() {

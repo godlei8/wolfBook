@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wolfbook.backend.common.ApiException;
 import com.wolfbook.backend.config.AssistantProperties;
 import com.wolfbook.backend.domain.Board;
+import com.wolfbook.backend.domain.BoardRuleDetail;
 import com.wolfbook.backend.domain.FaqItem;
 import com.wolfbook.backend.dto.AssistantDtos;
 import com.wolfbook.backend.entity.AssistantDocumentEntity;
@@ -218,6 +219,8 @@ public class AssistantKnowledgeService {
                 .collect(Collectors.toMap(AssistantDocumentEntity::getSourceKey, item -> item, (left, right) -> left, LinkedHashMap::new));
 
         Set<String> activeKeys = new java.util.LinkedHashSet<>();
+        Map<Integer, String> roleNames = roles.stream()
+                .collect(Collectors.toMap(RoleEntity::getId, RoleEntity::getName, (left, right) -> left));
 
         for (Board board : boards) {
             String sourceKey = "BOARD:" + board.id();
@@ -227,7 +230,7 @@ public class AssistantKnowledgeService {
                     sourceKey,
                     String.valueOf(board.id()),
                     board.name(),
-                    buildBoardStructuredText(board),
+                    buildBoardStructuredText(board, roleNames),
                     publishVersionId,
                     refreshIndex
             );
@@ -457,7 +460,7 @@ public class AssistantKnowledgeService {
         return sourceKey + "#chunk-" + chunkIndex;
     }
 
-    private String buildBoardStructuredText(Board board) {
+    private String buildBoardStructuredText(Board board, Map<Integer, String> roleNames) {
         StringBuilder builder = new StringBuilder();
         builder.append("板子名称：").append(board.name()).append('\n');
         builder.append("人数：").append(board.playerCount()).append('\n');
@@ -469,6 +472,7 @@ public class AssistantKnowledgeService {
         if (board.specialRules() != null && !board.specialRules().isEmpty()) {
             builder.append("规则：").append(String.join("；", board.specialRules())).append('\n');
         }
+        appendRuleDetail(builder, board.ruleDetail(), roleNames);
         if (board.tips() != null && !board.tips().isEmpty()) {
             builder.append("提示：").append(String.join("；", board.tips())).append('\n');
         }
@@ -479,6 +483,32 @@ public class AssistantKnowledgeService {
             }
         }
         return builder.toString();
+    }
+
+    private void appendRuleDetail(StringBuilder builder, BoardRuleDetail detail, Map<Integer, String> roleNames) {
+        if (detail == null || detail.isEmpty()) {
+            return;
+        }
+        if (detail.overview() != null && !detail.overview().isBlank()) {
+            builder.append("玩法概述：").append(detail.overview().trim()).append('\n');
+        }
+        if (!detail.nightOrder().isEmpty()) {
+            builder.append("夜间行动顺序：");
+            int order = 1;
+            for (BoardRuleDetail.NightStep step : detail.nightOrder()) {
+                builder.append(order++).append(". ")
+                        .append(roleNames.getOrDefault(step.roleId(), "未知角色"))
+                        .append("：").append(step.action()).append("；");
+            }
+            builder.append('\n');
+        }
+        for (BoardRuleDetail.RoleRuleNote note : detail.roleRules()) {
+            builder.append(roleNames.getOrDefault(note.roleId(), "未知角色")).append("细则：")
+                    .append(String.join("；", note.items())).append('\n');
+        }
+        for (BoardRuleDetail.RuleSection section : detail.sections()) {
+            builder.append(section.title()).append("：").append(String.join("；", section.items())).append('\n');
+        }
     }
 
     private String buildRoleStructuredText(RoleEntity role) {

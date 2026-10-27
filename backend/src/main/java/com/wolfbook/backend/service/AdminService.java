@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.wolfbook.backend.common.ApiException;
 import com.wolfbook.backend.common.PageResponse;
 import com.wolfbook.backend.domain.Board;
+import com.wolfbook.backend.domain.BoardRuleDetail;
 import com.wolfbook.backend.domain.FaqItem;
 import com.wolfbook.backend.domain.Report;
 import com.wolfbook.backend.dto.WolfbookDtos;
@@ -16,9 +17,14 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class AdminService {
@@ -119,6 +125,10 @@ public class AdminService {
     public Board saveBoard(Integer id, WolfbookDtos.AdminBoardRequest request) {
         List<BoardRoleEntity> roleRefs = defaultBoardRoles(request.roles());
         roleRefs.forEach(ref -> boardService.getRole(ref.getRoleId()));
+        BoardRuleDetail ruleDetail = normalizeRuleDetail(
+                request.ruleDetail(),
+                roleRefs.stream().map(BoardRoleEntity::getRoleId).collect(Collectors.toSet())
+        );
 
         BoardEntity entity = id == null ? new BoardEntity() : getBoardEntity(id);
         entity.setName(request.name());
@@ -126,11 +136,13 @@ public class AdminService {
         entity.setDifficulty(request.difficulty());
         entity.setTags(converter.writeStringList(defaultList(request.tags())));
         entity.setCoverImage(request.coverImage());
+        entity.setBackgroundImage(normalizeText(request.backgroundImage()));
         entity.setCardDescription(normalizeText(request.cardDescription()));
         entity.setBriefConfig(boardService.buildBriefConfig(request.roles()));
         entity.setSpecialRules(converter.writeStringList(defaultList(request.specialRules())));
         entity.setTips(converter.writeStringList(defaultList(request.tips())));
         entity.setFaqs(converter.writeFaqList(defaultFaqs(request.faqs())));
+        entity.setRuleDetail(converter.writeRuleDetail(ruleDetail));
         entity.setWinCondition(request.winCondition() == null || request.winCondition().isBlank() ? "屠边" : request.winCondition());
         entity.setRuleType(request.ruleType() == null || request.ruleType().isBlank() ? "标准板" : request.ruleType());
         entity.setStatus(id == null ? 1 : entity.getStatus());
@@ -178,6 +190,8 @@ public class AdminService {
         entity.setFaqs(converter.writeFaqList(defaultFaqs(request.faqs())));
         entity.setPortrait(request.portrait());
         entity.setFullIllustration(request.fullIllustration());
+        String themeColor = normalizeText(request.themeColor());
+        entity.setThemeColor(themeColor == null ? null : themeColor.toUpperCase(Locale.ROOT));
         entity.setCreateTime(id == null ? LocalDateTime.now() : entity.getCreateTime());
 
         if (id == null) {
@@ -311,7 +325,67 @@ public class AdminService {
                 role.getBackground(),
                 converter.readFaqList(role.getFaqs()).stream().map(faq -> new WolfbookDtos.FaqInput(faq.question(), faq.answer())).toList(),
                 role.getPortrait(),
-                role.getFullIllustration()
+                role.getFullIllustration(),
+                role.getThemeColor()
         );
+    }
+
+    private static final int MAX_RULE_ITEM_LENGTH = 300;
+
+    /**
+     * 清洗后台提交的详细规则：去掉空条目和空章节，同一角色的细则只能有一组，
+     * 夜间顺序和角色细则引用的角色必须在本板子的阵容里。
+     */
+    private BoardRuleDetail normalizeRuleDetail(WolfbookDtos.BoardRuleDetailInput input, Set<Integer> lineupRoleIds) {
+        if (input == null) {
+            return BoardRuleDetail.empty();
+        }
+        List<BoardRuleDetail.NightStep> nightOrder = input.nightOrder() == null ? List.of() : input.nightOrder().stream()
+                .map(step -> new BoardRuleDetail.NightStep(step.roleId(), step.action().trim()))
+                .toList();
+
+        Set<Integer> rolesWithNotes = new HashSet<>();
+        List<BoardRuleDetail.RoleRuleNote> roleRules = new ArrayList<>();
+        for (WolfbookDtos.RoleRuleInput rule : input.roleRules() == null ? List.<WolfbookDtos.RoleRuleInput>of() : input.roleRules()) {
+            List<String> items = cleanRuleItems(rule.items());
+            if (items.isEmpty()) {
+                continue;
+            }
+            if (!rolesWithNotes.add(rule.roleId())) {
+                throw new ApiException(4000, "同一个角色的细则只能写一组");
+            }
+            roleRules.add(new BoardRuleDetail.RoleRuleNote(rule.roleId(), items));
+        }
+
+        List<BoardRuleDetail.RuleSection> sections = new ArrayList<>();
+        for (WolfbookDtos.RuleSectionInput section : input.sections() == null ? List.<WolfbookDtos.RuleSectionInput>of() : input.sections()) {
+            List<String> items = cleanRuleItems(section.items());
+            if (!items.isEmpty()) {
+                sections.add(new BoardRuleDetail.RuleSection(section.title().trim(), items));
+            }
+        }
+
+        BoardRuleDetail detail = new BoardRuleDetail(normalizeText(input.overview()), nightOrder, roleRules, sections);
+        for (Integer roleId : BoardService.referencedRoleIds(detail)) {
+            if (!lineupRoleIds.contains(roleId)) {
+                throw new ApiException(4000, "规则里引用的角色不在本板子的阵容中");
+            }
+        }
+        return detail;
+    }
+
+    private List<String> cleanRuleItems(List<String> items) {
+        if (items == null) {
+            return List.of();
+        }
+        List<String> cleaned = items.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(item -> !item.isEmpty())
+                .toList();
+        if (cleaned.stream().anyMatch(item -> item.length() > MAX_RULE_ITEM_LENGTH)) {
+            throw new ApiException(4000, "单条规则不能超过 " + MAX_RULE_ITEM_LENGTH + " 字");
+        }
+        return cleaned;
     }
 }

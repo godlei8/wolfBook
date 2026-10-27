@@ -5,6 +5,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.time.LocalDateTime;
@@ -68,13 +69,41 @@ public final class WolfbookDtos {
             @NotBlank(message = "难度不能为空") String difficulty,
             List<String> tags,
             String coverImage,
+            String backgroundImage,
             String cardDescription,
             String winCondition,
             String ruleType,
             List<String> specialRules,
             List<String> tips,
             @Valid List<FaqInput> faqs,
+            @Valid BoardRuleDetailInput ruleDetail,
             @Valid @NotEmpty(message = "至少配置一个角色") List<BoardRoleInput> roles
+    ) {
+    }
+
+    public record BoardRuleDetailInput(
+            @Size(max = 2000, message = "玩法概述不能超过 2000 字") String overview,
+            @Valid @Size(max = 30, message = "夜间行动最多 30 步") List<NightStepInput> nightOrder,
+            @Valid @Size(max = 30, message = "角色细则最多 30 组") List<RoleRuleInput> roleRules,
+            @Valid @Size(max = 20, message = "规则章节最多 20 个") List<RuleSectionInput> sections
+    ) {
+    }
+
+    public record NightStepInput(
+            @NotNull(message = "夜间行动的角色不能为空") Integer roleId,
+            @NotBlank(message = "夜间行动的说明不能为空") @Size(max = 200, message = "夜间行动说明不能超过 200 字") String action
+    ) {
+    }
+
+    public record RoleRuleInput(
+            @NotNull(message = "角色细则的角色不能为空") Integer roleId,
+            @Size(max = 20, message = "每个角色最多 20 条细则") List<String> items
+    ) {
+    }
+
+    public record RuleSectionInput(
+            @NotBlank(message = "规则章节标题不能为空") @Size(max = 30, message = "规则章节标题不能超过 30 字") String title,
+            @Size(max = 30, message = "每个章节最多 30 条规则") List<String> items
     ) {
     }
 
@@ -87,7 +116,8 @@ public final class WolfbookDtos {
             String background,
             @Valid List<FaqInput> faqs,
             String portrait,
-            String fullIllustration
+            String fullIllustration,
+            @Pattern(regexp = "^#[0-9A-Fa-f]{6}$", message = "主题色格式应为 #RRGGBB") String themeColor
     ) {
     }
 
@@ -167,7 +197,7 @@ public final class WolfbookDtos {
     ) {
     }
 
-    public record BoardRoleView(Integer roleId, String name, String faction, String roleType, String camp, String portrait, Integer count) {
+    public record BoardRoleView(Integer roleId, String name, String faction, String roleType, String camp, String portrait, String themeColor, Integer count) {
     }
 
     public record BoardDetailView(
@@ -177,16 +207,35 @@ public final class WolfbookDtos {
             String difficulty,
             List<String> tags,
             String coverImage,
+            String backgroundImage,
             String briefConfig,
             String cardDescription,
             List<String> specialRules,
             List<String> tips,
             List<FaqInput> faqs,
+            BoardRuleDetailView ruleDetail,
             String winCondition,
             String ruleType,
             List<BoardRoleView> roles,
             String judgeSupportLevel
     ) {
+    }
+
+    public record BoardRuleDetailView(
+            String overview,
+            List<NightStepView> nightOrder,
+            List<RoleRuleView> roleRules,
+            List<RuleSectionView> sections
+    ) {
+    }
+
+    public record NightStepView(Integer order, Integer roleId, String roleName, String faction, String portrait, String themeColor, String action) {
+    }
+
+    public record RoleRuleView(Integer roleId, String roleName, String faction, String portrait, String themeColor, List<String> items) {
+    }
+
+    public record RuleSectionView(String title, List<String> items) {
     }
 
     public record RoleListItemView(
@@ -196,7 +245,8 @@ public final class WolfbookDtos {
             String faction,
             String roleType,
             String camp,
-            String portrait
+            String portrait,
+            String themeColor
     ) {
     }
 
@@ -211,7 +261,8 @@ public final class WolfbookDtos {
             String background,
             List<FaqInput> faqs,
             String portrait,
-            String fullIllustration
+            String fullIllustration,
+            String themeColor
     ) {
     }
 
@@ -230,6 +281,7 @@ public final class WolfbookDtos {
             List<FaqInput> faqs,
             String portrait,
             String fullIllustration,
+            String themeColor,
             List<RelatedBoardView> boards
     ) {
     }

@@ -28,11 +28,13 @@ export interface Board {
   difficulty: string
   tags: string[]
   coverImage: string
+  backgroundImage: string | null
   cardDescription: string
   briefConfig: string
   specialRules: string[]
   tips: string[]
   faqs: FaqItem[]
+  ruleDetail: BoardRuleDetail
   winCondition: string
   ruleType: string
   status: number
@@ -51,6 +53,32 @@ export interface Role {
   faqs: FaqItem[]
   portrait: string
   fullIllustration: string
+  themeColor: string | null
+}
+
+/** 夜间行动顺序里的一步，roleId 必须在本板子的阵容里。 */
+export interface NightStep {
+  roleId: number
+  action: string
+}
+
+/** 某个角色在本板子里的细则。 */
+export interface RoleRuleNote {
+  roleId: number
+  items: string[]
+}
+
+/** 不绑定角色的规则章节，比如警长竞选、遗言、平票处理。 */
+export interface RuleSection {
+  title: string
+  items: string[]
+}
+
+export interface BoardRuleDetail {
+  overview: string | null
+  nightOrder: NightStep[]
+  roleRules: RoleRuleNote[]
+  sections: RuleSection[]
 }
 
 export interface UserView {

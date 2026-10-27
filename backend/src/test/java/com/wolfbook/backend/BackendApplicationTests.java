@@ -412,6 +412,184 @@ class BackendApplicationTests {
                 .andExpect(jsonPath("$.data.list[0].status").value("VISIBLE"));
     }
 
+    @Test
+    void seededBoardDetailShouldExposeResolvedRuleDetailAndThemeColors() throws Exception {
+        mockMvc.perform(get("/api/boards/2"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.ruleDetail.overview").value(containsString("12 人标准局")))
+                .andExpect(jsonPath("$.data.ruleDetail.nightOrder[0].order").value(1))
+                .andExpect(jsonPath("$.data.ruleDetail.nightOrder[0].roleName").value("狼人"))
+                .andExpect(jsonPath("$.data.ruleDetail.nightOrder[0].themeColor").value("#C0262D"))
+                .andExpect(jsonPath("$.data.ruleDetail.nightOrder[0].faction").value("狼人"))
+                .andExpect(jsonPath("$.data.ruleDetail.nightOrder[1].roleName").value("女巫"))
+                .andExpect(jsonPath("$.data.ruleDetail.nightOrder[1].portrait").isNotEmpty())
+                .andExpect(jsonPath("$.data.ruleDetail.roleRules[0].roleName").value("女巫"))
+                .andExpect(jsonPath("$.data.ruleDetail.roleRules[0].items.length()").value(2))
+                .andExpect(jsonPath("$.data.ruleDetail.sections[0].title").value("警长竞选"))
+                .andExpect(jsonPath("$.data.roles[0].themeColor").isNotEmpty());
+
+        mockMvc.perform(get("/api/roles"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data[0].themeColor").value("#7B4FD6"));
+    }
+
+    @Test
+    void boardWithoutRuleDetailShouldReturnEmptyRuleLists() throws Exception {
+        mockMvc.perform(get("/api/boards/1"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.ruleDetail.nightOrder.length()").value(0))
+                .andExpect(jsonPath("$.data.ruleDetail.roleRules.length()").value(0))
+                .andExpect(jsonPath("$.data.ruleDetail.sections.length()").value(0));
+    }
+
+    @Test
+    void adminBoardSaveShouldPersistBackgroundImageAndCleanedRuleDetail() throws Exception {
+        String adminToken = loginAndGetAdminToken();
+        String body = """
+                {
+                  "name": "规则测试板",
+                  "playerCount": 6,
+                  "difficulty": "入门",
+                  "coverImage": "https://example.com/cover.png",
+                  "backgroundImage": "  https://example.com/bg.png  ",
+                  "roles": [{"roleId": 6, "count": 2}, {"roleId": 1, "count": 1}, {"roleId": 9, "count": 3}],
+                  "ruleDetail": {
+                    "overview": "  测试概述  ",
+                    "nightOrder": [
+                      {"roleId": 6, "action": "  狼人刀人  "},
+                      {"roleId": 1, "action": "预言家查验"}
+                    ],
+                    "roleRules": [
+                      {"roleId": 1, "items": ["", "  首夜必须查验  "]},
+                      {"roleId": 9, "items": ["   "]}
+                    ],
+                    "sections": [
+                      {"title": "遗言", "items": ["首夜有遗言", ""]},
+                      {"title": "空章节", "items": [" "]}
+                    ]
+                  }
+                }
+                """;
+        String created = mockMvc.perform(post("/admin/boards")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.backgroundImage").value("https://example.com/bg.png"))
+                .andExpect(jsonPath("$.data.ruleDetail.overview").value("测试概述"))
+                .andReturn().getResponse().getContentAsString();
+        int boardId = objectMapper.readTree(created).path("data").path("id").asInt();
+
+        try {
+            mockMvc.perform(get("/api/boards/{id}", boardId))
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.backgroundImage").value("https://example.com/bg.png"))
+                    .andExpect(jsonPath("$.data.ruleDetail.nightOrder.length()").value(2))
+                    .andExpect(jsonPath("$.data.ruleDetail.nightOrder[0].action").value("狼人刀人"))
+                    .andExpect(jsonPath("$.data.ruleDetail.nightOrder[1].order").value(2))
+                    .andExpect(jsonPath("$.data.ruleDetail.nightOrder[1].roleName").value("预言家"))
+                    .andExpect(jsonPath("$.data.ruleDetail.roleRules.length()").value(1))
+                    .andExpect(jsonPath("$.data.ruleDetail.roleRules[0].items.length()").value(1))
+                    .andExpect(jsonPath("$.data.ruleDetail.roleRules[0].items[0]").value("首夜必须查验"))
+                    .andExpect(jsonPath("$.data.ruleDetail.sections.length()").value(1))
+                    .andExpect(jsonPath("$.data.ruleDetail.sections[0].items.length()").value(1));
+        } finally {
+            mockMvc.perform(delete("/admin/boards/{id}", boardId).header("Authorization", "Bearer " + adminToken))
+                    .andExpect(jsonPath("$.code").value(0));
+        }
+    }
+
+    @Test
+    void adminBoardSaveShouldRejectRuleDetailThatReferencesRolesOutsideLineup() throws Exception {
+        String adminToken = loginAndGetAdminToken();
+        Integer before = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM boards", Integer.class);
+        String outsideLineup = """
+                {
+                  "name": "非法规则板",
+                  "playerCount": 6,
+                  "difficulty": "入门",
+                  "roles": [{"roleId": 6, "count": 2}, {"roleId": 9, "count": 4}],
+                  "ruleDetail": {"nightOrder": [{"roleId": 2, "action": "女巫用药"}]}
+                }
+                """;
+        mockMvc.perform(post("/admin/boards")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(outsideLineup))
+                .andExpect(jsonPath("$.code").value(4000))
+                .andExpect(jsonPath("$.msg").value(containsString("阵容")));
+
+        String duplicateNotes = """
+                {
+                  "name": "重复细则板",
+                  "playerCount": 6,
+                  "difficulty": "入门",
+                  "roles": [{"roleId": 6, "count": 2}, {"roleId": 9, "count": 4}],
+                  "ruleDetail": {"roleRules": [
+                    {"roleId": 6, "items": ["可以空刀"]},
+                    {"roleId": 6, "items": ["可以自刀"]}
+                  ]}
+                }
+                """;
+        mockMvc.perform(post("/admin/boards")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(duplicateNotes))
+                .andExpect(jsonPath("$.code").value(4000))
+                .andExpect(jsonPath("$.msg").value(containsString("只能写一组")));
+
+        String blankAction = """
+                {
+                  "name": "空行动板",
+                  "playerCount": 6,
+                  "difficulty": "入门",
+                  "roles": [{"roleId": 6, "count": 2}, {"roleId": 9, "count": 4}],
+                  "ruleDetail": {"nightOrder": [{"roleId": 6, "action": "  "}]}
+                }
+                """;
+        mockMvc.perform(post("/admin/boards")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(blankAction))
+                .andExpect(jsonPath("$.code").value(4000));
+
+        Assertions.assertEquals(before, jdbcTemplate.queryForObject("SELECT COUNT(1) FROM boards", Integer.class));
+    }
+
+    @Test
+    void adminRoleSaveShouldValidateAndNormalizeThemeColor() throws Exception {
+        String adminToken = loginAndGetAdminToken();
+        String invalid = """
+                {"name": "颜色测试A", "faction": "好人", "roleType": "神职", "skill": "测试", "themeColor": "red"}
+                """;
+        mockMvc.perform(post("/admin/roles")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(invalid))
+                .andExpect(jsonPath("$.code").value(4000))
+                .andExpect(jsonPath("$.msg").value(containsString("主题色")));
+
+        String valid = """
+                {"name": "颜色测试B", "faction": "好人", "roleType": "神职", "skill": "测试", "themeColor": "#a1b2c3"}
+                """;
+        String created = mockMvc.perform(post("/admin/roles")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(valid))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.themeColor").value("#A1B2C3"))
+                .andReturn().getResponse().getContentAsString();
+        int roleId = objectMapper.readTree(created).path("data").path("id").asInt();
+        try {
+            mockMvc.perform(get("/api/roles/{id}", roleId))
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.themeColor").value("#A1B2C3"));
+        } finally {
+            mockMvc.perform(delete("/admin/roles/{id}", roleId).header("Authorization", "Bearer " + adminToken))
+                    .andExpect(jsonPath("$.code").value(0));
+        }
+    }
+
     private String loginAndGetToken() throws Exception {
         String loginBody = """
                 {"code":"mock-code"}

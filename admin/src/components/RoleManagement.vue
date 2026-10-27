@@ -64,9 +64,16 @@ const emptyRole = (): Role => ({
   faqs: [{ question: '', answer: '' }],
   portrait: '',
   fullIllustration: '',
+  themeColor: null,
 })
 
 const form = reactive<Role>(emptyRole())
+
+/** 和美术提示词里各角色的专属色一致，方便直接点选。 */
+const themeColorPresets = [
+  '#7B4FD6', '#F2B33D', '#E8772E', '#4A78A8', '#B3263A', '#C0262D', '#D63A7A', '#2FB8A6', '#2F5D46',
+  '#7FC8E8', '#7A1A22', '#9A6A3A', '#6B7280', '#2A8FB8', '#3F3DA8', '#F28CB8', '#D9902A',
+]
 
 const availableRoleTypes = computed(() => roleTypeOptionsMap[form.faction] || [])
 const portraitPreviewUrl = computed(() => resolveMediaUrl(form.portrait))
@@ -122,6 +129,7 @@ function normalizeRole(role?: Role): Role {
   next.background = next.background || ''
   next.portrait = next.portrait || ''
   next.fullIllustration = next.fullIllustration || ''
+  next.themeColor = next.themeColor || null
   next.faqs = next.faqs?.length ? next.faqs : [{ question: '', answer: '' }]
   return next
 }
@@ -173,6 +181,7 @@ async function submit() {
     faqs: form.faqs.filter((faq) => faq.question && faq.answer),
     portrait: form.portrait,
     fullIllustration: form.fullIllustration,
+    themeColor: form.themeColor || null,
   }
 
   try {
@@ -311,6 +320,13 @@ onMounted(load)
       </el-form-item>
       <el-form-item label="背景故事">
         <el-input v-model="form.background" type="textarea" :rows="3" />
+      </el-form-item>
+      <el-form-item label="专属主题色">
+        <div class="theme-color-field">
+          <el-color-picker v-model="form.themeColor" :predefine="themeColorPresets" />
+          <el-input v-model="form.themeColor" class="theme-color-input" placeholder="#RRGGBB，留空则按阵营默认色" clearable />
+          <span class="theme-color-note">小程序角色卡的底色、描边和夜间顺序的色条都用这个颜色。</span>
+        </div>
       </el-form-item>
 
       <div class="form-grid">
@@ -660,5 +676,22 @@ onMounted(load)
     width: 100%;
     max-width: 180px;
   }
+}
+
+.theme-color-field {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.theme-color-input {
+  width: 260px;
+}
+
+.theme-color-note {
+  color: #8d8d8d;
+  font-size: 12px;
+  line-height: 1.6;
 }
 </style>

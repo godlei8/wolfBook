@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadRequestOptions } from 'element-plus'
 import { api } from '../services/api'
-import type { Board, Role } from '../types'
+import type { Board, BoardRuleDetail, NightStep, Role } from '../types'
 import { clampPage, paginate } from '../utils/pagination'
 
 const emit = defineEmits<{ changed: [] }>()
@@ -28,11 +28,13 @@ const emptyBoard = (): Board => ({
   difficulty: '入门',
   tags: ['经典'],
   coverImage: '',
+  backgroundImage: '',
   cardDescription: '',
   briefConfig: '',
   specialRules: [''],
   tips: [''],
   faqs: [{ question: '', answer: '' }],
+  ruleDetail: { overview: '', nightOrder: [], roleRules: [], sections: [] },
   winCondition: '屠边',
   ruleType: '标准板',
   status: 1,
@@ -40,6 +42,104 @@ const emptyBoard = (): Board => ({
 })
 
 const form = reactive<Board>(emptyBoard())
+
+/**
+ * 详细规则的编辑草稿：角色细则和章节的条目在表单里用多行文本编辑（一行一条），
+ * 提交时再拆成数组。
+ */
+interface RoleRuleDraft {
+  roleId: number
+  text: string
+}
+
+interface SectionDraft {
+  title: string
+  text: string
+}
+
+const ruleDraft = reactive({
+  overview: '',
+  nightOrder: [] as NightStep[],
+  roleRules: [] as RoleRuleDraft[],
+  sections: [] as SectionDraft[],
+})
+
+const sectionPresets = ['警长竞选', '遗言', '平票处理', '自爆与自刀', '胜负判定']
+
+function loadRuleDraft(detail?: BoardRuleDetail | null) {
+  ruleDraft.overview = detail?.overview || ''
+  ruleDraft.nightOrder = (detail?.nightOrder || []).map((step) => ({ roleId: step.roleId, action: step.action }))
+  ruleDraft.roleRules = (detail?.roleRules || []).map((note) => ({ roleId: note.roleId, text: note.items.join('\n') }))
+  ruleDraft.sections = (detail?.sections || []).map((section) => ({ title: section.title, text: section.items.join('\n') }))
+}
+
+function splitLines(text: string) {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+}
+
+function buildRuleDetail(): BoardRuleDetail {
+  return {
+    overview: ruleDraft.overview.trim() || null,
+    nightOrder: ruleDraft.nightOrder
+      .filter((step) => step.roleId && step.action.trim())
+      .map((step) => ({ roleId: step.roleId, action: step.action.trim() })),
+    roleRules: ruleDraft.roleRules
+      .map((note) => ({ roleId: note.roleId, items: splitLines(note.text) }))
+      .filter((note) => note.roleId && note.items.length),
+    sections: ruleDraft.sections
+      .map((section) => ({ title: section.title.trim(), items: splitLines(section.text) }))
+      .filter((section) => section.title && section.items.length),
+  }
+}
+
+/** 夜间顺序和角色细则只能选本板子阵容里已有的角色。 */
+const lineupRoleOptions = computed(() => {
+  const seen = new Set<number>()
+  return form.roles
+    .filter((item) => item.roleId && !seen.has(item.roleId) && seen.add(item.roleId))
+    .map((item) => rolesById.value.get(item.roleId))
+    .filter((role): role is Role => Boolean(role))
+    .map((role) => ({ label: role.name, value: role.id }))
+})
+
+const rulesOutsideLineup = computed(() => {
+  const lineup = new Set(lineupRoleOptions.value.map((option) => option.value))
+  const referenced = [
+    ...ruleDraft.nightOrder.map((step) => step.roleId),
+    ...ruleDraft.roleRules.map((note) => note.roleId),
+  ].filter(Boolean)
+  return [...new Set(referenced.filter((roleId) => !lineup.has(roleId)))]
+    .map((roleId) => rolesById.value.get(roleId)?.name || `#${roleId}`)
+})
+
+function addNightStep() {
+  ruleDraft.nightOrder.push({ roleId: lineupRoleOptions.value[0]?.value ?? 0, action: '' })
+}
+
+function moveNightStep(index: number, offset: -1 | 1) {
+  const target = index + offset
+  if (target < 0 || target >= ruleDraft.nightOrder.length) {
+    return
+  }
+  const [step] = ruleDraft.nightOrder.splice(index, 1)
+  ruleDraft.nightOrder.splice(target, 0, step)
+}
+
+function addRoleRule() {
+  const used = new Set(ruleDraft.roleRules.map((note) => note.roleId))
+  const next = lineupRoleOptions.value.find((option) => !used.has(option.value))
+  ruleDraft.roleRules.push({ roleId: next?.value ?? 0, text: '' })
+}
+
+function addSection(title = '') {
+  if (title && ruleDraft.sections.some((section) => section.title === title)) {
+    return
+  }
+  ruleDraft.sections.push({ title, text: '' })
+}
 
 const rolesById = computed(() => new Map(roles.value.map((role) => [role.id, role])))
 
@@ -122,6 +222,7 @@ function normalizeBoard(board?: Board): Board {
 
   const next = JSON.parse(JSON.stringify(board)) as Board
   next.cardDescription = next.cardDescription || ''
+  next.backgroundImage = next.backgroundImage || ''
   next.tags = next.tags?.length ? next.tags : ['经典']
   next.specialRules = next.specialRules?.length ? next.specialRules : ['']
   next.tips = next.tips?.length ? next.tips : ['']
@@ -141,6 +242,7 @@ function getBoardDescription(board: Board) {
 
 function resetForm(board?: Board) {
   Object.assign(form, normalizeBoard(board))
+  loadRuleDraft(board?.ruleDetail)
 }
 
 function resetFilters() {
@@ -201,11 +303,17 @@ function updateTags(value: string) {
 }
 
 async function submit() {
+  if (rulesOutsideLineup.value.length) {
+    ElMessage.warning(`详细规则里的 ${rulesOutsideLineup.value.join('、')} 不在角色配置中，请先加入阵容或删掉对应规则`)
+    return
+  }
   const payload = {
     ...form,
+    backgroundImage: form.backgroundImage || null,
     specialRules: form.specialRules.filter(Boolean),
     tips: form.tips.filter(Boolean),
     faqs: form.faqs.filter((faq) => faq.question && faq.answer),
+    ruleDetail: buildRuleDetail(),
     roles: form.roles.filter((role) => role.roleId && role.count > 0),
   }
 
@@ -245,16 +353,25 @@ async function removeBoard(id: number) {
   }
 }
 
-async function uploadCover(options: UploadRequestOptions) {
+async function uploadImageTo(target: 'coverImage' | 'backgroundImage', options: UploadRequestOptions) {
+  const label = target === 'coverImage' ? '封面' : '背景图'
   try {
     const result = await api.upload(options.file as File)
-    form.coverImage = result.url
-    ElMessage.success('封面已上传')
+    form[target] = result.url
+    ElMessage.success(`${label}已上传`)
     options.onSuccess?.(result)
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '封面上传失败')
+    ElMessage.error(error instanceof Error ? error.message : `${label}上传失败`)
     options.onError?.(Object.assign(new Error('upload failed'), { status: 0, method: 'post', url: '' }) as never)
   }
+}
+
+function uploadCover(options: UploadRequestOptions) {
+  return uploadImageTo('coverImage', options)
+}
+
+function uploadBackground(options: UploadRequestOptions) {
+  return uploadImageTo('backgroundImage', options)
 }
 
 onMounted(load)
@@ -400,6 +517,19 @@ onMounted(load)
             </div>
           </div>
         </el-form-item>
+        <el-form-item class="span-2" label="详情页背景图（横版 16:9，留空则用封面图）">
+          <div class="upload-panel">
+            <div class="upload-stack">
+              <el-input v-model="form.backgroundImage" placeholder="可直接填写图片 URL" />
+              <el-upload :show-file-list="false" :http-request="uploadBackground">
+                <el-button>上传图片</el-button>
+              </el-upload>
+            </div>
+            <div v-if="form.backgroundImage" class="inline-image-preview inline-image-preview--background">
+              <img :src="form.backgroundImage" alt="板子背景图预览" />
+            </div>
+          </div>
+        </el-form-item>
       </div>
 
       <div class="array-section">
@@ -438,9 +568,85 @@ onMounted(load)
 
       <div class="array-section">
         <div class="array-header">
-          <strong>规则详情</strong>
+          <strong>详细规则</strong>
+        </div>
+        <div class="array-note">小程序板子详情页按「玩法概述 → 夜间行动顺序 → 角色细则 → 规则章节」展示。角色只能从上面的角色配置里选。</div>
+        <el-alert
+          v-if="rulesOutsideLineup.length"
+          class="rule-alert"
+          type="warning"
+          :closable="false"
+          :title="`${rulesOutsideLineup.join('、')} 已不在角色配置中，保存前请调整`"
+        />
+
+        <el-form-item label="玩法概述">
+          <el-input
+            v-model="ruleDraft.overview"
+            type="textarea"
+            :rows="3"
+            maxlength="2000"
+            show-word-limit
+            placeholder="这个板子怎么玩：阵营构成、胜负条件、节奏特点"
+          />
+        </el-form-item>
+
+        <div class="rule-subheader">
+          <span>夜间行动顺序</span>
+          <el-button text type="primary" :disabled="!lineupRoleOptions.length" @click="addNightStep">添加一步</el-button>
+        </div>
+        <div v-for="(step, index) in ruleDraft.nightOrder" :key="`night-${index}`" class="night-step-row">
+          <span class="night-step-order">{{ index + 1 }}</span>
+          <el-select v-model="step.roleId" placeholder="角色">
+            <el-option v-for="option in lineupRoleOptions" :key="option.value" :label="option.label" :value="option.value" />
+          </el-select>
+          <el-input v-model="step.action" maxlength="200" placeholder="这一步法官说什么、角色做什么" />
+          <div class="night-step-actions">
+            <el-button text :disabled="index === 0" @click="moveNightStep(index, -1)">上移</el-button>
+            <el-button text :disabled="index === ruleDraft.nightOrder.length - 1" @click="moveNightStep(index, 1)">下移</el-button>
+            <el-button text type="danger" @click="ruleDraft.nightOrder.splice(index, 1)">删除</el-button>
+          </div>
+        </div>
+
+        <div class="rule-subheader">
+          <span>角色细则（一行一条）</span>
+          <el-button text type="primary" :disabled="!lineupRoleOptions.length" @click="addRoleRule">添加角色</el-button>
+        </div>
+        <div v-for="(note, index) in ruleDraft.roleRules" :key="`note-${index}`" class="rule-block-row">
+          <el-select v-model="note.roleId" placeholder="角色">
+            <el-option v-for="option in lineupRoleOptions" :key="option.value" :label="option.label" :value="option.value" />
+          </el-select>
+          <el-input v-model="note.text" type="textarea" :rows="3" placeholder="例如：只有首夜可以自救" />
+          <el-button text type="danger" @click="ruleDraft.roleRules.splice(index, 1)">删除</el-button>
+        </div>
+
+        <div class="rule-subheader">
+          <span>规则章节（一行一条）</span>
+          <div class="section-presets">
+            <el-button
+              v-for="title in sectionPresets"
+              :key="title"
+              size="small"
+              :disabled="ruleDraft.sections.some((section) => section.title === title)"
+              @click="addSection(title)"
+            >
+              + {{ title }}
+            </el-button>
+            <el-button text type="primary" @click="addSection()">自定义章节</el-button>
+          </div>
+        </div>
+        <div v-for="(section, index) in ruleDraft.sections" :key="`section-${index}`" class="rule-block-row">
+          <el-input v-model="section.title" maxlength="30" placeholder="章节标题" />
+          <el-input v-model="section.text" type="textarea" :rows="3" placeholder="一行写一条规则" />
+          <el-button text type="danger" @click="ruleDraft.sections.splice(index, 1)">删除</el-button>
+        </div>
+      </div>
+
+      <div class="array-section">
+        <div class="array-header">
+          <strong>补充规则</strong>
           <el-button text type="primary" @click="addStringItem(form.specialRules)">新增规则</el-button>
         </div>
+        <div class="array-note">不属于上面任何章节的零散规则，详情页会放在规则章节后面。</div>
         <div v-for="(_, index) in form.specialRules" :key="`rule-${index}`" class="inline-row single-input-row">
           <el-input v-model="form.specialRules[index]" />
           <el-button text type="danger" @click="removeListItem(form.specialRules, index, '')">删除</el-button>
@@ -731,6 +937,74 @@ onMounted(load)
   aspect-ratio: 16 / 10;
 }
 
+.inline-image-preview--background {
+  max-width: 420px;
+  aspect-ratio: 16 / 9;
+}
+
+.rule-alert {
+  margin-bottom: 14px;
+}
+
+.rule-subheader {
+  margin: 18px 0 10px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  color: #f5d069;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.section-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.section-presets :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+.night-step-row {
+  display: grid;
+  grid-template-columns: 32px 160px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.night-step-order {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 192, 0, 0.16);
+  color: #ffc000;
+  font-weight: 700;
+}
+
+.night-step-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.night-step-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+.rule-block-row {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr) 70px;
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 12px;
+}
+
 .array-section {
   margin-top: 22px;
   padding-top: 20px;
@@ -858,7 +1132,9 @@ onMounted(load)
   .inline-row,
   .single-input-row,
   .role-config-grid,
-  .role-config-row {
+  .role-config-row,
+  .night-step-row,
+  .rule-block-row {
     grid-template-columns: 1fr;
   }
 

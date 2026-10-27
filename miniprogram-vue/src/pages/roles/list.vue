@@ -34,7 +34,7 @@ onLoad(loadRoles)
     <view v-for="group in groups" :key="group.title" class="glass-card section-card">
       <view class="section-title">{{ group.title }}</view>
       <view v-for="item in group.items" :key="item.id" class="role-row" @tap="openRole(item.id)">
-        <image class="role-avatar" :src="item.portrait" mode="aspectFill" />
+        <image class="role-avatar" :src="item.portrait" mode="aspectFill" :style="{ borderColor: item.accent }" />
         <view class="role-content">
           <view class="role-name">{{ item.name }}</view>
           <view class="section-meta">{{ item.camp }}</view>
@@ -58,7 +58,9 @@ onLoad(loadRoles)
 .role-avatar {
   width: 84rpx;
   height: 84rpx;
+  border: 4rpx solid transparent;
   border-radius: 999rpx;
+  box-sizing: border-box;
 }
 
 .role-name {

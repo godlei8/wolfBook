@@ -23,7 +23,7 @@ onLoad((options) => loadRole(Number(options?.id || 0)))
 
 <template>
   <view v-if="role" class="page-shell">
-    <view class="role-hero glass-card">
+    <view class="role-hero glass-card" :style="{ background: role.accent, borderColor: role.accent }">
       <image class="role-banner" :src="role.fullIllustration || role.portrait" mode="aspectFill" />
       <view class="role-mask">
         <view class="role-chip-row">

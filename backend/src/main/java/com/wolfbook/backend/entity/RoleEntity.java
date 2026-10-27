@@ -21,6 +21,7 @@ public class RoleEntity {
     private String faqs;
     private String portrait;
     private String fullIllustration;
+    private String themeColor;
     private LocalDateTime createTime;
 
     public Integer getId() {
@@ -109,6 +110,14 @@ public class RoleEntity {
 
     public void setFullIllustration(String fullIllustration) {
         this.fullIllustration = fullIllustration;
+    }
+
+    public String getThemeColor() {
+        return themeColor;
+    }
+
+    public void setThemeColor(String themeColor) {
+        this.themeColor = themeColor;
     }
 
     public LocalDateTime getCreateTime() {

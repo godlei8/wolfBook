@@ -5,6 +5,7 @@ import com.wolfbook.backend.common.ApiException;
 import com.wolfbook.backend.common.PageResponse;
 import com.wolfbook.backend.domain.Board;
 import com.wolfbook.backend.domain.BoardRoleRef;
+import com.wolfbook.backend.domain.BoardRuleDetail;
 import com.wolfbook.backend.domain.FaqItem;
 import com.wolfbook.backend.domain.Role;
 import com.wolfbook.backend.dto.WolfbookDtos;
@@ -96,7 +97,10 @@ public class BoardService {
                 new LambdaQueryWrapper<BoardRoleEntity>()
                         .eq(BoardRoleEntity::getBoardId, id)
         );
-        Map<Integer, RoleEntity> rolesById = loadRolesById(roleEntities.stream().map(BoardRoleEntity::getRoleId).collect(Collectors.toSet()));
+        BoardRuleDetail ruleDetail = converter.readRuleDetail(boardEntity.getRuleDetail());
+        Set<Integer> roleIds = roleEntities.stream().map(BoardRoleEntity::getRoleId).collect(Collectors.toCollection(HashSet::new));
+        roleIds.addAll(referencedRoleIds(ruleDetail));
+        Map<Integer, RoleEntity> rolesById = loadRolesById(roleIds);
         List<WolfbookDtos.BoardRoleView> roles = roleEntities.stream()
                 .map(item -> toBoardRoleView(item, rolesById))
                 .toList();
@@ -108,11 +112,13 @@ public class BoardService {
                 boardEntity.getDifficulty(),
                 converter.readStringList(boardEntity.getTags()),
                 boardEntity.getCoverImage(),
+                boardEntity.getBackgroundImage(),
                 boardEntity.getBriefConfig(),
                 boardEntity.getCardDescription(),
                 converter.readStringList(boardEntity.getSpecialRules()),
                 converter.readStringList(boardEntity.getTips()),
                 converter.readFaqList(boardEntity.getFaqs()).stream().map(this::toFaqInput).toList(),
+                toRuleDetailView(ruleDetail, rolesById),
                 boardEntity.getWinCondition(),
                 boardEntity.getRuleType(),
                 roles,
@@ -133,7 +139,8 @@ public class BoardService {
                         role.getFaction(),
                         role.getRoleType(),
                         role.getCamp(),
-                        role.getPortrait()
+                        role.getPortrait(),
+                        role.getThemeColor()
                 ))
                 .toList();
     }
@@ -167,6 +174,7 @@ public class BoardService {
                 converter.readFaqList(role.getFaqs()).stream().map(this::toFaqInput).toList(),
                 role.getPortrait(),
                 role.getFullIllustration(),
+                role.getThemeColor(),
                 boards
         );
     }
@@ -256,8 +264,52 @@ public class BoardService {
                 role.getRoleType(),
                 role.getCamp(),
                 role.getPortrait(),
+                role.getThemeColor(),
                 ref.getCount()
         );
+    }
+
+    /** 规则里引用的角色 id（夜间顺序 + 角色细则），保存时校验、展示时一起查库。 */
+    public static Set<Integer> referencedRoleIds(BoardRuleDetail detail) {
+        Set<Integer> ids = new LinkedHashSet<>();
+        if (detail == null) {
+            return ids;
+        }
+        detail.nightOrder().forEach(step -> ids.add(step.roleId()));
+        detail.roleRules().forEach(note -> ids.add(note.roleId()));
+        ids.remove(null);
+        return ids;
+    }
+
+    /** 引用的角色如果已经不存在就跳过这一条，详情页不因为一条脏数据整页报错。 */
+    private WolfbookDtos.BoardRuleDetailView toRuleDetailView(BoardRuleDetail detail, Map<Integer, RoleEntity> rolesById) {
+        List<WolfbookDtos.NightStepView> nightOrder = new ArrayList<>();
+        for (BoardRuleDetail.NightStep step : detail.nightOrder()) {
+            RoleEntity role = rolesById.get(step.roleId());
+            if (role == null) {
+                continue;
+            }
+            nightOrder.add(new WolfbookDtos.NightStepView(
+                    nightOrder.size() + 1,
+                    role.getId(),
+                    role.getName(),
+                    role.getFaction(),
+                    role.getPortrait(),
+                    role.getThemeColor(),
+                    step.action()
+            ));
+        }
+        List<WolfbookDtos.RoleRuleView> roleRules = detail.roleRules().stream()
+                .filter(note -> rolesById.containsKey(note.roleId()))
+                .map(note -> {
+                    RoleEntity role = rolesById.get(note.roleId());
+                    return new WolfbookDtos.RoleRuleView(role.getId(), role.getName(), role.getFaction(), role.getPortrait(), role.getThemeColor(), note.items());
+                })
+                .toList();
+        List<WolfbookDtos.RuleSectionView> sections = detail.sections().stream()
+                .map(section -> new WolfbookDtos.RuleSectionView(section.title(), section.items()))
+                .toList();
+        return new WolfbookDtos.BoardRuleDetailView(detail.overview(), nightOrder, roleRules, sections);
     }
 
     private WolfbookDtos.FaqInput toFaqInput(FaqItem faqItem) {

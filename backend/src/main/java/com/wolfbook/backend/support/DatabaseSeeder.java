@@ -1,5 +1,6 @@
 package com.wolfbook.backend.support;
 
+import com.wolfbook.backend.domain.BoardRuleDetail;
 import com.wolfbook.backend.domain.FaqItem;
 import com.wolfbook.backend.entity.*;
 import com.wolfbook.backend.mapper.*;
@@ -13,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class DatabaseSeeder {
@@ -29,6 +31,27 @@ public class DatabaseSeeder {
     private final DomainConverter converter;
     private final Environment environment;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+
+    /** 角色专属色，和 docs/design/art-prompts.md 里每个角色的专属色一致，卡片底色和描边用。 */
+    private static final Map<String, String> ROLE_THEME_COLORS = Map.ofEntries(
+            Map.entry("预言家", "#7B4FD6"),
+            Map.entry("女巫", "#F2B33D"),
+            Map.entry("猎人", "#E8772E"),
+            Map.entry("守卫", "#4A78A8"),
+            Map.entry("骑士", "#B3263A"),
+            Map.entry("狼人", "#C0262D"),
+            Map.entry("狼美人", "#D63A7A"),
+            Map.entry("白痴", "#2FB8A6"),
+            Map.entry("平民", "#2F5D46"),
+            Map.entry("白狼王", "#7FC8E8"),
+            Map.entry("黑狼王", "#7A1A22"),
+            Map.entry("机械狼", "#9A6A3A"),
+            Map.entry("石像鬼", "#6B7280"),
+            Map.entry("通灵师", "#2A8FB8"),
+            Map.entry("织梦人", "#3F3DA8"),
+            Map.entry("爱神", "#F28CB8"),
+            Map.entry("老酒鬼", "#D9902A")
+    );
 
     public DatabaseSeeder(
             UserMapper userMapper,
@@ -106,6 +129,64 @@ public class DatabaseSeeder {
         saveBoard(1, "狼美人骑士", 12, "进阶", List.of("经典", "高配"), "https://picsum.photos/seed/board1/900/600", List.of("狼美人死亡后会与被魅惑对象发生联动。", "骑士白天可翻牌决斗一名玩家。", "骑士决斗失败会直接出局。"), List.of("警上信息密度很高，优先看发言连贯性。", "骑士不要过早出刀口视角。"), faq("狼美人可以不发动技能吗？", "可以，视具体轮次收益而定。"), "屠边", "功能板", List.of(roleRef(6, 3), roleRef(7, 1), roleRef(1, 1), roleRef(2, 1), roleRef(5, 1), roleRef(4, 1), roleRef(8, 1), roleRef(9, 3)));
         saveBoard(2, "预女猎白", 12, "入门", List.of("经典", "教学"), "https://picsum.photos/seed/board2/900/600", List.of("标准配置，适合入门局和复盘训练。", "白痴翻牌后失去投票权。"), List.of("教学局可优先记录投票链。"), faq("首夜刀口和银水冲突怎么处理？", "优先结合女巫信息和次日发言判断。"), "屠边", "标准板", List.of(roleRef(6, 4), roleRef(1, 1), roleRef(2, 1), roleRef(3, 1), roleRef(8, 1), roleRef(9, 4)));
         saveBoard(3, "守卫九人局", 9, "入门", List.of("娱乐", "快节奏"), "https://picsum.photos/seed/board3/900/600", List.of("九人局发言轮次短，更看票型。", "守卫与女巫不可形成双药强保。"), List.of("适合移动端快速记录与复盘。"), faq("九人局需要警上发言吗？", "建议保留警上发言，信息收益更高。"), "屠边", "短局", List.of(roleRef(6, 3), roleRef(1, 1), roleRef(2, 1), roleRef(4, 1), roleRef(9, 3)));
+        saveRuleDetail(2, new BoardRuleDetail(
+                "12 人标准局：4 狼人对 4 神职（预言家、女巫、猎人、白痴）加 4 平民，屠边规则。"
+                        + "神职没有守卫，女巫的解药是唯一的夜间保护，预言家的查验是白天最重要的信息来源。",
+                List.of(
+                        new BoardRuleDetail.NightStep(6, "狼人睁眼，商量后选择一名玩家击杀，也可以空刀"),
+                        new BoardRuleDetail.NightStep(2, "女巫睁眼，法官告知今晚被刀的玩家，女巫决定是否使用解药，或对一名玩家使用毒药"),
+                        new BoardRuleDetail.NightStep(1, "预言家睁眼，查验一名玩家是好人还是狼人"),
+                        new BoardRuleDetail.NightStep(3, "猎人睁眼，法官告知今晚能否开枪（被毒为不能）")
+                ),
+                List.of(
+                        new BoardRuleDetail.RoleRuleNote(2, List.of(
+                                "解药和毒药整局各一瓶，同一晚不能同时使用",
+                                "只有首夜可以自救，之后不能对自己使用解药"
+                        )),
+                        new BoardRuleDetail.RoleRuleNote(3, List.of(
+                                "被狼人击杀或被放逐时可以开枪带走一名玩家，也可以选择不开枪",
+                                "被女巫毒死时不能开枪"
+                        )),
+                        new BoardRuleDetail.RoleRuleNote(8, List.of(
+                                "被放逐时翻牌免死，之后留在场上发言，但失去投票权",
+                                "被狼人夜间击杀或被毒死时正常出局"
+                        ))
+                ),
+                List.of(
+                        new BoardRuleDetail.RuleSection("警长竞选", List.of(
+                                "第一天白天先竞选警长，上警玩家依次发言，未上警玩家投票",
+                                "警长归票时计 1.5 票，出局时可以移交警徽或撕毁警徽"
+                        )),
+                        new BoardRuleDetail.RuleSection("遗言", List.of(
+                                "首夜死亡的玩家有遗言",
+                                "白天被放逐的玩家有遗言，之后夜间死亡的玩家没有遗言"
+                        )),
+                        new BoardRuleDetail.RuleSection("平票处理", List.of(
+                                "放逐投票平票时，平票玩家依次发言后再投一轮，其余玩家投票",
+                                "再次平票则当天无人出局，直接进入黑夜"
+                        ))
+                )
+        ));
+        saveRuleDetail(3, new BoardRuleDetail(
+                "9 人快节奏局：3 狼人对预言家、女巫、守卫加 3 平民，屠边规则。轮次短，一个判断失误就可能输掉，更看票型。",
+                List.of(
+                        new BoardRuleDetail.NightStep(4, "守卫睁眼，选择守护一名玩家，不能连续两晚守护同一人"),
+                        new BoardRuleDetail.NightStep(6, "狼人睁眼，商量后选择一名玩家击杀"),
+                        new BoardRuleDetail.NightStep(2, "女巫睁眼，决定是否使用解药或毒药"),
+                        new BoardRuleDetail.NightStep(1, "预言家睁眼，查验一名玩家是好人还是狼人")
+                ),
+                List.of(
+                        new BoardRuleDetail.RoleRuleNote(4, List.of(
+                                "可以守护自己，但不能连续两晚守护同一名玩家",
+                                "守卫和女巫同时保护被刀的玩家（同守同救）时，该玩家依然死亡"
+                        ))
+                ),
+                List.of(
+                        new BoardRuleDetail.RuleSection("警长竞选", List.of(
+                                "九人局保留警长竞选，警长归票时计 1.5 票"
+                        ))
+                )
+        ));
         saveBoard(4, "白狼王骑士", 12, "进阶", List.of("经典", "高配"), "https://picsum.photos/seed/board4/900/600", List.of("白狼王在关键轮次具备强换人能力。", "骑士的白天决斗会极大放大轮次收益。"), List.of("警上要格外关注冲票和自爆节奏。"), faq("白狼王一定会和骑士形成对冲吗？", "不一定，但这类板型更强调白天强势角色的互博。"), "屠边", "对抗板", List.of(roleRef(6, 3), roleRef(10, 1), roleRef(1, 1), roleRef(2, 1), roleRef(5, 1), roleRef(4, 1), roleRef(9, 4)));
         saveBoard(5, "机械狼通灵师", 12, "烧脑", List.of("高配", "烧脑"), "https://picsum.photos/seed/board5/900/600", List.of("机械狼拥有高上限的学习空间。", "通灵师会补充额外信息链，提升对局复杂度。"), List.of("复盘时建议单独整理技能继承与信息来源。"), faq("机械狼是否总能学到关键技能？", "取决于场上死亡顺序和狼队运营。"), "屠边", "高配板", List.of(roleRef(6, 3), roleRef(12, 1), roleRef(14, 1), roleRef(2, 1), roleRef(3, 1), roleRef(4, 1), roleRef(9, 4)));
         saveBoard(6, "黑狼王织梦人", 12, "烧脑", List.of("高配", "功能"), "https://picsum.photos/seed/board6/900/600", List.of("黑狼王强化白天置换能力。", "织梦人会改变玩家之间的生死与信息联动。"), List.of("这类板型更适合熟悉轮次管理的玩家。"), faq("织梦人的优先级高吗？", "通常很高，因为连结关系会显著影响后续票型判断。"), "屠边", "高配板", List.of(roleRef(6, 3), roleRef(11, 1), roleRef(1, 1), roleRef(2, 1), roleRef(3, 1), roleRef(15, 1), roleRef(9, 4)));
@@ -176,6 +257,7 @@ public class DatabaseSeeder {
         role.setFaqs(converter.writeFaqList(faqs));
         role.setPortrait(portrait);
         role.setFullIllustration(fullIllustration);
+        role.setThemeColor(ROLE_THEME_COLORS.get(name));
         role.setCreateTime(LocalDateTime.now().minusDays(14));
         roleMapper.insert(role);
     }
@@ -204,6 +286,12 @@ public class DatabaseSeeder {
             roleRef.setBoardId(id);
             boardRoleMapper.insert(roleRef);
         }
+    }
+
+    private void saveRuleDetail(int boardId, BoardRuleDetail detail) {
+        BoardEntity board = boardMapper.selectById(boardId);
+        board.setRuleDetail(converter.writeRuleDetail(detail));
+        boardMapper.updateById(board);
     }
 
     private void savePost(int id, String openid, String content, List<String> images, int likeCount, int commentCount, int status, LocalDateTime createTime, LocalDateTime updateTime) {

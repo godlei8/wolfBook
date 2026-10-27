@@ -5,11 +5,13 @@ CREATE TABLE boards (
   difficulty VARCHAR(20) NOT NULL,
   tags CLOB,
   cover_image VARCHAR(500),
+  background_image VARCHAR(500),
   card_description VARCHAR(255),
   brief_config VARCHAR(500) NOT NULL,
   special_rules CLOB,
   tips CLOB,
   faqs CLOB,
+  rule_detail CLOB,
   win_condition VARCHAR(100) DEFAULT '屠边',
   rule_type VARCHAR(50) DEFAULT '标准板',
   status TINYINT DEFAULT 1,
@@ -29,6 +31,7 @@ CREATE TABLE roles (
   faqs CLOB,
   portrait VARCHAR(500),
   full_illustration VARCHAR(500),
+  theme_color VARCHAR(16),
   create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

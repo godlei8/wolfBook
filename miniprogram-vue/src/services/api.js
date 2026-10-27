@@ -1,6 +1,7 @@
 import { BASE_URL } from './config'
 import { createAuthHeader, request, uploadFile } from './request'
 import storage from './storage'
+import { normalizeRuleDetail, roleAccent } from '../utils/board-rules.js'
 
 function withBaseUrl(url) {
   if (!url) return url
@@ -34,6 +35,7 @@ function normalizeBoardRole(role) {
   return {
     ...role,
     portrait: withBaseUrl(role.portrait),
+    accent: roleAccent(role),
   }
 }
 
@@ -44,6 +46,8 @@ function normalizeBoard(board) {
   return {
     ...board,
     coverImage: withBaseUrl(board.coverImage),
+    backgroundImage: withBaseUrl(board.backgroundImage),
+    ruleDetail: normalizeRuleDetail(board.ruleDetail, withBaseUrl),
     roles,
     featuredRoles,
     cardDescription: board.cardDescription || board.summary || '',
@@ -58,6 +62,7 @@ function normalizeRole(role) {
     ...role,
     portrait: withBaseUrl(role.portrait),
     fullIllustration: withBaseUrl(role.fullIllustration),
+    accent: roleAccent(role),
     boards: (role.boards || []).map((board) => ({
       ...board,
       coverImage: withBaseUrl(board.coverImage),
