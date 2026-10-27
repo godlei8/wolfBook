@@ -148,61 +148,73 @@ onReachBottom(() => loadBoards({ append: true }))
 <template>
   <view class="page-shell">
     <view class="hero-header">
-      <view class="hero-title">板子库</view>
-      <view class="hero-role-entry" @tap="openRoles">角色</view>
-    </view>
-    <view class="hero-subtitle">黑夜规则、角色配置和对局节奏，都从这里开始。</view>
-
-    <view class="glass-card section-card">
-      <view class="search-box">
-        <input
-          v-model="keyword"
-          class="search-input"
-          placeholder="搜索板子名称"
-          confirm-type="search"
-          @confirm="loadBoards"
-        />
-        <view class="search-action" @tap="loadBoards">搜索</view>
+      <view class="hero-heading">
+        <view class="hero-wordmark">WOLFBOOK</view>
+        <view class="hero-title">今晚开哪一局？</view>
       </view>
+      <view class="hero-role-entry" @tap="openRoles">角色图鉴</view>
+    </view>
 
-      <view class="section-meta filter-title">人数</view>
-      <scroll-view scroll-x class="chip-row">
-        <view
-          v-for="item in playerOptions"
-          :key="item.value"
-          class="chip"
-          :class="{ active: playerFilter === item.value }"
-          @tap="applyPlayerFilter(item)"
-        >
-          {{ item.label }}
-        </view>
-      </scroll-view>
+    <view class="search-box">
+      <input
+        v-model="keyword"
+        class="search-input"
+        placeholder="搜板子名称"
+        placeholder-class="search-placeholder"
+        confirm-type="search"
+        @confirm="loadBoards"
+      />
+      <view class="search-action" @tap="loadBoards">搜索</view>
+    </view>
 
-      <view class="section-meta filter-title">难度</view>
-      <scroll-view scroll-x class="chip-row">
-        <view
-          v-for="item in difficultyOptions"
-          :key="item.value"
-          class="chip"
-          :class="{ active: difficultyFilter === item.value }"
-          @tap="applyDifficultyFilter(item)"
-        >
-          {{ item.label }}
-        </view>
-      </scroll-view>
+    <view class="filter-panel glass-card">
+      <view class="filter-row">
+        <text class="filter-label">人数</text>
+        <scroll-view scroll-x class="chip-row filter-chips">
+          <view
+            v-for="item in playerOptions"
+            :key="item.value"
+            class="chip"
+            :class="{ active: playerFilter === item.value }"
+            @tap="applyPlayerFilter(item)"
+          >
+            {{ item.label }}
+          </view>
+        </scroll-view>
+      </view>
+      <view class="filter-row">
+        <text class="filter-label">难度</text>
+        <scroll-view scroll-x class="chip-row filter-chips">
+          <view
+            v-for="item in difficultyOptions"
+            :key="item.value"
+            class="chip"
+            :class="{ active: difficultyFilter === item.value }"
+            @tap="applyDifficultyFilter(item)"
+          >
+            {{ item.label }}
+          </view>
+        </scroll-view>
+      </view>
+      <view class="filter-row">
+        <text class="filter-label">标签</text>
+        <scroll-view scroll-x class="chip-row filter-chips">
+          <view
+            v-for="item in tagOptions"
+            :key="item.value"
+            class="chip"
+            :class="{ active: tagFilter === item.value }"
+            @tap="applyTagFilter(item)"
+          >
+            {{ item.label }}
+          </view>
+        </scroll-view>
+      </view>
+    </view>
 
-      <view class="section-meta filter-title">标签</view>
-      <scroll-view scroll-x class="chip-row">
-        <view
-          v-for="item in tagOptions"
-          :key="item.value"
-          class="chip"
-          :class="{ active: tagFilter === item.value }"
-          @tap="applyTagFilter(item)"
-        >
-          {{ item.label }}
-        </view>
-      </scroll-view>
+    <view class="list-heading">
+      <text class="list-title serif">全部板子</text>
+      <text class="list-count">共 {{ total }} 个</text>
     </view>
 
     <view v-if="boards.length === 0" class="empty-state glass-card section-card">
@@ -213,12 +225,15 @@ onReachBottom(() => loadBoards({ append: true }))
       v-for="board in boards"
       :key="board.id"
       :board-id="board.id"
-      :cover-image="board.coverImage"
-      :difficulty="board.difficulty"
-      :meta-text="`共 ${total} 个结果`"
       :name="board.name"
       :player-count="board.playerCount"
+      :difficulty="board.difficulty"
+      :tags="board.tags || []"
+      :background-image="board.backgroundImage || ''"
+      :lineup-art="board.lineupArt || []"
+      :cover-image="board.coverImage || ''"
       :card-roles="board.cardRoles || []"
+      :camp-segments="board.campSegments || []"
       :description="board.cardDescription || board.summary || ''"
       :favorite="isFavorite(board.id)"
       @select="openDetail"
@@ -245,76 +260,136 @@ onReachBottom(() => loadBoards({ append: true }))
 <style scoped lang="scss">
 .hero-header {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 18rpx;
 }
 
+.hero-heading {
+  min-width: 0;
+}
+
+.hero-wordmark {
+  color: var(--gold);
+  font-family: var(--serif);
+  font-size: 24rpx;
+  font-weight: 700;
+  letter-spacing: 8rpx;
+  margin-bottom: 8rpx;
+}
+
 .hero-role-entry {
-  min-width: 112rpx;
-  height: 70rpx;
-  padding: 0 28rpx;
-  border-radius: 16rpx;
-  background: rgba(255, 192, 0, 0.14);
-  color: #ffc000;
+  height: 72rpx;
+  padding: 0 24rpx;
+  border-radius: 24rpx;
+  border: 4rpx solid var(--ink);
+  box-shadow: 4rpx 4rpx 0 var(--ink);
+  background: var(--panel-raised);
+  color: var(--moon);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24rpx;
+  font-size: 26rpx;
   font-weight: 700;
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .search-box {
+  margin-top: 32rpx;
+  height: 100rpx;
+  padding: 0 10rpx 0 28rpx;
   display: flex;
   align-items: center;
   gap: 14rpx;
+  border-radius: 32rpx;
+  background: var(--panel);
+  border: 4rpx solid var(--ink);
+  box-shadow: 6rpx 6rpx 0 var(--ink);
+  box-sizing: border-box;
 }
 
 .search-input {
   flex: 1;
-  min-height: 84rpx;
-  padding: 0 24rpx;
-  border-radius: 18rpx;
-  background: rgba(255, 255, 255, 0.05);
-  color: #ffffff;
-  box-sizing: border-box;
+  min-width: 0;
+  height: 80rpx;
+  color: var(--text);
+  font-size: 28rpx;
+}
+
+.search-placeholder {
+  color: var(--text-3);
 }
 
 .search-action {
-  width: 118rpx;
-  min-height: 84rpx;
-  border-radius: 18rpx;
-  background: linear-gradient(135deg, rgba(255, 213, 77, 0.96), rgba(166, 127, 8, 0.96));
-  color: #1b1506;
+  height: 72rpx;
+  padding: 0 28rpx;
+  border-radius: 22rpx;
+  background: var(--gold);
+  color: var(--ink);
+  border: 4rpx solid var(--ink);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24rpx;
+  font-size: 26rpx;
   font-weight: 700;
   flex-shrink: 0;
-  box-shadow: 0 10rpx 22rpx rgba(255, 192, 0, 0.18);
+  box-sizing: border-box;
 }
 
-.filter-title {
-  margin: 22rpx 0 12rpx;
+.filter-panel {
+  margin-top: 28rpx;
+  padding: 18rpx 24rpx 8rpx;
 }
 
-.chip-row {
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+}
+
+.filter-label {
+  flex-shrink: 0;
+  width: 56rpx;
+  color: var(--text-3);
+  font-size: 24rpx;
+}
+
+.filter-chips {
+  flex: 1;
+  min-width: 0;
   margin: 0;
-  padding: 2rpx 0 10rpx;
+  padding: 8rpx 4rpx 14rpx;
   box-sizing: border-box;
 }
 
 .chip {
-  min-width: 112rpx;
-  padding: 0 24rpx;
+  min-width: 96rpx;
+  min-height: 60rpx;
+  padding: 0 22rpx;
+}
+
+.list-heading {
+  margin-top: 40rpx;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.list-title {
+  font-size: 40rpx;
+  font-weight: 900;
+}
+
+.list-count {
+  color: var(--text-3);
+  font-size: 24rpx;
 }
 
 .list-footer {
-  padding: 28rpx 0 8rpx;
+  padding: 36rpx 0 8rpx;
   text-align: center;
-  color: #8f8f8f;
+  color: var(--text-3);
   font-size: 24rpx;
 }
 </style>

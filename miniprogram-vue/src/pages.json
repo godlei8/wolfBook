@@ -110,13 +110,15 @@
   "globalStyle": {
     "navigationBarTextStyle": "white",
     "navigationBarTitleText": "狼人杀图鉴",
-    "navigationBarBackgroundColor": "#000000",
-    "backgroundColor": "#000000"
+    "navigationBarBackgroundColor": "#15121C",
+    "backgroundColor": "#15121C",
+    "backgroundColorTop": "#15121C",
+    "backgroundColorBottom": "#15121C"
   },
   "tabBar": {
-    "color": "#8d8d8d",
-    "selectedColor": "#ffc000",
-    "backgroundColor": "#050505",
+    "color": "#9A90AE",
+    "selectedColor": "#F2B33D",
+    "backgroundColor": "#0E0C13",
     "borderStyle": "black",
     "list": [
       {

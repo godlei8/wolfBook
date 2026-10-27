@@ -20,12 +20,25 @@ page {
   --field-height: 84rpx;
   --button-height: 88rpx;
   --compact-button-height: 72rpx;
+  /* 夜镇卡牌配色（原型 D · 设计规范）：立绘是最亮的东西，界面只用灯火金和月光青两个强调色 */
+  --bg: #15121c;
+  --panel: #211c2b;
+  --panel-raised: #2c2539;
+  --panel-line: #352d44;
+  --ink: #07060a;
+  --text: #f4ead5;
+  --text-2: #b8adc9;
+  --text-3: #9a90ae;
+  --gold: #f2b33d;
+  --moon: #5fe3e0;
+  --camp-god: #e9c46a;
+  --camp-villager: #8fd0a6;
+  --camp-wolf: #ff7468;
+  --camp-third: #f7a8cb;
+  --serif: "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
   min-height: 100%;
-  background:
-    radial-gradient(circle at top right, rgba(255, 192, 0, 0.14), transparent 28%),
-    radial-gradient(circle at left top, rgba(255, 255, 255, 0.03), transparent 30%),
-    linear-gradient(180deg, #060606 0%, #0c0c0c 100%);
-  color: #ffffff;
+  background: var(--bg);
+  color: var(--text);
   font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
@@ -45,24 +58,37 @@ page {
 }
 
 .hero-title {
-  font-size: 54rpx;
-  line-height: 1.08;
-  font-weight: 700;
-  letter-spacing: 1.5rpx;
+  font-family: var(--serif);
+  font-size: 56rpx;
+  line-height: 1.2;
+  font-weight: 900;
+  letter-spacing: 1rpx;
 }
 
 .hero-subtitle {
   margin-top: 14rpx;
-  color: #b6b6b6;
+  color: var(--text-2);
   font-size: 24rpx;
   line-height: 1.75;
 }
 
+/* 面板：夜色抬起一层，细描线，不加投影 */
 .glass-card {
-  background: linear-gradient(180deg, rgba(22, 22, 22, 0.98) 0%, rgba(10, 10, 10, 0.96) 100%);
+  background: var(--panel);
   border-radius: var(--card-radius);
-  border: 1rpx solid rgba(255, 255, 255, 0.04);
-  box-shadow: 0 22rpx 44rpx rgba(0, 0, 0, 0.24);
+  border: 2rpx solid var(--panel-line);
+}
+
+/* 可以拿起来的东西（卡牌、按钮）：粗黑描边 + 硬投影 */
+.ink-card {
+  background: var(--panel);
+  border: 4rpx solid var(--ink);
+  border-radius: 36rpx;
+  box-shadow: 8rpx 8rpx 0 var(--ink);
+}
+
+.serif {
+  font-family: var(--serif);
 }
 
 .section-card {
@@ -71,20 +97,21 @@ page {
 }
 
 .section-title {
-  font-size: 32rpx;
-  line-height: 1.24;
-  font-weight: 700;
+  font-family: var(--serif);
+  font-size: 34rpx;
+  line-height: 1.3;
+  font-weight: 900;
 }
 
 .section-desc {
   margin-top: 10rpx;
-  color: #afafaf;
+  color: var(--text-2);
   font-size: 24rpx;
   line-height: 1.75;
 }
 
 .section-meta {
-  color: #9d9d9d;
+  color: var(--text-3);
   font-size: 22rpx;
   line-height: 1.55;
 }
@@ -103,25 +130,33 @@ page {
 }
 
 .pill-gold {
-  background: rgba(255, 192, 0, 0.14);
-  color: #ffc000;
+  background: rgba(242, 179, 61, 0.16);
+  color: var(--gold);
 }
 
 .pill-white {
-  background: rgba(255, 255, 255, 0.08);
-  color: #f2f2f2;
+  background: var(--panel-raised);
+  color: var(--text);
 }
 
 .button-primary {
   height: var(--button-height);
-  line-height: var(--button-height);
-  border-radius: 16rpx;
+  line-height: calc(var(--button-height) - 8rpx);
+  border-radius: 28rpx;
   padding: 0 28rpx;
-  background: linear-gradient(135deg, #ffd24f, #f3b91f);
-  color: #171105;
+  background: var(--gold);
+  color: var(--ink);
+  border: 4rpx solid var(--ink);
+  box-shadow: 6rpx 6rpx 0 var(--ink);
+  box-sizing: border-box;
   font-size: 28rpx;
   font-weight: 700;
-  box-shadow: 0 14rpx 28rpx rgba(255, 192, 0, 0.18);
+}
+
+.button-primary:active,
+.button-ghost:active {
+  transform: translate(6rpx, 6rpx);
+  box-shadow: none;
 }
 
 .button-primary::after,
@@ -141,9 +176,12 @@ page {
 }
 
 .button-ghost {
-  background: rgba(255, 255, 255, 0.04);
-  color: #f3eee1;
-  border: 1rpx solid rgba(255, 255, 255, 0.08);
+  line-height: calc(var(--button-height) - 8rpx);
+  background: var(--panel-raised);
+  color: var(--text);
+  border: 4rpx solid var(--ink);
+  box-shadow: 6rpx 6rpx 0 var(--ink);
+  box-sizing: border-box;
 }
 
 .button-danger {
@@ -155,7 +193,7 @@ page {
 .empty-state {
   padding: 88rpx 32rpx;
   text-align: center;
-  color: #949494;
+  color: var(--text-3);
   line-height: 1.85;
 }
 
@@ -164,9 +202,9 @@ page {
   margin-top: 14rpx;
   padding: 20rpx 22rpx;
   border-radius: 18rpx;
-  background: rgba(255, 255, 255, 0.045);
-  border: 1rpx solid rgba(255, 255, 255, 0.04);
-  color: #ffffff;
+  background: var(--panel);
+  border: 2rpx solid #3a3149;
+  color: var(--text);
   box-sizing: border-box;
   font-size: 28rpx;
   line-height: 1.45;
@@ -196,16 +234,20 @@ textarea.field-textarea {
   min-height: 64rpx;
   padding: 0 22rpx;
   border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.05);
-  color: #c0c0c0;
+  background: #1c1824;
+  border: 3rpx solid #3a3149;
+  color: #c9bfd8;
   font-size: 24rpx;
   line-height: 1.2;
   box-sizing: border-box;
 }
 
 .chip.active {
-  background: rgba(255, 192, 0, 0.16);
-  color: #ffc000;
+  background: var(--text);
+  color: var(--ink);
+  border: 4rpx solid var(--ink);
+  box-shadow: 4rpx 4rpx 0 var(--ink);
+  font-weight: 700;
 }
 
 .floating-plus {
@@ -214,15 +256,17 @@ textarea.field-textarea {
   bottom: calc(env(safe-area-inset-bottom) + 146rpx);
   width: 98rpx;
   height: 98rpx;
-  border-radius: 22rpx;
-  background: linear-gradient(135deg, #ffd24f, #f3b91f);
-  color: #171105;
+  border-radius: 28rpx;
+  background: var(--gold);
+  color: var(--ink);
+  border: 4rpx solid var(--ink);
+  box-shadow: 6rpx 6rpx 0 var(--ink);
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 52rpx;
   font-weight: 700;
   z-index: 20;
-  box-shadow: 0 18rpx 36rpx rgba(255, 192, 0, 0.18);
 }
 </style>

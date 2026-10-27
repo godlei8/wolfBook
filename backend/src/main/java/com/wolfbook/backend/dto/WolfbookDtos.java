@@ -187,6 +187,7 @@ public final class WolfbookDtos {
             String difficulty,
             List<String> tags,
             String coverImage,
+            String backgroundImage,
             String briefConfig,
             String cardDescription,
             String campSummary,
@@ -197,7 +198,7 @@ public final class WolfbookDtos {
     ) {
     }
 
-    public record BoardRoleView(Integer roleId, String name, String faction, String roleType, String camp, String portrait, String themeColor, Integer count) {
+    public record BoardRoleView(Integer roleId, String name, String faction, String roleType, String camp, String portrait, String fullIllustration, String themeColor, Integer count) {
     }
 
     public record BoardDetailView(
@@ -246,6 +247,7 @@ public final class WolfbookDtos {
             String roleType,
             String camp,
             String portrait,
+            String fullIllustration,
             String themeColor
     ) {
     }

@@ -140,6 +140,7 @@ public class BoardService {
                         role.getRoleType(),
                         role.getCamp(),
                         role.getPortrait(),
+                        role.getFullIllustration(),
                         role.getThemeColor()
                 ))
                 .toList();
@@ -242,6 +243,7 @@ public class BoardService {
                 board.getDifficulty(),
                 converter.readStringList(board.getTags()),
                 board.getCoverImage(),
+                board.getBackgroundImage(),
                 board.getBriefConfig(),
                 board.getCardDescription(),
                 buildCampSummary(roleViews),
@@ -264,6 +266,7 @@ public class BoardService {
                 role.getRoleType(),
                 role.getCamp(),
                 role.getPortrait(),
+                role.getFullIllustration(),
                 role.getThemeColor(),
                 ref.getCount()
         );

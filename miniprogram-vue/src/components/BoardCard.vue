@@ -1,20 +1,12 @@
 <script setup>
+// 板子列表卡片（原型 D1）：顶部是板子自己的背景图，没有时摆三张阵容立绘；
+// 下面是人数难度、阵容头像筹码和阵营比例条。粗黑描边 + 硬投影，像摆在桌上的卡牌。
+import RoleToken from './RoleToken.vue'
+
 const props = defineProps({
   boardId: {
     type: Number,
     required: true,
-  },
-  coverImage: {
-    type: String,
-    default: '',
-  },
-  difficulty: {
-    type: String,
-    default: '',
-  },
-  metaText: {
-    type: String,
-    default: '',
   },
   name: {
     type: String,
@@ -24,7 +16,34 @@ const props = defineProps({
     type: [Number, String],
     default: '',
   },
+  difficulty: {
+    type: String,
+    default: '',
+  },
+  tags: {
+    type: Array,
+    default: () => [],
+  },
+  // 板子自己的背景图；没有时用 lineupArt（utils/board-rules.js 的 pickLineupArt 挑好的三张立绘）
+  backgroundImage: {
+    type: String,
+    default: '',
+  },
+  lineupArt: {
+    type: Array,
+    default: () => [],
+  },
+  // 背景图和立绘都没有时的最后兜底
+  coverImage: {
+    type: String,
+    default: '',
+  },
   cardRoles: {
+    type: Array,
+    default: () => [],
+  },
+  // 阵营比例条，来自 campBreakdown
+  campSegments: {
     type: Array,
     default: () => [],
   },
@@ -48,208 +67,261 @@ function handleFavorite() {
   emit('favorite-toggle', props.boardId)
 }
 
-function shouldShowCount(role) {
-  return role.count > 1 || role.faction === '狼人' || role.faction === '第三方' || role.roleType === '平民'
+function lineupSlot(art, index) {
+  if (art.center) return 'center'
+  return index === 0 ? 'left' : 'right'
 }
 </script>
 
 <template>
-  <view class="glass-card board-card" @tap="handleSelect">
-    <view class="board-cover-wrap">
-      <image class="board-cover" :src="coverImage" mode="aspectFill" />
-      <view class="board-favorite" :class="{ active: favorite }" @tap.stop="handleFavorite">
+  <view class="board-card ink-card" @tap="handleSelect">
+    <view class="board-banner">
+      <image v-if="backgroundImage" class="banner-image" :src="backgroundImage" mode="aspectFill" webp />
+      <view v-else-if="lineupArt.length" class="banner-lineup">
+        <view
+          v-for="(art, index) in lineupArt"
+          :key="`${boardId}-art-${art.roleId}`"
+          class="lineup-card"
+          :class="`lineup-card--${lineupSlot(art, index)}`"
+          :style="{ backgroundColor: art.accent }"
+        >
+          <image class="lineup-card-image" :src="art.image" mode="aspectFill" webp />
+        </view>
+      </view>
+      <image v-else-if="coverImage" class="banner-image" :src="coverImage" mode="aspectFill" />
+
+      <view v-if="tags.length" class="banner-tags">
+        <text v-for="tag in tags.slice(0, 2)" :key="tag" class="banner-tag">{{ tag }}</text>
+      </view>
+      <view class="banner-favorite" :class="{ active: favorite }" @tap.stop="handleFavorite">
         {{ favorite ? '♥' : '♡' }}
       </view>
+      <view class="banner-plate serif">{{ name }}</view>
     </view>
 
-    <view class="board-overlay">
-      <view class="board-topline">
-        <view class="pill pill-gold">{{ difficulty }}</view>
-        <view v-if="metaText" class="section-meta">{{ metaText }}</view>
+    <view class="board-body">
+      <view class="board-meta">
+        <text>{{ playerCount }} 人</text>
+        <text v-if="difficulty"> · {{ difficulty }}</text>
       </view>
 
-      <view class="board-title-row">
-        <view class="board-name">{{ name }}</view>
-        <view class="board-player-badge">
-          <view class="board-player-inner">
-            <text class="board-player-number">{{ playerCount }}</text>
-            <text class="board-player-unit">人</text>
+      <view v-if="cardRoles.length" class="board-chips">
+        <RoleToken
+          v-for="role in cardRoles"
+          :key="`${boardId}-${role.roleId}-${role.name}`"
+          :image="role.portrait"
+          :accent="role.accent"
+          :count="role.count"
+        />
+      </view>
+
+      <view v-if="campSegments.length" class="camp-bar">
+        <view class="camp-bar-track">
+          <view
+            v-for="segment in campSegments"
+            :key="segment.key"
+            class="camp-bar-segment"
+            :style="{ flex: segment.count, backgroundColor: segment.fill }"
+          />
+        </view>
+        <view class="camp-bar-labels">
+          <view v-for="segment in campSegments" :key="segment.key" class="camp-bar-label">
+            <view class="camp-dot" :style="{ backgroundColor: segment.fill }" />
+            <text>{{ segment.label }} {{ segment.count }}</text>
           </view>
         </view>
       </view>
 
-      <view v-if="cardRoles && cardRoles.length" class="board-role-row">
-        <view
-          v-for="role in cardRoles"
-          :key="`${boardId}-${role.roleId}-${role.name}`"
-          class="board-role-chip"
-          :class="`role-tone-${role.toneClass}`"
-        >
-          <image class="board-role-avatar" :src="role.portrait" mode="aspectFill" />
-          <text class="board-role-label">
-            {{ shouldShowCount(role) ? `${role.count}${role.name}` : role.name }}
-          </text>
-        </view>
-      </view>
-
-      <view v-if="description" class="board-summary">
-        {{ description }}
-      </view>
+      <view v-if="description" class="board-summary">{{ description }}</view>
     </view>
   </view>
 </template>
 
 <style scoped lang="scss">
 .board-card {
-  margin-top: 22rpx;
+  margin-top: 32rpx;
   overflow: hidden;
-  background: linear-gradient(180deg, rgba(18, 18, 18, 0.98) 0%, rgba(7, 7, 7, 0.98) 100%);
 }
 
-.board-cover-wrap {
+.board-banner {
   position: relative;
+  height: 264rpx;
+  background: #1b1724;
+  border-bottom: 4rpx solid var(--ink);
+  overflow: hidden;
 }
 
-.board-cover {
+.banner-image {
   width: 100%;
-  height: 328rpx;
+  height: 100%;
   display: block;
 }
 
-.board-favorite {
+/* 三张立绘摆在右侧，左下角留给板子名铭牌 */
+.banner-lineup {
+  position: absolute;
+  top: 0;
+  right: 96rpx;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+}
+
+.lineup-card {
+  position: relative;
+  width: 124rpx;
+  height: 165rpx;
+  border: 4rpx solid var(--ink);
+  border-radius: 16rpx;
+  box-shadow: 4rpx 4rpx 0 var(--ink);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.lineup-card-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.lineup-card--left {
+  margin-right: -22rpx;
+  transform: translateY(20rpx) rotate(-10deg);
+}
+
+.lineup-card--center {
+  z-index: 2;
+  width: 136rpx;
+  height: 181rpx;
+  transform: translateY(-4rpx);
+}
+
+.lineup-card--right {
+  margin-left: -22rpx;
+  transform: translateY(20rpx) rotate(10deg);
+}
+
+.banner-tags {
+  position: absolute;
+  top: 20rpx;
+  left: 20rpx;
+  display: flex;
+  gap: 12rpx;
+  z-index: 3;
+}
+
+.banner-tag {
+  padding: 6rpx 16rpx;
+  border-radius: 12rpx;
+  background: var(--ink);
+  color: var(--text);
+  font-size: 22rpx;
+  line-height: 1.4;
+}
+
+.banner-favorite {
   position: absolute;
   top: 18rpx;
   right: 18rpx;
-  width: 60rpx;
-  height: 60rpx;
+  z-index: 3;
+  width: 64rpx;
+  height: 64rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 18rpx;
-  background: rgba(0, 0, 0, 0.52);
-  color: rgba(255, 255, 255, 0.88);
+  border-radius: 20rpx;
+  background: var(--ink);
+  color: var(--text);
   font-size: 32rpx;
   line-height: 1;
 }
 
-.board-favorite.active {
-  color: #ffc000;
-  background: rgba(8, 8, 8, 0.72);
+.banner-favorite.active {
+  color: var(--gold);
 }
 
-.board-overlay {
-  padding: 26rpx;
-  background: linear-gradient(180deg, rgba(16, 16, 16, 0.98) 0%, rgba(8, 8, 8, 0.98) 100%);
-}
-
-.board-topline {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 14rpx;
-}
-
-.board-title-row {
-  margin-top: 18rpx;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 18rpx;
-}
-
-.board-name {
-  min-width: 0;
-  flex: 1;
-  font-size: 38rpx;
-  font-weight: 700;
-  color: #ffffff;
-  line-height: 1.26;
-}
-
-.board-player-badge {
-  position: relative;
-  flex-shrink: 0;
-  width: 94rpx;
-  height: 64rpx;
-  padding: 2rpx;
-  clip-path: polygon(14rpx 0, 100% 0, 100% calc(100% - 14rpx), calc(100% - 14rpx) 100%, 0 100%, 0 14rpx);
-  background: linear-gradient(135deg, rgba(255, 213, 77, 0.95), rgba(145, 115, 0, 0.95));
-  box-shadow:
-    0 8rpx 18rpx rgba(255, 192, 0, 0.14),
-    inset 0 0 0 1rpx rgba(255, 245, 214, 0.35);
-}
-
-.board-player-inner {
-  width: 100%;
-  height: 100%;
-  clip-path: polygon(12rpx 0, 100% 0, 100% calc(100% - 12rpx), calc(100% - 12rpx) 100%, 0 100%, 0 12rpx);
-  background: linear-gradient(180deg, rgba(26, 22, 8, 0.98), rgba(10, 9, 5, 0.98));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2rpx;
-  padding-left: 6rpx;
+.banner-plate {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  z-index: 3;
+  max-width: 70%;
+  padding: 14rpx 32rpx 12rpx;
+  border-top-right-radius: 28rpx;
+  background: var(--ink);
+  color: var(--text);
+  font-size: 40rpx;
+  font-weight: 900;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   box-sizing: border-box;
 }
 
-.board-player-number {
-  color: #ffc000;
-  font-size: 34rpx;
-  font-weight: 700;
-  line-height: 1;
+.board-body {
+  padding: 22rpx 30rpx 30rpx;
 }
 
-.board-player-unit {
-  color: #f7e3b0;
-  font-size: 18rpx;
-  letter-spacing: 1rpx;
-  line-height: 1;
+.board-meta {
+  color: var(--text-2);
+  font-size: 26rpx;
+  line-height: 1.5;
 }
 
-.board-role-row {
+.board-chips {
+  margin-top: 22rpx;
   display: flex;
   flex-wrap: wrap;
-  gap: 12rpx;
-  margin-top: 18rpx;
+  gap: 18rpx;
+  padding-left: 4rpx;
 }
 
-.board-role-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8rpx;
-  min-height: 56rpx;
-  padding: 0 16rpx 0 10rpx;
-  border-radius: 999rpx;
-  box-sizing: border-box;
+.camp-bar {
+  margin-top: 30rpx;
 }
 
-.role-tone-good {
-  background: rgba(255, 192, 0, 0.12);
+.camp-bar-track {
+  display: flex;
+  gap: 4rpx;
+  height: 12rpx;
+  border-radius: 6rpx;
+  overflow: hidden;
 }
 
-.role-tone-wolf {
-  background: rgba(255, 89, 59, 0.12);
+.camp-bar-segment {
+  height: 100%;
 }
 
-.role-tone-third {
-  background: rgba(212, 170, 255, 0.12);
-}
-
-.board-role-avatar {
-  width: 40rpx;
-  height: 40rpx;
-  border-radius: 999rpx;
-}
-
-.board-role-label {
+.camp-bar-labels {
+  margin-top: 14rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28rpx;
+  color: var(--text-2);
   font-size: 22rpx;
-  color: #ffffff;
+}
+
+.camp-bar-label {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.camp-dot {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
 }
 
 .board-summary {
-  margin-top: 16rpx;
-  color: #939393;
+  margin-top: 20rpx;
+  color: var(--text-3);
   font-size: 24rpx;
-  line-height: 1.78;
+  line-height: 1.7;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 </style>

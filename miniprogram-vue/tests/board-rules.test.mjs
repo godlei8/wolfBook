@@ -4,10 +4,99 @@ import assert from 'node:assert/strict'
 import {
   DEFAULT_ACCENT,
   FACTION_ACCENTS,
+  campBreakdown,
+  campTextColor,
+  groupLineup,
   normalizeRuleDetail,
+  pickLineupArt,
   roleAccent,
   withAlpha,
 } from '../src/utils/board-rules.js'
+
+const role = (roleId, name, faction, roleType, extra = {}) => ({
+  roleId,
+  name,
+  faction,
+  roleType,
+  portrait: `/p/${roleId}.webp`,
+  fullIllustration: `/f/${roleId}.webp`,
+  ...extra,
+})
+
+test('pickLineupArt puts the special wolf in the middle and the first two gods on the sides', () => {
+  const art = pickLineupArt([
+    role(1, '预言家', '好人', '神职', { themeColor: '#7B4FD6' }),
+    role(2, '女巫', '好人', '神职'),
+    role(3, '猎人', '好人', '神职'),
+    role(9, '平民', '好人', '平民'),
+    role(6, '狼人', '狼人', '狼人'),
+    role(11, '黑狼王', '狼人', '狼人'),
+  ])
+  assert.deepEqual(art.map((item) => item.name), ['预言家', '黑狼王', '女巫'])
+  assert.deepEqual(art.map((item) => item.center), [false, true, false])
+  assert.equal(art[0].image, '/f/1.webp')
+  assert.equal(art[0].accent, '#7B4FD6')
+  assert.equal(art[1].accent, FACTION_ACCENTS['狼人'])
+})
+
+test('pickLineupArt falls back to the plain wolf, portraits, and villagers when needed', () => {
+  const art = pickLineupArt([
+    role(9, '平民', '好人', '平民'),
+    role(6, '狼人', '狼人', '狼人', { fullIllustration: null }),
+    role(1, '预言家', '好人', '神职'),
+  ])
+  assert.deepEqual(art.map((item) => item.name), ['预言家', '狼人', '平民'])
+  assert.equal(art[1].image, '/p/6.webp')
+})
+
+test('campBreakdown counts cards per camp in a fixed order and drops empty camps', () => {
+  const segments = campBreakdown([
+    role(6, '狼人', '狼人', '狼人', { count: 3 }),
+    role(1, '预言家', '好人', '神职', { count: 1 }),
+    role(9, '平民', '好人', '平民', { count: 4 }),
+    role(7, '狼美人', '狼人', '狼人', { count: 1 }),
+    role(2, '女巫', '好人', '神职', { count: 1 }),
+    role(16, '爱神', '第三方', '第三方', { count: 0 }),
+    null,
+  ])
+  assert.deepEqual(segments.map((s) => [s.label, s.count]), [['神职', 2], ['平民', 4], ['狼人', 4]])
+  assert.deepEqual(campBreakdown(undefined), [])
+})
+
+test('groupLineup groups roles by camp in display order with card totals', () => {
+  const groups = groupLineup([
+    role(6, '狼人', '狼人', '狼人', { count: 3 }),
+    role(1, '预言家', '好人', '神职', { count: 1 }),
+    role(9, '平民', '好人', '平民', { count: 4 }),
+    role(7, '狼美人', '狼人', '狼人', { count: 1 }),
+  ])
+  assert.deepEqual(groups.map((g) => [g.label, g.count, g.roles.map((r) => r.name)]), [
+    ['神职', 1, ['预言家']],
+    ['平民', 4, ['平民']],
+    ['狼人', 4, ['狼人', '狼美人']],
+  ])
+})
+
+test('campTextColor follows the camp, and night steps carry it', () => {
+  assert.equal(campTextColor({ faction: '狼人' }), '#FF7468')
+  assert.equal(campTextColor({ faction: '好人', roleType: '平民' }), '#8FD0A6')
+  assert.equal(campTextColor({ faction: '第三方' }), '#F7A8CB')
+  assert.equal(campTextColor(null), '#E9C46A')
+  const detail = normalizeRuleDetail({ nightOrder: [{ roleId: 6, faction: '狼人', action: '刀人' }] })
+  assert.equal(detail.nightOrder[0].campColor, '#FF7468')
+})
+
+test('pickLineupArt skips roles without any art and returns fewer cards for small lineups', () => {
+  assert.deepEqual(pickLineupArt([]), [])
+  assert.deepEqual(pickLineupArt(undefined), [])
+  const art = pickLineupArt([
+    role(1, '预言家', '好人', '神职', { portrait: '', fullIllustration: '' }),
+    role(6, '狼人', '狼人', '狼人'),
+    role(2, '女巫', '好人', '神职'),
+  ])
+  assert.deepEqual(art.map((item) => item.name), ['女巫', '狼人'])
+  assert.equal(art[1].center, true)
+})
 
 test('roleAccent prefers a valid theme color and normalizes its case', () => {
   assert.equal(roleAccent({ themeColor: '#7b4fd6', faction: '好人' }), '#7B4FD6')

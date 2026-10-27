@@ -44,7 +44,7 @@ npm run build:mp-weixin   # 生产构建
 - `assistant-*.test.mjs`：助手的 markdown 分段 / 流式缓冲 / 消息模型，以及悬浮球拖拽定位（`utils/assistant-dock.js`）。
 - `judge-voice.test.mjs`：电子法官语音脚本生成，以及 WechatSI 插件不可用时的降级。
 - `mp-weixin-app-config.test.mjs`：开发构建时从 `app.json` 剔除 WechatSI 插件的构建策略（`build/mp-weixin-app-config.mjs`）。
-- `board-rules.test.mjs`：板子详细规则的整理（空条目过滤、图片地址、序号）和角色主题色按阵营兜底（`utils/board-rules.js`）。
+- `board-rules.test.mjs`：板子详细规则的整理（空条目过滤、图片地址、序号）、角色主题色按阵营兜底、阵营分组与比例条统计，以及列表卡片没背景图时挑哪三张阵容立绘（`utils/board-rules.js`）。
 - `request-errors.test.mjs`：`services/request-errors.js` 里把 HTTP / 网络错误翻译成中文文案的纯函数，以及 4001 判定。
 
 后端测试（`backend/src/test`，H2）：`BackendApplicationTests`（接口冒烟）、`SecurityIntegrationTests`（伪造 token、禁用管理员、匿名/非图片上传、错误信息不泄露）、`JudgeFlowIntegrationTests`（用种子板子 3 跑完整法官流程：权限、身份可见性、座位校验、状态机）、`CommunityIntegrationTests`（下线帖子、评论数、分页上限）、`TokenServiceTests`。新增后端行为时优先往这几个文件里加 MockMvc 用例。
@@ -63,7 +63,7 @@ npm run build:mp-weixin   # 生产构建
 - **分页**：`config/MybatisPlusConfig` 启用了 `PaginationInnerInterceptor`（依赖 `mybatis-plus-jsqlparser`），`selectPage` 是真正的数据库分页。小程序端列表 size 上限 50，后台列表上限 500（`CommunityService.MAX_PAGE_SIZE / ADMIN_MAX_PAGE_SIZE`）。
 - **可插拔 Provider**（`support/`）：`AuthProvider`（微信 vs Mock）、`UploadProvider`（腾讯云 COS vs 本地磁盘）、`ContentSafetyProvider`。具体实现由 Spring `@Profile` / 配置选择，因此 `test` 配置会换成 mock 实现（`MockAuthProvider` 等）。
 - **数据初始化**：`DatabaseSeeder` 在非 prod 配置下监听 `ApplicationReadyEvent`，灌入演示用的板子/角色/帖子/管理员账号（只在对应表为空时灌）。角色主题色按 `ROLE_THEME_COLORS` 写入，板子 2（预女猎白）和 3（守卫九人局）带完整的详细规则示例。
-- **板子与角色的图和规则**：角色有 `portrait`（缩略图）、`fullIllustration`（立绘）、`themeColor`（`#RRGGBB` 专属色，后台校验格式、存大写）。板子有 `coverImage`（列表封面）、`backgroundImage`（详情页横版背景，空则用封面），以及 `ruleDetail`：一列 JSON，对应 `domain/BoardRuleDetail`（`overview` 玩法概述、`nightOrder` 夜间行动顺序、`roleRules` 角色细则、`sections` 规则章节）。保存时 `AdminService.normalizeRuleDetail` 会去掉空条目，并要求夜间顺序和角色细则引用的角色都在本板子阵容里、同一角色的细则只有一组，否则 4000。`/api/boards/{id}` 把角色名、头像、阵营和主题色展开进 `ruleDetail`。旧的 `specialRules` 保留，详情页作为「补充规则」显示。小程序端的整理和配色兜底在 `utils/board-rules.js`。
+- **板子与角色的图和规则**：角色有 `portrait`（缩略图）、`fullIllustration`（立绘）、`themeColor`（`#RRGGBB` 专属色，后台校验格式、存大写）。板子有 `coverImage`（列表封面）、`backgroundImage`（每个板子单独配置的横版背景：详情页顶部空则用封面；`/api/boards` 列表卡片顶部空则摆三张阵容立绘，由 `utils/board-rules.js` 的 `pickLineupArt` 挑选，中间放特殊狼、两边放神职，所以列表里的阵容角色也下发 `fullIllustration`），以及 `ruleDetail`：一列 JSON，对应 `domain/BoardRuleDetail`（`overview` 玩法概述、`nightOrder` 夜间行动顺序、`roleRules` 角色细则、`sections` 规则章节）。保存时 `AdminService.normalizeRuleDetail` 会去掉空条目，并要求夜间顺序和角色细则引用的角色都在本板子阵容里、同一角色的细则只有一组，否则 4000。`/api/boards/{id}` 把角色名、头像、阵营和主题色展开进 `ruleDetail`。旧的 `specialRules` 保留，详情页作为「补充规则」显示。小程序端的整理和配色兜底在 `utils/board-rules.js`。
 
 ### AI 助手子系统（`service/assistant/`）
 这是最复杂的部分，采用**混合 AI 架构**：
@@ -100,7 +100,7 @@ npm run build:mp-weixin   # 生产构建
 
 ### 前端说明
 - **admin**：很薄的 Element Plus SPA，所有后端调用都经过 `admin/src/services/api.ts` 打到 `/admin/**`（开发默认 `http://localhost:8088`）。`unwrap` 遇到 4001 会清 token 并派发 `wolfbook-admin:unauthorized` 事件，`App.vue` 据此回到登录页；其他错误不会登出。帖子/评论/举报列表一次拉 500 条，筛选在前端做。
-- **miniprogram-vue**：页面在 `src/pages/`（assistant、boards、community、judge、roles、sessions、user）；API 层在 `src/services/`，由 `request.js` 封装 `uni.request`，负责拆 `ApiResponse` 包装并在 `code 4001` 时清空登录态；网络/HTTP 错误经 `request-errors.js` 翻译成中文，`error.code` 带后端 code。助手流式接口（`assistant.js`）只在 SSE `error` 事件的 `code === 4001` 时清登录态，收到过增量内容后不再回退到非流式重问。助手对话使用增量 markdown 渲染（`services/markdown.js`、`pages/assistant/stream-buffer.js`、`message-model.js`）。全局样式变量（`--page-gutter`、`--card-radius` 等）定义在 `src/App.vue` 的 `page` 选择器上，页面间距应复用这些变量。开发环境 API 地址在 `.env.development`（`VITE_API_BASE_URL`，应与后端 8088 端口一致）。
+- **miniprogram-vue**：页面在 `src/pages/`（assistant、boards、community、judge、roles、sessions、user）；API 层在 `src/services/`，由 `request.js` 封装 `uni.request`，负责拆 `ApiResponse` 包装并在 `code 4001` 时清空登录态；网络/HTTP 错误经 `request-errors.js` 翻译成中文，`error.code` 带后端 code。助手流式接口（`assistant.js`）只在 SSE `error` 事件的 `code === 4001` 时清登录态，收到过增量内容后不再回退到非流式重问。助手对话使用增量 markdown 渲染（`services/markdown.js`、`pages/assistant/stream-buffer.js`、`message-model.js`）。全局样式变量（`--page-gutter`、`--card-radius` 等）定义在 `src/App.vue` 的 `page` 选择器上，页面间距应复用这些变量。界面风格是「夜镇卡牌」（设计原型 D）：颜色也是 `page` 上的变量（`--bg` 夜底、`--panel`、`--ink` 描边与硬投影、`--text`、`--gold` 主按钮、`--moon` 选中/链接、`--serif` 标题字体），新页面不要再写死黑金色值；`.glass-card` 是细描线面板，`.ink-card` 是粗描边加硬投影的卡牌。已按原型改完的页面：板子库（`components/BoardCard.vue`）、板子详情、角色图鉴、角色详情；其余页面目前只继承了全局变量。角色头像用共用组件 `components/RoleToken.vue`（主题色描边 + 张数角标），立绘用 `components/RoleArtCard.vue`（3:4 卡牌 + 名牌，无图显示卡背）。开发环境 API 地址在 `.env.development`（`VITE_API_BASE_URL`，应与后端 8088 端口一致）。
 
 ## 部署
 生产使用 `docker-compose.prod.yml`（服务：`mysql`、带 pgvector 的 `postgres`、`backend`、`admin`、`gateway`）。环境变量模板：`deploy/.env.prod.example`；pgvector 初始化脚本：`deploy/postgres/init/01-enable-vector.sql`。

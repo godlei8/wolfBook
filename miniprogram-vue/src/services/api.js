@@ -1,7 +1,7 @@
 import { BASE_URL } from './config'
 import { createAuthHeader, request, uploadFile } from './request'
 import storage from './storage'
-import { normalizeRuleDetail, roleAccent } from '../utils/board-rules.js'
+import { campBreakdown, campSegment, groupLineup, normalizeRuleDetail, pickLineupArt, roleAccent } from '../utils/board-rules.js'
 
 function withBaseUrl(url) {
   if (!url) return url
@@ -35,7 +35,10 @@ function normalizeBoardRole(role) {
   return {
     ...role,
     portrait: withBaseUrl(role.portrait),
+    fullIllustration: withBaseUrl(role.fullIllustration),
     accent: roleAccent(role),
+    campColor: campSegment(role).text,
+    campFill: campSegment(role).fill,
   }
 }
 
@@ -53,6 +56,9 @@ function normalizeBoard(board) {
     cardDescription: board.cardDescription || board.summary || '',
     lineupSummary: board.lineupSummary || buildLineupSummary(roles),
     cardRoles: buildCardRoles(roles, featuredRoles),
+    lineupArt: pickLineupArt(roles.length ? roles : featuredRoles),
+    campSegments: campBreakdown(roles.length ? roles : featuredRoles),
+    lineupGroups: groupLineup(roles),
   }
 }
 
@@ -63,6 +69,9 @@ function normalizeRole(role) {
     portrait: withBaseUrl(role.portrait),
     fullIllustration: withBaseUrl(role.fullIllustration),
     accent: roleAccent(role),
+    campColor: campSegment(role).text,
+    campFill: campSegment(role).fill,
+    campLabel: campSegment(role).label,
     boards: (role.boards || []).map((board) => ({
       ...board,
       coverImage: withBaseUrl(board.coverImage),

@@ -15,6 +15,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.contains;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -430,7 +431,9 @@ class BackendApplicationTests {
 
         mockMvc.perform(get("/api/roles"))
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data[0].themeColor").value("#7B4FD6"));
+                .andExpect(jsonPath("$.data[0].themeColor").value("#7B4FD6"))
+                // 图鉴用立绘做卡牌墙
+                .andExpect(jsonPath("$.data[0].fullIllustration").value("https://picsum.photos/seed/seerfull/700/900"));
     }
 
     @Test
@@ -493,6 +496,15 @@ class BackendApplicationTests {
                     .andExpect(jsonPath("$.data.ruleDetail.roleRules[0].items[0]").value("首夜必须查验"))
                     .andExpect(jsonPath("$.data.ruleDetail.sections.length()").value(1))
                     .andExpect(jsonPath("$.data.ruleDetail.sections[0].items.length()").value(1));
+
+            // 列表卡片也要带背景图和阵容立绘，小程序列表顶部靠这两个字段
+            mockMvc.perform(get("/api/boards").param("keyword", "规则测试板"))
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.list.length()").value(1))
+                    .andExpect(jsonPath("$.data.list[0].backgroundImage").value("https://example.com/bg.png"))
+                    .andExpect(jsonPath("$.data.list[0].roles[?(@.roleId == 6)].fullIllustration").value(contains("https://picsum.photos/seed/wolffull/700/900")))
+                    .andExpect(jsonPath("$.data.list[0].roles[?(@.roleId == 1)].fullIllustration").value(contains("https://picsum.photos/seed/seerfull/700/900")))
+                    .andExpect(jsonPath("$.data.list[0].featuredRoles[?(@.roleId == 6)].fullIllustration").value(contains("https://picsum.photos/seed/wolffull/700/900")));
         } finally {
             mockMvc.perform(delete("/admin/boards/{id}", boardId).header("Authorization", "Bearer " + adminToken))
                     .andExpect(jsonPath("$.code").value(0));
