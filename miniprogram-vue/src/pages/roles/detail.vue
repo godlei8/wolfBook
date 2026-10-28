@@ -1,10 +1,10 @@
 <script setup>
-// 角色详情（原型 D4）：整幅立绘铺在顶部（底色 = 主题色），名字卡压在立绘下沿。
+// 角色详情（原型 D4）：整幅立绘铺在顶部，名字卡压在立绘下沿；名字卡上是称号、角色名和真名。
+// 正文：技能 → 身世 → 人物关系（点头像跳到对方）→ 出现在哪些板子 → 常见问题。
 import { computed, ref } from 'vue'
 import { onLoad, onShareAppMessage } from '@dcloudio/uni-app'
 import NavBar from '../../components/NavBar.vue'
 import api from '../../services/api'
-import { withAlpha } from '../../utils/board-rules.js'
 import { openAssistant } from '../../utils/assistant-entry'
 import { getNavInsets, rpxToPx } from '../../utils/nav'
 
@@ -26,9 +26,6 @@ const nextRole = computed(() =>
 )
 const heroHeight = computed(() => `${Math.round(insets.top + rpxToPx(880))}px`)
 const heroImage = computed(() => role.value?.fullIllustration || role.value?.portrait || '')
-const storyStyle = computed(() =>
-  role.value ? { backgroundColor: withAlpha(role.value.accent, 0.16), borderColor: withAlpha(role.value.accent, 0.45) } : {},
-)
 // 在哪个板子里第几个醒来：取第一个写了夜间顺序的板子
 const wakeHint = computed(() => {
   const board = (role.value?.boards || []).find((item) => item.wakeOrder)
@@ -62,6 +59,14 @@ async function loadAllRoles() {
 
 function toggleFaq(index) {
   openFaqs.value = { ...openFaqs.value, [index]: !openFaqs.value[index] }
+}
+
+function openRelation(item) {
+  if (item?.roleId) uni.redirectTo({ url: `/pages/roles/detail?id=${item.roleId}` })
+}
+
+function openWorld() {
+  uni.navigateTo({ url: '/pages/world/index' })
 }
 
 function openBoard(id) {
@@ -113,12 +118,10 @@ onShareAppMessage(() => ({
 
       <view class="nt-gutter">
         <view class="nt-ink rd-name">
-          <view class="rd-name__row">
-            <view class="rd-name__text">
-              <text class="rd-name__title serif">{{ role.name }}</text>
-              <text v-if="role.alias" class="nt-meta">又名 {{ role.alias }}</text>
-            </view>
-            <view class="rd-swatch" :style="{ backgroundColor: role.accent }" />
+          <view class="rd-name__text">
+            <text v-if="role.title" class="rd-name__epithet">{{ role.title }}</text>
+            <text class="rd-name__title serif">{{ role.name }}</text>
+            <text v-if="role.alias" class="rd-name__real serif">{{ role.alias }}</text>
           </view>
           <view class="rd-tags">
             <text v-for="tag in tags" :key="tag.text" class="nt-tag" :style="tag.color ? { color: tag.color } : {}">{{ tag.text }}</text>
@@ -131,9 +134,29 @@ onShareAppMessage(() => ({
             <text class="rd-skill serif">{{ role.skill }}</text>
           </view>
 
-          <view v-if="role.background" class="nt-panel" :style="storyStyle">
-            <text class="nt-label">人物设定</text>
+          <view v-if="role.background" class="nt-panel">
+            <view class="nt-panel__head">
+              <text class="nt-label">身世</text>
+              <text class="rd-link" @tap="openWorld">夜镇编年史 ›</text>
+            </view>
             <text class="rd-story serif">{{ role.background }}</text>
+          </view>
+
+          <view v-if="role.relations && role.relations.length" class="nt-panel">
+            <text class="nt-h2">人物关系</text>
+            <view class="rd-relations">
+              <view v-for="item in role.relations" :key="item.roleId" class="rd-relation" @tap="openRelation(item)">
+                <view class="nt-token rd-relation__token">
+                  <image v-if="item.portrait || item.fullIllustration" class="nt-token__img" :src="item.portrait || item.fullIllustration" mode="aspectFill" :style="{ borderColor: item.accent }" webp />
+                  <view v-else class="nt-token__text" :style="{ borderColor: item.accent }">{{ item.name.slice(0, 1) }}</view>
+                </view>
+                <view class="rd-relation__text">
+                  <text class="rd-relation__label">{{ item.label }}</text>
+                  <text class="rd-relation__name">{{ item.name }}<text v-if="item.alias" class="rd-relation__real"> · {{ item.alias }}</text></text>
+                </view>
+                <text class="nt-arrow">›</text>
+              </view>
+            </view>
           </view>
 
           <view v-if="role.boards && role.boards.length" class="nt-panel">
@@ -285,18 +308,18 @@ onShareAppMessage(() => ({
   gap: 20rpx;
 }
 
-.rd-name__row {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 24rpx;
-}
-
 .rd-name__text {
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 6rpx;
+}
+
+.rd-name__epithet {
+  color: var(--gold);
+  font-size: 26rpx;
+  font-weight: 700;
+  letter-spacing: 6rpx;
 }
 
 .rd-name__title {
@@ -305,13 +328,59 @@ onShareAppMessage(() => ({
   line-height: 1.1;
 }
 
-.rd-swatch {
-  width: 80rpx;
-  height: 80rpx;
-  border-radius: 24rpx;
-  border: 4rpx solid var(--ink);
+.rd-name__real {
+  color: var(--text-2);
+  font-size: 34rpx;
+  font-weight: 700;
+}
+
+.rd-link {
+  color: var(--moon);
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+.rd-relations {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.rd-relation {
+  display: flex;
+  align-items: center;
+  gap: 22rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 28rpx;
+  background: var(--panel-raised);
+}
+
+.rd-relation__token {
+  width: 84rpx;
+  height: 84rpx;
   flex-shrink: 0;
-  box-sizing: border-box;
+}
+
+.rd-relation__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.rd-relation__label {
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.rd-relation__name {
+  color: var(--text-3);
+  font-size: 24rpx;
+}
+
+.rd-relation__real {
+  color: var(--text-3);
 }
 
 .rd-tags {

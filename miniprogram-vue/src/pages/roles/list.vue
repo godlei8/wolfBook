@@ -1,5 +1,5 @@
 <script setup>
-// 角色图鉴（原型 D3，tab 页）：按阵营分区的立绘卡牌墙，三列。没有立绘的角色显示卡背。
+// 角色图鉴（原型 D3）：顶部是「夜镇编年史」入口，下面按阵营分区的立绘卡牌墙，三列。没有立绘的角色显示卡背。
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import NavBar from '../../components/NavBar.vue'
@@ -21,6 +21,8 @@ const SECTIONS = [
 
 const roles = ref([])
 const filter = ref('all')
+const world = ref(null)
+const moonScene = '/static/scenes/moon.webp'
 
 function campKey(role) {
   if (role.faction === '狼人') return 'wolf'
@@ -44,11 +46,27 @@ async function loadRoles() {
   }
 }
 
+async function loadWorld() {
+  try {
+    const data = await api.getWorld()
+    world.value = data.townName || data.events.length ? data : null
+  } catch (error) {
+    world.value = null
+  }
+}
+
+function openWorld() {
+  uni.navigateTo({ url: '/pages/world/index' })
+}
+
 function openRole(id) {
   uni.navigateTo({ url: `/pages/roles/detail?id=${id}` })
 }
 
-onLoad(loadRoles)
+onLoad(() => {
+  loadRoles()
+  loadWorld()
+})
 </script>
 
 <template>
@@ -58,6 +76,22 @@ onLoad(loadRoles)
     <view class="nt-gutter rl-head">
       <text class="nt-title">角色图鉴</text>
       <text class="nt-meta">{{ roles.length }} 个角色 · {{ artCount }} 张已上立绘</text>
+    </view>
+
+    <view v-if="world" class="nt-gutter">
+      <view class="nt-ink rl-world" @tap="openWorld">
+        <image class="rl-world__bg" :src="world.coverImage || moonScene" mode="aspectFill" webp />
+        <view class="rl-world__shade" />
+        <view class="rl-world__text">
+          <text class="rl-world__eyebrow">夜镇编年史</text>
+          <text class="rl-world__title serif">{{ world.townName || '夜镇' }}</text>
+          <text class="rl-world__tagline">{{ world.tagline || '银钟响过，不出家门。' }}</text>
+        </view>
+        <view class="rl-world__go">
+          <text>翻开</text>
+          <text class="rl-world__arrow">›</text>
+        </view>
+      </view>
     </view>
 
     <scroll-view scroll-x class="nt-chips rl-chips" :show-scrollbar="false">
@@ -155,5 +189,79 @@ onLoad(loadRoles)
   color: var(--text-3);
   font-size: 26rpx;
   line-height: 1.7;
+}
+.rl-world {
+  position: relative;
+  height: 220rpx;
+  margin-bottom: 8rpx;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 28rpx 32rpx;
+  box-sizing: border-box;
+}
+
+.rl-world__bg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.rl-world__shade {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, rgba(14, 12, 19, 0.92) 0%, rgba(14, 12, 19, 0.55) 60%, rgba(14, 12, 19, 0.2) 100%);
+}
+
+.rl-world__text {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.rl-world__eyebrow {
+  color: var(--gold);
+  font-size: 22rpx;
+  font-weight: 700;
+  letter-spacing: 8rpx;
+}
+
+.rl-world__title {
+  color: var(--text);
+  font-size: 48rpx;
+  font-weight: 900;
+}
+
+.rl-world__tagline {
+  color: var(--text-soft);
+  font-size: 26rpx;
+}
+
+.rl-world__go {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  height: 64rpx;
+  padding: 0 24rpx;
+  border-radius: 20rpx;
+  border: 4rpx solid var(--ink);
+  background: var(--gold);
+  color: var(--ink);
+  font-size: 26rpx;
+  font-weight: 900;
+  box-sizing: border-box;
+}
+
+.rl-world__arrow {
+  font-size: 34rpx;
+  line-height: 1;
 }
 </style>

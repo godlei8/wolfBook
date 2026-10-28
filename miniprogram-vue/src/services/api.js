@@ -73,12 +73,32 @@ function normalizeRole(role) {
     campColor: campSegment(role).text,
     campFill: campSegment(role).fill,
     campLabel: campSegment(role).label,
+    relations: (role.relations || []).map(normalizeBoardRole),
     boards: (role.boards || []).map((board) => ({
       ...board,
       coverImage: withBaseUrl(board.coverImage),
       backgroundImage: withBaseUrl(board.backgroundImage),
       lineup: (board.lineup || []).map(normalizeBoardRole),
     })),
+  }
+}
+
+/** 世界观：阵营配色和小程序其他地方一致，事件里的出场角色按角色头像处理。 */
+const WORLD_CAMP_COLORS = { good: '#8fd0a6', wolf: '#ff7468', third: '#f7a8cb' }
+const WORLD_CAMP_LABELS = { good: '好人阵营', wolf: '狼人阵营', third: '第三方' }
+
+function normalizeWorld(world) {
+  const value = world || {}
+  return {
+    ...value,
+    coverImage: withBaseUrl(value.coverImage),
+    introParagraphs: (value.intro || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
+    factions: (value.factions || []).map((faction) => ({
+      ...faction,
+      color: WORLD_CAMP_COLORS[faction.camp] || WORLD_CAMP_COLORS.good,
+      campLabel: WORLD_CAMP_LABELS[faction.camp] || WORLD_CAMP_LABELS.good,
+    })),
+    events: (value.events || []).map((event) => ({ ...event, roles: (event.roles || []).map(normalizeBoardRole) })),
   }
 }
 
@@ -171,6 +191,10 @@ export default {
   },
   async getRoleDetail(id) {
     return normalizeRole(await request({ url: `/api/roles/${id}`, header: createAuthHeader() }))
+  },
+  // 夜镇编年史：小镇简介、三方势力、编年史事件
+  async getWorld() {
+    return normalizeWorld(await request({ url: '/api/world' }))
   },
   // filters: { sort: 'hot' | 'latest', category: '战报' | '教学' | '讨论', boardId }
   async getPosts(page = 1, size = 20, filters = {}) {

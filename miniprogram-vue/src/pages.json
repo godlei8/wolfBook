@@ -45,6 +45,12 @@
       }
     },
     {
+      "path": "pages/world/index",
+      "style": {
+        "navigationBarTitleText": "夜镇编年史"
+      }
+    },
+    {
       "path": "pages/assistant/chat",
       "style": {
         "navigationBarTitleText": "规则速查"
