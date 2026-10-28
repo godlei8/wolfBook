@@ -347,4 +347,35 @@ export interface AdminAiLog {
   failureType: string | null
   traceId: string
   createTime: string
+  /** 这次的回答全文，找不到对应会话消息时为空 */
+  answer: string | null
+}
+
+export interface AdminPlaygroundRequest {
+  message: string
+  scene?: string
+  pageContext?: Record<string, unknown>
+}
+
+export interface AdminPlaygroundHit {
+  title: string
+  /** BOARD / ROLE / WORLD / DOCUMENT */
+  sourceType: string
+  score: number
+}
+
+export interface AdminPlaygroundResult {
+  answer: string
+  answerType: string
+  /** RECOMMEND / KNOWLEDGE / REFUSE */
+  intent: string | null
+  reason: string | null
+  hits: AdminPlaygroundHit[]
+  boards: { id: number; name: string; playerCount: number; difficulty: string; reason: string }[]
+  usedWebSearch: boolean
+  model: string | null
+  failureType: string | null
+  /** route 判断问题 / retrieve 查资料 / generate 模型生成，毫秒 */
+  timings: Record<string, number>
+  totalMs: number
 }

@@ -10,6 +10,7 @@ import AiModelManager from './aiAssistant/AiModelManager.vue'
 import AiAssistantDocumentsTab from './aiAssistant/AiAssistantDocumentsTab.vue'
 import AiAssistantLogsTab from './aiAssistant/AiAssistantLogsTab.vue'
 import AiAssistantPublishTab from './aiAssistant/AiAssistantPublishTab.vue'
+import AiPlaygroundTab from './aiAssistant/AiPlaygroundTab.vue'
 import {
   formatHitSources,
   processingStatusLabel,
@@ -25,7 +26,7 @@ const publishing = ref(false)
 const clearingDocuments = ref(false)
 const clearingLogs = ref(false)
 
-const activeTab = ref<'control' | 'models' | 'documents' | 'publish' | 'logs'>('control')
+const activeTab = ref<'control' | 'models' | 'playground' | 'documents' | 'publish' | 'logs'>('control')
 const documents = ref<AdminAiDocument[]>([])
 const versions = ref<AdminAiVersion[]>([])
 const logs = ref<AdminAiLog[]>([])
@@ -37,6 +38,7 @@ const versionPage = ref(1)
 const versionPageSize = ref(6)
 const logPage = ref(1)
 const logPageSize = ref(10)
+const logFilter = ref('all')
 
 const quickQuestionsText = ref('')
 const blockedKeywordsText = ref('')
@@ -100,7 +102,12 @@ const uploadedDocumentCount = computed(() =>
 
 const pagedDocuments = computed(() => paginate(documents.value, documentPage.value, documentPageSize.value))
 const pagedVersions = computed(() => paginate(versions.value, versionPage.value, versionPageSize.value))
-const pagedLogs = computed(() => paginate(logs.value, logPage.value, logPageSize.value))
+const filteredLogs = computed(() => {
+  if (logFilter.value === 'failed') return logs.value.filter((item) => !item.success)
+  if (logFilter.value === 'slow') return logs.value.filter((item) => item.latencyMs >= 10000)
+  return logs.value
+})
+const pagedLogs = computed(() => paginate(filteredLogs.value, logPage.value, logPageSize.value))
 
 watch(documentPageSize, () => {
   documentPage.value = 1
@@ -110,7 +117,7 @@ watch(versionPageSize, () => {
   versionPage.value = 1
 })
 
-watch(logPageSize, () => {
+watch([logPageSize, logFilter], () => {
   logPage.value = 1
 })
 
@@ -129,7 +136,7 @@ watch(
 )
 
 watch(
-  () => logs.value.length,
+  () => filteredLogs.value.length,
   (total) => {
     logPage.value = clampPage(logPage.value, logPageSize.value, total)
   },
@@ -302,7 +309,7 @@ onMounted(loadAll)
 </script>
 
 <template>
-  <PageHeader eyebrow="ASSISTANT" title="AI 助手" description="管理知识库、发布版本、联网搜索开关和问答日志。">
+  <PageHeader eyebrow="ASSISTANT" title="AI 助手" description="配置人设和模型，在调试台试答，管理知识库、发布版本和问答日志。">
     <template #actions>
       <button class="nt-btn nt-btn--ghost" type="button" :disabled="loading" @click="loadAll">{{ loading ? '同步中…' : '刷新数据' }}</button>
     </template>
@@ -329,6 +336,10 @@ onMounted(loadAll)
 
       <el-tab-pane label="模型管理" name="models">
         <AiModelManager v-if="activeTab === 'models'" />
+      </el-tab-pane>
+
+      <el-tab-pane label="调试台" name="playground">
+        <AiPlaygroundTab v-if="activeTab === 'playground'" />
       </el-tab-pane>
 
       <el-tab-pane label="知识库" name="documents">
@@ -371,7 +382,9 @@ onMounted(loadAll)
 
       <el-tab-pane label="问答日志" name="logs">
         <AiAssistantLogsTab
-          :logs="logs"
+          :logs="filteredLogs"
+          :total-logs="logs.length"
+          :log-filter="logFilter"
           :paged-logs="pagedLogs"
           :log-page="logPage"
           :log-page-size="logPageSize"
@@ -379,6 +392,7 @@ onMounted(loadAll)
           :format-hit-sources="formatHitSources"
           @update:log-page="logPage = $event"
           @update:log-page-size="logPageSize = $event"
+          @update:log-filter="logFilter = $event"
           @clear="clearLogs"
         />
       </el-tab-pane>

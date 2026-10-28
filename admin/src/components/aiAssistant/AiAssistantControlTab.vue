@@ -88,16 +88,17 @@ const blockedKeywordsModel = computed({
     </el-card>
 
     <el-card class="sub-card">
-      <template #header>Prompt 与检索</template>
+      <template #header>人设与检索</template>
+      <div class="helper-text helper-text--top">
+        这里只写助手的人设和语气。回答格式（先给结论、不套固定段落）、只用站内资料、不替玩家站边判狼这些规矩已经内置，不用写进来。改完到「调试台」试几题再保存。
+      </div>
       <el-form label-position="top">
-        <el-form-item label="系统 Prompt">
+        <el-form-item label="人设（系统 Prompt）">
           <el-input v-model="config.prompt.systemPrompt" type="textarea" :rows="4" />
         </el-form-item>
-        <el-form-item label="推荐 Prompt">
-          <el-input v-model="config.prompt.recommendationPrompt" type="textarea" :rows="4" />
-        </el-form-item>
-        <el-form-item label="拒答 Prompt">
-          <el-input v-model="config.prompt.refusalPrompt" type="textarea" :rows="3" />
+        <el-form-item label="推荐板子时的补充要求">
+          <el-input v-model="config.prompt.recommendationPrompt" type="textarea" :rows="3" />
+          <div class="helper-text">候选板子由程序按人数、难度、标签和阵容先挑好，模型只负责介绍，不会推荐候选以外的板子。</div>
         </el-form-item>
         <el-form-item label="TopK / 相似度 / 历史窗口">
           <div class="inline-grid inline-grid--triple">
@@ -110,26 +111,18 @@ const blockedKeywordsModel = computed({
     </el-card>
 
     <el-card class="sub-card">
-      <template #header>安全与界面</template>
+      <template #header>边界</template>
       <el-form label-position="top">
         <el-form-item label="联网搜索兜底">
           <el-switch v-model="config.search.webSearchEnabled" />
           <div class="helper-text">火山联网搜索的 Key 现在可以在后台配置，这里只控制是否启用兜底。</div>
         </el-form-item>
-        <el-form-item label="边界提示语">
-          <el-input v-model="config.safety.unsupportedMessage" type="textarea" :rows="3" />
-        </el-form-item>
         <el-form-item label="拦截关键词（逗号或换行分隔）">
           <el-input v-model="blockedKeywordsModel" type="textarea" :rows="3" />
+          <div class="helper-text">问题里带这些词就不走模型，直接用下面的话婉拒。</div>
         </el-form-item>
-        <el-form-item label="吉祥物">
-          <el-input v-model="config.ui.mascot" />
-        </el-form-item>
-        <el-form-item label="悬浮标签">
-          <el-input v-model="config.ui.dockLabel" />
-        </el-form-item>
-        <el-form-item label="强调色">
-          <el-input v-model="config.ui.accentColor" />
+        <el-form-item label="婉拒话术">
+          <el-input v-model="config.safety.unsupportedMessage" type="textarea" :rows="3" />
         </el-form-item>
       </el-form>
     </el-card>
@@ -166,6 +159,10 @@ const blockedKeywordsModel = computed({
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+.helper-text--top {
+  margin: 0 0 12px;
 }
 
 .helper-text {

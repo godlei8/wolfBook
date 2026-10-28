@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { AdminAiLog } from '../../types'
+import { renderMarkdown } from '../../utils/markdown'
+import { answerTypeLabel, failureLabel, latencyTone } from './formatters'
 
 const props = defineProps<{
   logs: AdminAiLog[]
@@ -9,17 +11,26 @@ const props = defineProps<{
   logPageSize: number
   clearingLogs: boolean
   formatHitSources: (items: string[]) => string[]
+  /** all 全部 / failed 失败 / slow 超过 10 秒 */
+  logFilter: string
+  totalLogs: number
 }>()
 
 const emit = defineEmits<{
   'update:logPage': [value: number]
   'update:logPageSize': [value: number]
+  'update:logFilter': [value: string]
   clear: []
 }>()
 
 const logPageModel = computed({
   get: () => props.logPage,
   set: (value: number) => emit('update:logPage', value),
+})
+
+const logFilterModel = computed({
+  get: () => props.logFilter,
+  set: (value: string) => emit('update:logFilter', value),
 })
 
 const logPageSizeModel = computed({
@@ -32,49 +43,68 @@ const logPageSizeModel = computed({
   <div class="logs-toolbar">
     <div class="logs-toolbar-copy">
       <div class="knowledge-kicker">Query Logs</div>
-      <span class="knowledge-section-meta">共 {{ logs.length }} 条问答日志</span>
+      <span class="knowledge-section-meta">最近 {{ totalLogs }} 条问答，点开一行看当时答成了什么</span>
     </div>
+    <el-radio-group v-model="logFilterModel" size="small">
+      <el-radio-button value="all">全部</el-radio-button>
+      <el-radio-button value="failed">失败</el-radio-button>
+      <el-radio-button value="slow">超过 10 秒</el-radio-button>
+    </el-radio-group>
     <el-button text type="warning" :disabled="!logs.length" :loading="clearingLogs" @click="emit('clear')">
       一键清空问答日志
     </el-button>
   </div>
 
   <div class="table-scroll-shell">
-    <el-table :data="pagedLogs" class="wide-table wide-table--logs" empty-text="暂无问答日志">
-      <el-table-column prop="createTime" label="时间" width="180" />
-      <el-table-column prop="openid" label="用户" width="180" show-overflow-tooltip />
+    <el-table :data="pagedLogs" class="wide-table wide-table--logs" row-key="id" empty-text="暂无问答日志">
+      <el-table-column type="expand">
+        <template #default="{ row }">
+          <div class="log-answer">
+            <div class="log-answer__label">回答</div>
+            <div v-if="row.answer" class="log-answer__body" v-html="renderMarkdown(row.answer)" />
+            <div v-else class="knowledge-section-meta">会话已被清空，找不到这次的回答</div>
+            <div class="knowledge-section-meta">traceId {{ row.traceId }}</div>
+          </div>
+        </template>
+      </el-table-column>
+      <el-table-column prop="createTime" label="时间" width="170" />
       <el-table-column prop="userMessage" label="问题" min-width="280" show-overflow-tooltip />
-      <el-table-column prop="answerType" label="答案类型" width="180" />
-      <el-table-column label="命中来源" min-width="260">
+      <el-table-column label="回答类型" width="110">
+        <template #default="{ row }">{{ answerTypeLabel(row.answerType) }}</template>
+      </el-table-column>
+      <el-table-column label="交给模型的资料" min-width="260">
         <template #default="{ row }">
           <div class="tag-row">
             <el-tag v-for="item in formatHitSources(row.hitSources)" :key="item" effect="plain">{{ item }}</el-tag>
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="联网" width="80">
+      <el-table-column label="联网" width="70">
         <template #default="{ row }">
           <el-tag :type="row.usedWebSearch ? 'warning' : 'info'">
             {{ row.usedWebSearch ? '是' : '否' }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="耗时" width="90">
-        <template #default="{ row }">{{ row.latencyMs }}ms</template>
-      </el-table-column>
-      <el-table-column label="结果" width="90">
+      <el-table-column label="耗时" width="100">
         <template #default="{ row }">
-          <el-tag :type="row.success ? 'success' : 'danger'">
-            {{ row.success ? '成功' : '失败' }}
-          </el-tag>
+          <el-tag :type="latencyTone(row.latencyMs)" effect="plain">{{ (row.latencyMs / 1000).toFixed(1) }} 秒</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="failureType" label="失败类型" width="160" show-overflow-tooltip />
+      <el-table-column label="结果" width="200">
+        <template #default="{ row }">
+          <el-tag v-if="row.success" type="success">成功</el-tag>
+          <el-tooltip v-else :content="row.failureType || ''" placement="top">
+            <el-tag type="danger">{{ failureLabel(row.failureType) || '失败' }}</el-tag>
+          </el-tooltip>
+        </template>
+      </el-table-column>
+      <el-table-column prop="openid" label="用户" width="160" show-overflow-tooltip />
     </el-table>
   </div>
 
   <div v-if="logs.length" class="table-footer">
-    <div class="table-total">共 {{ logs.length }} 条问答日志</div>
+    <div class="table-total">筛出 {{ logs.length }} 条</div>
     <el-pagination
       v-model:current-page="logPageModel"
       v-model:page-size="logPageSizeModel"
@@ -119,6 +149,37 @@ const logPageSizeModel = computed({
   border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.02);
+}
+
+.log-answer {
+  display: grid;
+  gap: 8px;
+  padding: 4px 48px 8px;
+}
+
+.log-answer__label {
+  color: var(--gold);
+  font-size: 12px;
+}
+
+.log-answer__body {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.log-answer__body :deep(h4) {
+  margin: 10px 0 4px;
+  color: var(--gold);
+}
+
+.log-answer__body :deep(p),
+.log-answer__body :deep(ul) {
+  margin: 0 0 6px;
+}
+
+.log-answer__body :deep(strong) {
+  color: var(--gold);
 }
 
 .tag-row {

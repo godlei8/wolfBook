@@ -7,6 +7,8 @@ import type {
   AdminAiModelPayload,
   ModelTestResult,
   AdminAiVersion,
+  AdminPlaygroundRequest,
+  AdminPlaygroundResult,
   ApiResponse,
   Board,
   CommentView,
@@ -224,6 +226,9 @@ export const api = {
         timeout: AI_LONG_TASK_TIMEOUT,
       }),
     )
+  },
+  async runAiPlayground(payload: AdminPlaygroundRequest) {
+    return unwrap<AdminPlaygroundResult>(http.post('/admin/ai/playground', payload, { timeout: 120000 }))
   },
   async getAiLogs() {
     return unwrap<AdminAiLog[]>(http.get('/admin/ai/logs'))
