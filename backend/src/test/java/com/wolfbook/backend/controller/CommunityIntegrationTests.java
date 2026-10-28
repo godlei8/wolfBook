@@ -61,6 +61,66 @@ class CommunityIntegrationTests {
     }
 
     @Test
+    void postCarriesTitleCategoryAndBoardAndListCanFilterByThem() throws Exception {
+        String token = login("community-tavern");
+        String body = mockMvc.perform(post("/api/posts")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"  女巫第二夜不救人  \",\"content\":\"复盘\",\"category\":\"战报\",\"boardId\":2}"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.title").value("女巫第二夜不救人"))
+                .andExpect(jsonPath("$.data.category").value("战报"))
+                .andExpect(jsonPath("$.data.boardId").value(2))
+                .andExpect(jsonPath("$.data.boardName").value("预女猎白"))
+                .andReturn().getResponse().getContentAsString();
+        int postId = objectMapper.readTree(body).path("data").path("id").asInt();
+
+        String filtered = mockMvc.perform(get("/api/posts").param("category", "战报").param("boardId", "2").param("sort", "hot"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        JsonNode list = objectMapper.readTree(filtered).path("data").path("list");
+        Assertions.assertTrue(list.size() >= 1);
+        list.forEach(item -> {
+            Assertions.assertEquals("战报", item.path("category").asText());
+            Assertions.assertEquals(2, item.path("boardId").asInt());
+        });
+        Assertions.assertTrue(list.findValuesAsText("id").contains(String.valueOf(postId)));
+
+        // 不带分类的帖子默认归到「讨论」；关联不存在的板子会被拒绝
+        mockMvc.perform(get("/api/posts/{id}", createPost(token, "no category")))
+                .andExpect(jsonPath("$.data.category").value("讨论"));
+        mockMvc.perform(post("/api/posts")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"x\",\"boardId\":99999}"))
+                .andExpect(jsonPath("$.code").value(4000));
+        mockMvc.perform(post("/api/posts")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"x\",\"category\":\"八卦\"}"))
+                .andExpect(jsonPath("$.code").value(4000));
+    }
+
+    @Test
+    void mineFilterOnlyReturnsOwnPostsAndRequiresLogin() throws Exception {
+        String alice = login("community-mine-a");
+        String bob = login("community-mine-b");
+        int alicePost = createPost(alice, "alice post");
+        createPost(bob, "bob post");
+
+        String body = mockMvc.perform(get("/api/posts").param("mine", "true").param("size", "50").header("Authorization", "Bearer " + alice))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        JsonNode list = objectMapper.readTree(body).path("data").path("list");
+        Assertions.assertTrue(list.size() >= 1);
+        list.forEach(item -> Assertions.assertEquals("alice post", item.path("content").asText()));
+        Assertions.assertTrue(list.findValuesAsText("id").contains(String.valueOf(alicePost)));
+
+        mockMvc.perform(get("/api/posts").param("mine", "true"))
+                .andExpect(jsonPath("$.code").value(4001));
+    }
+
+    @Test
     void postListPageSizeIsCapped() throws Exception {
         mockMvc.perform(get("/api/posts").param("page", "1").param("size", "1000"))
                 .andExpect(jsonPath("$.code").value(0))

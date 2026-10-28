@@ -84,6 +84,10 @@ CREATE TABLE posts (
   id INT PRIMARY KEY AUTO_INCREMENT,
   openid VARCHAR(100) NOT NULL,
   content CLOB NOT NULL,
+  title VARCHAR(60),
+  category VARCHAR(16),
+  board_id INT,
+  board_name VARCHAR(100),
   images CLOB,
   like_count INT DEFAULT 0,
   comment_count INT DEFAULT 0,
@@ -218,6 +222,7 @@ CREATE TABLE assistant_query_logs (
 
 CREATE TABLE judge_rooms (
   room_id VARCHAR(64) PRIMARY KEY,
+  room_code VARCHAR(8),
   board_id INT NOT NULL,
   board_name VARCHAR(100) NOT NULL,
   player_count TINYINT NOT NULL,

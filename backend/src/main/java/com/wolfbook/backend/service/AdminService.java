@@ -16,6 +16,7 @@ import com.wolfbook.backend.support.TokenService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -36,6 +37,7 @@ public class AdminService {
     private final PostMapper postMapper;
     private final CommentMapper commentMapper;
     private final ReportMapper reportMapper;
+    private final AssistantQueryLogMapper assistantQueryLogMapper;
     private final BoardService boardService;
     private final CommunityService communityService;
     private final AssistantKnowledgeService assistantKnowledgeService;
@@ -51,6 +53,7 @@ public class AdminService {
             PostMapper postMapper,
             CommentMapper commentMapper,
             ReportMapper reportMapper,
+            AssistantQueryLogMapper assistantQueryLogMapper,
             BoardService boardService,
             CommunityService communityService,
             AssistantKnowledgeService assistantKnowledgeService,
@@ -64,6 +67,7 @@ public class AdminService {
         this.postMapper = postMapper;
         this.commentMapper = commentMapper;
         this.reportMapper = reportMapper;
+        this.assistantQueryLogMapper = assistantQueryLogMapper;
         this.boardService = boardService;
         this.communityService = communityService;
         this.assistantKnowledgeService = assistantKnowledgeService;
@@ -107,12 +111,35 @@ public class AdminService {
         long openReports = reportMapper.selectCount(
                 new LambdaQueryWrapper<ReportEntity>().eq(ReportEntity::getProcessStatus, "OPEN")
         );
+        List<BoardEntity> boards = boardMapper.selectList(null);
+        List<RoleEntity> roles = roleMapper.selectList(null);
+        LocalDateTime startOfToday = LocalDate.now().atStartOfDay();
+        long questionsToday = assistantQueryLogMapper.selectCount(
+                new LambdaQueryWrapper<AssistantQueryLogEntity>().ge(AssistantQueryLogEntity::getCreateTime, startOfToday)
+        );
+        long failuresToday = assistantQueryLogMapper.selectCount(
+                new LambdaQueryWrapper<AssistantQueryLogEntity>()
+                        .ge(AssistantQueryLogEntity::getCreateTime, startOfToday)
+                        .eq(AssistantQueryLogEntity::getSuccess, 0)
+        );
+        List<WolfbookDtos.RecentBoardView> recentBoards = boards.stream()
+                .filter(board -> board.getUpdateTime() != null)
+                .sorted(Comparator.comparing(BoardEntity::getUpdateTime).reversed())
+                .limit(RECENT_BOARD_LIMIT)
+                .map(board -> new WolfbookDtos.RecentBoardView(board.getId(), board.getName(), board.getUpdateTime()))
+                .toList();
         return new WolfbookDtos.DashboardSummary(
-                boardMapper.selectCount(null),
-                roleMapper.selectCount(null),
+                boards.size(),
+                boards.stream().filter(board -> Integer.valueOf(1).equals(board.getStatus())).count(),
+                boards.stream().filter(board -> isBlankText(board.getBackgroundImage())).count(),
+                roles.size(),
+                roles.stream().filter(role -> isBlankText(role.getFullIllustration())).count(),
                 postMapper.selectCount(null),
                 commentMapper.selectCount(null),
-                openReports
+                openReports,
+                questionsToday,
+                failuresToday,
+                recentBoards
         );
     }
 
@@ -125,6 +152,10 @@ public class AdminService {
     public Board saveBoard(Integer id, WolfbookDtos.AdminBoardRequest request) {
         List<BoardRoleEntity> roleRefs = defaultBoardRoles(request.roles());
         roleRefs.forEach(ref -> boardService.getRole(ref.getRoleId()));
+        int lineupSize = roleRefs.stream().mapToInt(BoardRoleEntity::getCount).sum();
+        if (lineupSize != request.playerCount()) {
+            throw new ApiException(4000, "阵容一共 " + lineupSize + " 人，和玩家人数 " + request.playerCount() + " 不一致");
+        }
         BoardRuleDetail ruleDetail = normalizeRuleDetail(
                 request.ruleDetail(),
                 roleRefs.stream().map(BoardRoleEntity::getRoleId).collect(Collectors.toSet())
@@ -162,6 +193,17 @@ public class AdminService {
         }
         assistantKnowledgeService.requestStructuredKnowledgeRebuild();
         return boardService.getBoard(entity.getId());
+    }
+
+    /**
+     * 上架 / 下架：下架后小程序的板子列表、详情和建房都看不到它，已经开局的法官房间不受影响。
+     */
+    public Board updateBoardStatus(Integer id, String status) {
+        BoardEntity entity = getBoardEntity(id);
+        entity.setStatus(parseBoardStatus(status));
+        entity.setUpdateTime(LocalDateTime.now());
+        boardMapper.updateById(entity);
+        return boardService.getBoard(id);
     }
 
     public void deleteBoard(Integer id) {
@@ -256,6 +298,21 @@ public class AdminService {
         return converter.toReport(entity);
     }
 
+    private int parseBoardStatus(String status) {
+        String value = status == null ? "" : status.trim();
+        if ("1".equals(value) || "ONLINE".equalsIgnoreCase(value)) {
+            return 1;
+        }
+        if ("0".equals(value) || "OFFLINE".equalsIgnoreCase(value)) {
+            return 0;
+        }
+        throw new ApiException(4000, "板子状态只能是上架或下架");
+    }
+
+    private boolean isBlankText(String value) {
+        return value == null || value.isBlank();
+    }
+
     private BoardEntity getBoardEntity(Integer id) {
         BoardEntity entity = boardMapper.selectById(id);
         if (entity == null) {
@@ -331,6 +388,7 @@ public class AdminService {
     }
 
     private static final int MAX_RULE_ITEM_LENGTH = 300;
+    private static final int RECENT_BOARD_LIMIT = 5;
 
     /**
      * 清洗后台提交的详细规则：去掉空条目和空章节，同一角色的细则只能有一组，

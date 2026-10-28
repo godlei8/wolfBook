@@ -57,6 +57,12 @@ public class AdminController {
         return ApiResponse.success(adminService.saveBoard(id, request));
     }
 
+    @PatchMapping("/boards/{id}/status")
+    public ApiResponse<Board> updateBoardStatus(@RequestHeader("Authorization") String authorization, @PathVariable Integer id, @RequestBody @Valid WolfbookDtos.AdminStatusRequest request) {
+        adminService.requireAdmin(authorization);
+        return ApiResponse.success(adminService.updateBoardStatus(id, request.status()));
+    }
+
     @DeleteMapping("/boards/{id}")
     public ApiResponse<Void> deleteBoard(@RequestHeader("Authorization") String authorization, @PathVariable Integer id) {
         adminService.requireAdmin(authorization);

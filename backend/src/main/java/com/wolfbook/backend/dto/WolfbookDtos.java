@@ -28,7 +28,10 @@ public final class WolfbookDtos {
 
     public record CreatePostRequest(
             @NotBlank(message = "帖子内容不能为空") @Size(max = 500, message = "帖子内容不能超过 500 字") String content,
-            List<String> images
+            List<String> images,
+            @Size(max = 40, message = "标题不能超过 40 字") String title,
+            @Pattern(regexp = "^(战报|教学|讨论)?$", message = "分类只能是战报、教学或讨论") String category,
+            Integer boardId
     ) {
     }
 
@@ -188,6 +191,7 @@ public final class WolfbookDtos {
             List<String> tags,
             String coverImage,
             String backgroundImage,
+            String winCondition,
             String briefConfig,
             String cardDescription,
             String campSummary,
@@ -268,7 +272,8 @@ public final class WolfbookDtos {
     ) {
     }
 
-    public record RelatedBoardView(Integer id, String name, String coverImage, Integer playerCount) {
+    /** 角色详情里「出现在这些板子」：wakeOrder 是该角色在这个板子夜间顺序里第几个醒来（没写夜间顺序时为 null），lineup 是板子里另外几个角色。 */
+    public record RelatedBoardView(Integer id, String name, String coverImage, String backgroundImage, Integer playerCount, Integer wakeOrder, List<BoardRoleView> lineup) {
     }
 
     public record RoleDetailView(
@@ -294,6 +299,10 @@ public final class WolfbookDtos {
             String nickname,
             String avatar,
             String content,
+            String title,
+            String category,
+            Integer boardId,
+            String boardName,
             List<String> images,
             Integer likeCount,
             Integer commentCount,
@@ -323,6 +332,10 @@ public final class WolfbookDtos {
             String nickname,
             String avatar,
             String content,
+            String title,
+            String category,
+            Integer boardId,
+            String boardName,
             List<String> images,
             Integer likeCount,
             Integer commentCount,
@@ -341,11 +354,20 @@ public final class WolfbookDtos {
 
     public record DashboardSummary(
             long boardCount,
+            long onlineBoardCount,
+            long boardsWithoutBackground,
             long roleCount,
+            long rolesWithoutIllustration,
             long postCount,
             long commentCount,
-            long openReportCount
+            long openReportCount,
+            long assistantQuestionsToday,
+            long assistantFailuresToday,
+            List<RecentBoardView> recentBoards
     ) {
+    }
+
+    public record RecentBoardView(Integer id, String name, LocalDateTime updateTime) {
     }
 
     public record JudgeRoomCreateRequest(
@@ -366,7 +388,8 @@ public final class WolfbookDtos {
     public record JudgeNightActionRequest(
             @Size(max = 50, message = "actionType is too long") String actionType,
             Integer targetSeatNo,
-            @Size(max = 500, message = "note is too long") String note
+            @Size(max = 500, message = "note is too long") String note,
+            Integer actorSeatNo
     ) {
     }
 
@@ -375,6 +398,7 @@ public final class WolfbookDtos {
 
     public record JudgeRoomSummaryView(
             String roomId,
+            String roomCode,
             Integer boardId,
             String boardName,
             Integer playerCount,
@@ -443,6 +467,7 @@ public final class WolfbookDtos {
             Integer targetSeatNo,
             String actionType,
             String note,
+            Integer dayNo,
             LocalDateTime createTime
     ) {
     }
@@ -456,6 +481,7 @@ public final class WolfbookDtos {
 
     public record JudgeRoomSnapshotView(
             String roomId,
+            String roomCode,
             Integer boardId,
             String boardName,
             Integer playerCount,
@@ -483,6 +509,7 @@ public final class WolfbookDtos {
             List<JudgeEventView> timeline,
             List<JudgeVoteTallyView> voteTallies,
             List<JudgeNightActionView> nightActions,
+            List<JudgeNightActionView> nightHistory,
             JudgePendingActionView pendingNightAction,
             LocalDateTime createTime,
             LocalDateTime updateTime

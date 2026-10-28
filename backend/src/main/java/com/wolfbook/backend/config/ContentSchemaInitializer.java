@@ -16,7 +16,7 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * 给已有库补上板子背景图、详细规则和角色主题色三列。
+ * 给已有库补上板子背景图、详细规则、角色主题色，以及帖子的标题、分类、关联板子这几列。
  * <p>
  * 和其他 SchemaInitializer 不同，这里不限定 profile：这三列已经映射进 BoardEntity / RoleEntity，
  * 用 test profile 连本地 MySQL 的开发脚本（start-backend-dev.ps1）也必须有这三列，否则查询会报未知列。
@@ -39,10 +39,24 @@ public class ContentSchemaInitializer implements ApplicationRunner {
         addColumnIfMissing("boards", "background_image", "ALTER TABLE boards ADD COLUMN background_image VARCHAR(500) NULL");
         addColumnIfMissing("boards", "rule_detail", "ALTER TABLE boards ADD COLUMN rule_detail JSON NULL");
         addColumnIfMissing("roles", "theme_color", "ALTER TABLE roles ADD COLUMN theme_color VARCHAR(16) NULL");
+        // 帖子的标题、分类和关联板子（酒馆页的分类筛选和板子标签）
+        addColumnIfMissing("posts", "title", "ALTER TABLE posts ADD COLUMN title VARCHAR(60) NULL");
+        addColumnIfMissing("posts", "category", "ALTER TABLE posts ADD COLUMN category VARCHAR(16) NULL");
+        addColumnIfMissing("posts", "board_id", "ALTER TABLE posts ADD COLUMN board_id INT NULL");
+        addColumnIfMissing("posts", "board_name", "ALTER TABLE posts ADD COLUMN board_name VARCHAR(100) NULL");
+        // 法官房的 4 位短房号（全新库里 judge_rooms 由 JudgeSchemaInitializer 建，建表语句已带这一列）
+        addColumnIfMissing("judge_rooms", "room_code", "ALTER TABLE judge_rooms ADD COLUMN room_code VARCHAR(8) NULL");
     }
 
     private void addColumnIfMissing(String table, String column, String ddl) {
-        if (existingColumns(table).contains(column)) {
+        Set<String> columns;
+        try {
+            columns = existingColumns(table);
+        } catch (RuntimeException missingTable) {
+            // 表还没建（全新库），建表语句自己会带上这一列
+            return;
+        }
+        if (columns.contains(column)) {
             return;
         }
         log.info("Adding missing column {}.{}", table, column);

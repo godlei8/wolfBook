@@ -1,6 +1,8 @@
 package com.wolfbook.backend.entity;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 
@@ -16,6 +18,8 @@ public class BoardEntity {
     private String difficulty;
     private String tags;
     private String coverImage;
+    // 后台允许清空的可选字段：updateById 默认跳过 null，这里改成总是写入，清空才会落库
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String backgroundImage;
     private String cardDescription;
     private String briefConfig;

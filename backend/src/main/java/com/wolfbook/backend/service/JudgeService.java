@@ -148,6 +148,7 @@ public class JudgeService {
 
         JudgeRoomEntity room = new JudgeRoomEntity();
         room.setRoomId(makeId("room"));
+        room.setRoomCode(generateRoomCode());
         room.setBoardId(board.id());
         room.setBoardName(board.name());
         room.setPlayerCount(Math.max(1, board.playerCount()));
@@ -199,11 +200,12 @@ public class JudgeService {
     }
 
     public WolfbookDtos.JudgeRoomSnapshotView getRoomSnapshot(String authorization, String roomId) {
-        return buildSnapshot(requireOpenid(authorization), roomId);
+        return buildSnapshot(requireOpenid(authorization), resolveRoomId(roomId));
     }
 
     @Transactional
     public WolfbookDtos.JudgeRoomSnapshotView joinRoom(String authorization, String roomId) {
+        roomId = resolveRoomId(roomId);
         UserProfile user = userService.requireUser(authorization);
         JudgeRoomEntity room = getRoom(roomId);
         if (!ROOM_STATUS_LOBBY.equals(room.getRoomStatus())) {
@@ -262,6 +264,7 @@ public class JudgeService {
 
     @Transactional
     public WolfbookDtos.JudgeRoomSnapshotView toggleReady(String authorization, String roomId) {
+        roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
         JudgeRoomEntity room = getRoom(roomId);
         if (!ROOM_STATUS_LOBBY.equals(room.getRoomStatus())) {
@@ -294,6 +297,7 @@ public class JudgeService {
 
     @Transactional
     public WolfbookDtos.JudgeRoomSnapshotView startRoom(String authorization, String roomId) {
+        roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
         JudgeRoomEntity room = requireJudgeRoom(roomId, openid);
         if (!ROOM_STATUS_LOBBY.equals(room.getRoomStatus())) {
@@ -357,6 +361,7 @@ public class JudgeService {
 
     @Transactional
     public WolfbookDtos.JudgeRoomSnapshotView advanceRoom(String authorization, String roomId, WolfbookDtos.JudgeRoomAdvanceRequest request) {
+        roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
         JudgeRoomEntity room = requireJudgeRoom(roomId, openid);
         if (!ROOM_STATUS_PLAYING.equals(room.getRoomStatus())) {
@@ -378,14 +383,22 @@ public class JudgeService {
 
     @Transactional
     public WolfbookDtos.JudgeRoomSnapshotView submitNightAction(String authorization, String roomId, WolfbookDtos.JudgeNightActionRequest request) {
+        roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
         JudgeRoomEntity room = getRoom(roomId);
         if (!ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) || !PHASE_NIGHT_ACTION.equals(room.getCurrentPhase())) {
             throw new ApiException(4002, "当前不是夜间行动阶段");
         }
 
-        JudgeRoomPlayerEntity player = requireAlivePlayingPlayer(roomId, openid);
         List<JudgeRoomPlayerEntity> players = loadPlayers(roomId);
+        JudgeRoomPlayerEntity player;
+        if (request.actorSeatNo() != null) {
+            // 线下面杀：玩家闭眼指人，由法官替这个座位记下夜间行动
+            requireJudgeRoom(roomId, openid);
+            player = requireAliveSeat(players, request.actorSeatNo());
+        } else {
+            player = requireAlivePlayingPlayer(roomId, openid);
+        }
         JudgeRoomPlayerEntity targetPlayer = null;
         if (request.targetSeatNo() != null) {
             targetPlayer = requireAliveSeat(players, request.targetSeatNo());
@@ -417,6 +430,7 @@ public class JudgeService {
 
     @Transactional
     public WolfbookDtos.JudgeRoomSnapshotView submitVote(String authorization, String roomId, WolfbookDtos.JudgeVoteRequest request) {
+        roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
         JudgeRoomEntity room = getRoom(roomId);
         if (!ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) || !PHASE_EXILE_VOTE.equals(room.getCurrentPhase())) {
@@ -483,6 +497,7 @@ public class JudgeService {
 
         return new WolfbookDtos.JudgeRoomSnapshotView(
                 room.getRoomId(),
+                room.getRoomCode(),
                 room.getBoardId(),
                 room.getBoardName(),
                 room.getPlayerCount(),
@@ -510,6 +525,7 @@ public class JudgeService {
                 timeline,
                 (judgeViewer || roomFinished) ? buildVoteTallies(room, players, events) : List.of(),
                 judgeViewer ? buildNightActions(room, players, events) : List.of(),
+                (judgeViewer || roomFinished) ? buildNightHistory(players, events) : List.of(),
                 self == null ? new WolfbookDtos.JudgePendingActionView(false, null, "") : buildPendingNightAction(room, self, events, playersById),
                 room.getCreateTime(),
                 roomUpdateTime(room)
@@ -885,6 +901,7 @@ public class JudgeService {
                 .orElse(null);
         return new WolfbookDtos.JudgeRoomSummaryView(
                 room.getRoomId(),
+                room.getRoomCode(),
                 room.getBoardId(),
                 room.getBoardName(),
                 room.getPlayerCount(),
@@ -1017,20 +1034,40 @@ public class JudgeService {
                 .filter(event -> EVENT_NIGHT_SUBMIT.equals(event.getActionType()))
                 .filter(event -> Objects.equals(safeInt(event.getDayNo(), 1), safeInt(room.getCurrentDay(), 1)))
                 .filter(event -> PHASE_NIGHT_ACTION.equals(event.getPhase()))
-                .map(event -> {
-                    JudgeRoomPlayerEntity actor = playersById.get(event.getActorPlayerId());
-                    Map<String, Object> payload = readMap(event.getPayloadJson());
-                    return new WolfbookDtos.JudgeNightActionView(
-                            event.getActorPlayerId(),
-                            actor == null ? null : actor.getSeatNo(),
-                            actor == null ? "未知玩家" : safeText(actor.getNickname(), "未知玩家"),
-                            asPositiveInteger(payload.get("targetSeatNo")),
-                            safeText(asString(payload.get("actionType")), "night_action"),
-                            safeText(asString(payload.get("note")), ""),
-                            event.getCreateTime()
-                    );
-                })
+                .map(event -> toNightActionView(event, playersById))
                 .toList();
+    }
+
+    /** 历次夜晚的全部夜间行动：对局中只给法官（主持台据此判断女巫的药是否已用过等），结束后全场可见，结果页据此写战绩。 */
+    private List<WolfbookDtos.JudgeNightActionView> buildNightHistory(
+            List<JudgeRoomPlayerEntity> players,
+            List<JudgeActionEventEntity> events
+    ) {
+        Map<String, JudgeRoomPlayerEntity> playersById = players.stream()
+                .collect(Collectors.toMap(JudgeRoomPlayerEntity::getPlayerId, player -> player));
+        return events.stream()
+                .filter(event -> EVENT_NIGHT_SUBMIT.equals(event.getActionType()))
+                .sorted(Comparator.comparing(JudgeActionEventEntity::getCreateTime))
+                .map(event -> toNightActionView(event, playersById))
+                .toList();
+    }
+
+    private WolfbookDtos.JudgeNightActionView toNightActionView(
+            JudgeActionEventEntity event,
+            Map<String, JudgeRoomPlayerEntity> playersById
+    ) {
+        JudgeRoomPlayerEntity actor = playersById.get(event.getActorPlayerId());
+        Map<String, Object> payload = readMap(event.getPayloadJson());
+        return new WolfbookDtos.JudgeNightActionView(
+                event.getActorPlayerId(),
+                actor == null ? null : actor.getSeatNo(),
+                actor == null ? "未知玩家" : safeText(actor.getNickname(), "未知玩家"),
+                asPositiveInteger(payload.get("targetSeatNo")),
+                safeText(asString(payload.get("actionType")), "night_action"),
+                safeText(asString(payload.get("note")), ""),
+                safeInt(event.getDayNo(), 1),
+                event.getCreateTime()
+        );
     }
 
     private WolfbookDtos.JudgePendingActionView buildPendingNightAction(
@@ -1332,6 +1369,42 @@ public class JudgeService {
 
     private String requireOpenid(String authorization) {
         return userService.requireUser(authorization).openid();
+    }
+
+    /** 传进来的是纯数字（4~6 位）就当短房号找：优先未结束的房间，其次最近更新的那间。 */
+    private String resolveRoomId(String roomIdOrCode) {
+        if (roomIdOrCode == null || !roomIdOrCode.trim().matches("\\d{4,6}")) {
+            return roomIdOrCode;
+        }
+        String code = roomIdOrCode.trim();
+        List<JudgeRoomEntity> rooms = judgeRoomMapper.selectList(
+                new LambdaQueryWrapper<JudgeRoomEntity>()
+                        .eq(JudgeRoomEntity::getRoomCode, code)
+                        .orderByDesc(JudgeRoomEntity::getUpdateTime)
+        );
+        return rooms.stream()
+                .filter(room -> !ROOM_STATUS_FINISHED.equals(room.getRoomStatus()))
+                .findFirst()
+                .or(() -> rooms.stream().findFirst())
+                .map(JudgeRoomEntity::getRoomId)
+                .orElseThrow(() -> new ApiException(4004, "房间不存在"));
+    }
+
+    /** 4 位随机短房号，避开所有未结束房间正在用的号；实在撞满了就用 6 位。 */
+    private String generateRoomCode() {
+        java.util.concurrent.ThreadLocalRandom random = java.util.concurrent.ThreadLocalRandom.current();
+        for (int attempt = 0; attempt < 40; attempt++) {
+            String code = String.valueOf(attempt < 30 ? random.nextInt(1000, 10000) : random.nextInt(100000, 1000000));
+            boolean taken = judgeRoomMapper.selectCount(
+                    new LambdaQueryWrapper<JudgeRoomEntity>()
+                            .eq(JudgeRoomEntity::getRoomCode, code)
+                            .ne(JudgeRoomEntity::getRoomStatus, ROOM_STATUS_FINISHED)
+            ) > 0;
+            if (!taken) {
+                return code;
+            }
+        }
+        throw new ApiException(5000, "房号分配失败，请稍后再试");
     }
 
     private String makeId(String prefix) {

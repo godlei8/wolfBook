@@ -39,9 +39,13 @@ public class ApiCommunityController {
     public ApiResponse<PageResponse<WolfbookDtos.PostSummaryView>> listPosts(
             @RequestHeader(name = "Authorization", required = false) String authorization,
             @RequestParam(defaultValue = "1") @Min(1) int page,
-            @RequestParam(defaultValue = "10") @Min(1) int size
+            @RequestParam(defaultValue = "10") @Min(1) int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) Integer boardId,
+            @RequestParam(defaultValue = "false") boolean mine
     ) {
-        return ApiResponse.success(communityService.listPosts(page, size, authorization));
+        return ApiResponse.success(communityService.listPosts(page, size, authorization, sort, category, boardId, mine));
     }
 
     @GetMapping("/posts/{id}")

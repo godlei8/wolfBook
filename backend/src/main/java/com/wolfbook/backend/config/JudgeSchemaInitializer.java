@@ -51,6 +51,7 @@ public class JudgeSchemaInitializer implements ApplicationRunner {
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS judge_rooms (
                   room_id VARCHAR(64) PRIMARY KEY,
+                  room_code VARCHAR(8),
                   board_id INT NOT NULL,
                   board_name VARCHAR(100) NOT NULL,
                   player_count TINYINT NOT NULL,

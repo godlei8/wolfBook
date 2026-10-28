@@ -19,6 +19,7 @@ import static org.hamcrest.Matchers.contains;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -434,6 +435,15 @@ class BackendApplicationTests {
                 .andExpect(jsonPath("$.data[0].themeColor").value("#7B4FD6"))
                 // 图鉴用立绘做卡牌墙
                 .andExpect(jsonPath("$.data[0].fullIllustration").value("https://picsum.photos/seed/seerfull/700/900"));
+
+        // 列表卡片带胜利条件；角色详情的板子列表带「第几个醒来」和另外几个角色
+        mockMvc.perform(get("/api/boards").param("keyword", "预女猎白"))
+                .andExpect(jsonPath("$.data.list[0].winCondition").isNotEmpty());
+        mockMvc.perform(get("/api/roles/1"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.boards[?(@.id == 2)].wakeOrder").value(contains(3)))
+                .andExpect(jsonPath("$.data.boards[?(@.id == 2)].lineup.length()").value(contains(3)))
+                .andExpect(jsonPath("$.data.boards[?(@.id == 1)].wakeOrder").value(contains((Object) null)));
     }
 
     @Test
@@ -569,6 +579,97 @@ class BackendApplicationTests {
     }
 
     @Test
+    void adminBoardSaveShouldRejectLineupThatDoesNotMatchPlayerCount() throws Exception {
+        String adminToken = loginAndGetAdminToken();
+        Integer before = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM boards", Integer.class);
+        String body = """
+                {
+                  "name": "人数不符板",
+                  "playerCount": 9,
+                  "difficulty": "入门",
+                  "roles": [{"roleId": 6, "count": 2}, {"roleId": 9, "count": 4}]
+                }
+                """;
+        mockMvc.perform(post("/admin/boards")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(jsonPath("$.code").value(4000))
+                .andExpect(jsonPath("$.msg").value(containsString("6 人")));
+        Assertions.assertEquals(before, jdbcTemplate.queryForObject("SELECT COUNT(1) FROM boards", Integer.class));
+    }
+
+    @Test
+    void offlineBoardShouldDisappearFromMiniProgramUntilBackOnline() throws Exception {
+        String adminToken = loginAndGetAdminToken();
+        String created = mockMvc.perform(post("/admin/boards")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "下架测试板",
+                                  "playerCount": 6,
+                                  "difficulty": "入门",
+                                  "roles": [{"roleId": 6, "count": 2}, {"roleId": 9, "count": 4}]
+                                }
+                                """))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.status").value(1))
+                .andReturn().getResponse().getContentAsString();
+        int boardId = objectMapper.readTree(created).path("data").path("id").asInt();
+
+        try {
+            mockMvc.perform(patch("/admin/boards/{id}/status", boardId)
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"status\": \"0\"}"))
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.status").value(0));
+            mockMvc.perform(get("/api/boards").param("keyword", "下架测试板"))
+                    .andExpect(jsonPath("$.data.list.length()").value(0));
+            mockMvc.perform(get("/api/boards/{id}", boardId))
+                    .andExpect(jsonPath("$.code").value(4004));
+            // 后台列表仍然能看到下架的板子
+            mockMvc.perform(get("/admin/boards").header("Authorization", "Bearer " + adminToken))
+                    .andExpect(jsonPath("$.data[?(@.id == " + boardId + ")].status").value(contains(0)));
+
+            mockMvc.perform(patch("/admin/boards/{id}/status", boardId)
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"status\": \"maybe\"}"))
+                    .andExpect(jsonPath("$.code").value(4000));
+
+            mockMvc.perform(patch("/admin/boards/{id}/status", boardId)
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"status\": \"1\"}"))
+                    .andExpect(jsonPath("$.data.status").value(1));
+            mockMvc.perform(get("/api/boards/{id}", boardId))
+                    .andExpect(jsonPath("$.code").value(0));
+        } finally {
+            mockMvc.perform(delete("/admin/boards/{id}", boardId).header("Authorization", "Bearer " + adminToken))
+                    .andExpect(jsonPath("$.code").value(0));
+        }
+    }
+
+    @Test
+    void adminSummaryShouldReportContentGaps() throws Exception {
+        String adminToken = loginAndGetAdminToken();
+        Integer boards = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM boards", Integer.class);
+        Integer noBackground = jdbcTemplate.queryForObject(
+                "SELECT COUNT(1) FROM boards WHERE background_image IS NULL OR background_image = ''", Integer.class);
+        Integer noIllustration = jdbcTemplate.queryForObject(
+                "SELECT COUNT(1) FROM roles WHERE full_illustration IS NULL OR full_illustration = ''", Integer.class);
+        mockMvc.perform(get("/admin/summary").header("Authorization", "Bearer " + adminToken))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.boardCount").value(boards))
+                .andExpect(jsonPath("$.data.boardsWithoutBackground").value(noBackground))
+                .andExpect(jsonPath("$.data.rolesWithoutIllustration").value(noIllustration))
+                .andExpect(jsonPath("$.data.assistantQuestionsToday").isNumber())
+                .andExpect(jsonPath("$.data.recentBoards").isArray());
+    }
+
+    @Test
     void adminRoleSaveShouldValidateAndNormalizeThemeColor() throws Exception {
         String adminToken = loginAndGetAdminToken();
         String invalid = """
@@ -596,6 +697,41 @@ class BackendApplicationTests {
             mockMvc.perform(get("/api/roles/{id}", roleId))
                     .andExpect(jsonPath("$.code").value(0))
                     .andExpect(jsonPath("$.data.themeColor").value("#A1B2C3"));
+        } finally {
+            mockMvc.perform(delete("/admin/roles/{id}", roleId).header("Authorization", "Bearer " + adminToken))
+                    .andExpect(jsonPath("$.code").value(0));
+        }
+    }
+
+    @Test
+    void adminRoleSaveCanClearArtAndThemeColor() throws Exception {
+        String adminToken = loginAndGetAdminToken();
+        String withArt = """
+                {"name": "清图测试", "faction": "好人", "roleType": "神职", "skill": "测试",
+                 "portrait": "https://example.com/p.webp", "fullIllustration": "https://example.com/f.webp", "themeColor": "#112233"}
+                """;
+        String created = mockMvc.perform(post("/admin/roles")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(withArt))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        int roleId = objectMapper.readTree(created).path("data").path("id").asInt();
+        try {
+            // 退役旧画风时要能把头像、立绘和主题色清空（MyBatis-Plus 默认会跳过 null 字段）
+            String cleared = """
+                    {"name": "清图测试", "faction": "好人", "roleType": "神职", "skill": "测试",
+                     "portrait": null, "fullIllustration": null, "themeColor": null}
+                    """;
+            mockMvc.perform(put("/admin/roles/{id}", roleId)
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(cleared))
+                    .andExpect(jsonPath("$.code").value(0));
+            java.util.Map<String, Object> row = jdbcTemplate.queryForMap("SELECT portrait, full_illustration, theme_color FROM roles WHERE id = ?", roleId);
+            Assertions.assertNull(row.get("PORTRAIT"));
+            Assertions.assertNull(row.get("FULL_ILLUSTRATION"));
+            Assertions.assertNull(row.get("THEME_COLOR"));
         } finally {
             mockMvc.perform(delete("/admin/roles/{id}", roleId).header("Authorization", "Bearer " + adminToken))
                     .andExpect(jsonPath("$.code").value(0));

@@ -1,6 +1,8 @@
 package com.wolfbook.backend.entity;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 
@@ -12,15 +14,21 @@ public class RoleEntity {
     @TableId(type = IdType.AUTO)
     private Integer id;
     private String name;
+    // 后台允许清空的可选字段：updateById 默认跳过 null，这里改成总是写入，清空才会落库
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String alias;
     private String faction;
     private String roleType;
     private String camp;
     private String skill;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String background;
     private String faqs;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String portrait;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String fullIllustration;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String themeColor;
     private LocalDateTime createTime;
 

@@ -160,6 +160,57 @@ class JudgeFlowIntegrationTests {
         }
     }
 
+    @Test
+    void judgeCanRecordANightActionForASeatAndSeesTheHistory() throws Exception {
+        Game game = startedGame();
+        JsonNode recorded = game.call(game.host, "/night-action", "{\"actionType\":\"刀人\",\"targetSeatNo\":2,\"actorSeatNo\":1}");
+        Assertions.assertEquals(0, recorded.path("code").asInt(), recorded.toString());
+        JsonNode action = recorded.path("data").path("nightActions").path(0);
+        Assertions.assertEquals(1, action.path("actorSeatNo").asInt());
+        Assertions.assertEquals(2, action.path("targetSeatNo").asInt());
+        Assertions.assertEquals(1, action.path("dayNo").asInt());
+        Assertions.assertEquals(1, recorded.path("data").path("nightHistory").size());
+
+        // 玩家不能替别的座位记录，也看不到夜间历史
+        Assertions.assertEquals(4003, game.call(game.players.get(1), "/night-action", "{\"actionType\":\"查验\",\"targetSeatNo\":3,\"actorSeatNo\":1}").path("code").asInt());
+        Assertions.assertEquals(0, game.snapshot(game.players.get(1)).path("nightHistory").size());
+        // 替不存在的座位记录同样被拒
+        Assertions.assertEquals(4000, game.call(game.host, "/night-action", "{\"actionType\":\"查验\",\"targetSeatNo\":3,\"actorSeatNo\":99}").path("code").asInt());
+    }
+
+    @Test
+    void shortRoomCodeResolvesToTheRoomForViewingAndJoining() throws Exception {
+        int run = SEQUENCE.incrementAndGet();
+        String host = login("judge-code-host-" + run);
+        String created = mockMvc.perform(post("/api/judge/rooms")
+                        .header("Authorization", "Bearer " + host)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"boardId\":" + BOARD_ID + ",\"judgeMode\":\"observer\"}"))
+                .andReturn().getResponse().getContentAsString();
+        JsonNode data = objectMapper.readTree(created).path("data");
+        String roomId = data.path("roomId").asText();
+        String roomCode = data.path("roomCode").asText();
+        Assertions.assertTrue(roomCode.matches("\\d{4}"), roomCode);
+
+        // 玩家手输 4 位房号：查房和入座都按短房号找到同一间
+        String player = login("judge-code-player-" + run);
+        JsonNode viewed = objectMapper.readTree(mockMvc.perform(get("/api/judge/rooms/{id}", roomCode)
+                        .header("Authorization", "Bearer " + player))
+                .andReturn().getResponse().getContentAsString());
+        Assertions.assertEquals(0, viewed.path("code").asInt(), viewed.toString());
+        Assertions.assertEquals(roomId, viewed.path("data").path("roomId").asText());
+        JsonNode joined = objectMapper.readTree(mockMvc.perform(post("/api/judge/rooms/{id}/join", roomCode)
+                        .header("Authorization", "Bearer " + player))
+                .andReturn().getResponse().getContentAsString());
+        Assertions.assertEquals(0, joined.path("code").asInt(), joined.toString());
+        Assertions.assertEquals(1, joined.path("data").path("joinedCount").asInt());
+
+        JsonNode missing = objectMapper.readTree(mockMvc.perform(get("/api/judge/rooms/{id}", "000000")
+                        .header("Authorization", "Bearer " + player))
+                .andReturn().getResponse().getContentAsString());
+        Assertions.assertEquals(4004, missing.path("code").asInt());
+    }
+
     // ---- helpers ----
 
     private Game lobbyGame() throws Exception {

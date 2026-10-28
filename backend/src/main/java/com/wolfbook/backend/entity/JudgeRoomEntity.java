@@ -11,6 +11,8 @@ public class JudgeRoomEntity {
 
     @TableId(type = IdType.INPUT)
     private String roomId;
+    /** 4 位短房号（玩家手输加入用），只在未结束的房间之间唯一。 */
+    private String roomCode;
     private Integer boardId;
     private String boardName;
     private Integer playerCount;
@@ -28,6 +30,14 @@ public class JudgeRoomEntity {
     private String latestAnnouncement;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
+
+    public String getRoomCode() {
+        return roomCode;
+    }
+
+    public void setRoomCode(String roomCode) {
+        this.roomCode = roomCode;
+    }
 
     public String getRoomId() {
         return roomId;

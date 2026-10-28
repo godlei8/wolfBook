@@ -93,6 +93,9 @@ public class BoardService {
 
     public WolfbookDtos.BoardDetailView getBoardDetail(Integer id) {
         BoardEntity boardEntity = getBoardEntity(id);
+        if (!Integer.valueOf(1).equals(boardEntity.getStatus())) {
+            throw new ApiException(4004, "板子已下架");
+        }
         List<BoardRoleEntity> roleEntities = boardRoleMapper.selectList(
                 new LambdaQueryWrapper<BoardRoleEntity>()
                         .eq(BoardRoleEntity::getBoardId, id)
@@ -156,12 +159,20 @@ public class BoardService {
                 .distinct()
                 .toList();
 
-        List<WolfbookDtos.RelatedBoardView> boards = boardIds.isEmpty()
-                ? List.of()
-                : boardMapper.selectBatchIds(boardIds).stream()
-                .sorted(Comparator.comparing(BoardEntity::getId))
-                .map(board -> new WolfbookDtos.RelatedBoardView(board.getId(), board.getName(), board.getCoverImage(), board.getPlayerCount()))
-                .toList();
+        List<WolfbookDtos.RelatedBoardView> boards = List.of();
+        if (!boardIds.isEmpty()) {
+            List<BoardEntity> boardEntities = boardMapper.selectBatchIds(boardIds).stream()
+                    .filter(board -> board.getStatus() == null || board.getStatus() == 1)
+                    .sorted(Comparator.comparing(BoardEntity::getId))
+                    .toList();
+            Map<Integer, List<BoardRoleEntity>> roleMap = loadBoardRoleMap(boardEntities.stream().map(BoardEntity::getId).toList());
+            Map<Integer, RoleEntity> rolesById = loadRolesById(
+                    roleMap.values().stream().flatMap(List::stream).map(BoardRoleEntity::getRoleId).collect(Collectors.toSet())
+            );
+            boards = boardEntities.stream()
+                    .map(board -> toRelatedBoardView(board, id, roleMap.getOrDefault(board.getId(), List.of()), rolesById))
+                    .toList();
+        }
 
         return new WolfbookDtos.RoleDetailView(
                 role.getId(),
@@ -244,6 +255,7 @@ public class BoardService {
                 converter.readStringList(board.getTags()),
                 board.getCoverImage(),
                 board.getBackgroundImage(),
+                board.getWinCondition(),
                 board.getBriefConfig(),
                 board.getCardDescription(),
                 buildCampSummary(roleViews),
@@ -251,6 +263,31 @@ public class BoardService {
                 roleViews,
                 featuredRoles,
                 buildCardSummary(board)
+        );
+    }
+
+    private WolfbookDtos.RelatedBoardView toRelatedBoardView(BoardEntity board, Integer roleId, List<BoardRoleEntity> roleEntities, Map<Integer, RoleEntity> rolesById) {
+        List<WolfbookDtos.BoardRoleView> lineup = roleEntities.stream()
+                .filter(ref -> !Objects.equals(ref.getRoleId(), roleId) && rolesById.containsKey(ref.getRoleId()))
+                .map(ref -> toBoardRoleView(ref, rolesById))
+                .limit(3)
+                .toList();
+        BoardRuleDetail ruleDetail = converter.readRuleDetail(board.getRuleDetail());
+        Integer wakeOrder = null;
+        for (int index = 0; index < ruleDetail.nightOrder().size(); index++) {
+            if (Objects.equals(ruleDetail.nightOrder().get(index).roleId(), roleId)) {
+                wakeOrder = index + 1;
+                break;
+            }
+        }
+        return new WolfbookDtos.RelatedBoardView(
+                board.getId(),
+                board.getName(),
+                board.getCoverImage(),
+                board.getBackgroundImage(),
+                board.getPlayerCount(),
+                wakeOrder,
+                lineup
         );
     }
 

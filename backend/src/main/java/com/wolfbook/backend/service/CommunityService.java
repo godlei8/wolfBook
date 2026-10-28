@@ -11,6 +11,7 @@ import com.wolfbook.backend.domain.Report;
 import com.wolfbook.backend.domain.UserProfile;
 import com.wolfbook.backend.dto.WolfbookDtos;
 import com.wolfbook.backend.entity.*;
+import com.wolfbook.backend.mapper.BoardMapper;
 import com.wolfbook.backend.mapper.CommentMapper;
 import com.wolfbook.backend.mapper.LikeMapper;
 import com.wolfbook.backend.mapper.PostMapper;
@@ -41,6 +42,7 @@ public class CommunityService {
     private final TokenService tokenService;
     private final ContentSafetyProvider contentSafetyProvider;
     private final DomainConverter converter;
+    private final BoardMapper boardMapper;
 
     public CommunityService(
             PostMapper postMapper,
@@ -50,7 +52,8 @@ public class CommunityService {
             UserMapper userMapper,
             TokenService tokenService,
             ContentSafetyProvider contentSafetyProvider,
-            DomainConverter converter
+            DomainConverter converter,
+            BoardMapper boardMapper
     ) {
         this.postMapper = postMapper;
         this.commentMapper = commentMapper;
@@ -60,22 +63,38 @@ public class CommunityService {
         this.tokenService = tokenService;
         this.contentSafetyProvider = contentSafetyProvider;
         this.converter = converter;
+        this.boardMapper = boardMapper;
     }
 
     public static final int MAX_PAGE_SIZE = 50;
     public static final int ADMIN_MAX_PAGE_SIZE = 500;
 
     public PageResponse<WolfbookDtos.PostSummaryView> listPosts(int page, int size, String authorization) {
-        String currentUser = tokenService.resolveUser(authorization);
-        return pagePosts(
-                new LambdaQueryWrapper<PostEntity>()
-                        .eq(PostEntity::getStatus, 1)
-                        .orderByDesc(PostEntity::getCreateTime),
-                page,
-                size,
-                currentUser,
-                false
-        );
+        return listPosts(page, size, authorization, null, null, null, false);
+    }
+
+    /**
+     * 酒馆列表：sort = hot 按点赞数（同票按时间），其余按时间倒序；category 按分类筛选；boardId 只看某个板子的帖子；mine 只看自己的。
+     */
+    public PageResponse<WolfbookDtos.PostSummaryView> listPosts(int page, int size, String authorization, String sort, String category, Integer boardId, boolean mine) {
+        // mine = 只看自己发的（「我的」页的入口），需要登录
+        String currentUser = mine ? tokenService.requireUser(authorization) : tokenService.resolveUser(authorization);
+        LambdaQueryWrapper<PostEntity> wrapper = new LambdaQueryWrapper<PostEntity>().eq(PostEntity::getStatus, 1);
+        if (mine) {
+            wrapper.eq(PostEntity::getOpenid, currentUser);
+        }
+        if (category != null && !category.isBlank()) {
+            wrapper.eq(PostEntity::getCategory, category.trim());
+        }
+        if (boardId != null && boardId > 0) {
+            wrapper.eq(PostEntity::getBoardId, boardId);
+        }
+        if ("hot".equalsIgnoreCase(sort)) {
+            wrapper.orderByDesc(PostEntity::getLikeCount).orderByDesc(PostEntity::getCreateTime);
+        } else {
+            wrapper.orderByDesc(PostEntity::getCreateTime);
+        }
+        return pagePosts(wrapper, page, size, currentUser, false);
     }
 
     private PageResponse<WolfbookDtos.PostSummaryView> pagePosts(
@@ -115,6 +134,10 @@ public class CommunityService {
                 author.nickname(),
                 author.avatar(),
                 post.content(),
+                post.title(),
+                post.category(),
+                post.boardId(),
+                post.boardName(),
                 post.images(),
                 post.likeCount(),
                 post.commentCount(),
@@ -127,12 +150,24 @@ public class CommunityService {
 
     public WolfbookDtos.PostDetailView createPost(String authorization, WolfbookDtos.CreatePostRequest request) {
         String openid = tokenService.requireUser(authorization);
-        contentSafetyProvider.ensureSafeText(request.content());
+        String title = request.title() == null || request.title().isBlank() ? null : request.title().trim();
+        contentSafetyProvider.ensureSafeText(title == null ? request.content() : title + "\n" + request.content());
         contentSafetyProvider.ensureSafeImages(request.images());
 
         PostEntity entity = new PostEntity();
         entity.setOpenid(openid);
         entity.setContent(request.content());
+        entity.setTitle(title);
+        entity.setCategory(request.category() == null || request.category().isBlank() ? "讨论" : request.category());
+        if (request.boardId() != null && request.boardId() > 0) {
+            // 板子名以库里为准，不信任前端传来的名字
+            BoardEntity board = boardMapper.selectById(request.boardId());
+            if (board == null) {
+                throw new ApiException(4000, "关联的板子不存在");
+            }
+            entity.setBoardId(board.getId());
+            entity.setBoardName(board.getName());
+        }
         entity.setImages(converter.writeStringList(request.images()));
         entity.setLikeCount(0);
         entity.setCommentCount(0);
@@ -232,6 +267,10 @@ public class CommunityService {
                 author.nickname(),
                 author.avatar(),
                 post.content(),
+                post.title(),
+                post.category(),
+                post.boardId(),
+                post.boardName(),
                 post.images(),
                 post.likeCount(),
                 post.commentCount(),

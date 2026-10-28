@@ -12,3 +12,33 @@ UPDATE roles SET portrait = 'http://cos.godlei8.top/wolfbook/admin/assets/2026/1
 UPDATE roles SET portrait = 'http://cos.godlei8.top/wolfbook/admin/assets/2026/10/27/4cd435b430494e5d9be128a633b9786b.webp', full_illustration = 'http://cos.godlei8.top/wolfbook/admin/assets/2026/10/27/e66ac3ee97fb4104bdf549e22fe57deb.webp', theme_color = '#7FC8E8' WHERE name = '白狼王';
 UPDATE roles SET portrait = 'http://cos.godlei8.top/wolfbook/admin/assets/2026/10/27/4143f2b1001545669e90a0e4d50d7a3e.webp', full_illustration = 'http://cos.godlei8.top/wolfbook/admin/assets/2026/10/27/03771e5cc89a46109c4060023b9ed3df.webp', theme_color = '#7A1A22' WHERE name = '黑狼王';
 COMMIT;
+
+-- 退役上一版画风：还没有新立绘的角色清空头像和立绘地址，小程序显示卡背（COS 上的文件不删）。
+START TRANSACTION;
+UPDATE roles SET portrait = NULL, full_illustration = NULL WHERE name = '机械狼';
+UPDATE roles SET portrait = NULL, full_illustration = NULL WHERE name = '石像鬼';
+UPDATE roles SET portrait = NULL, full_illustration = NULL WHERE name = '通灵师';
+UPDATE roles SET portrait = NULL, full_illustration = NULL WHERE name = '织梦人';
+UPDATE roles SET portrait = NULL, full_illustration = NULL WHERE name = '爱神';
+UPDATE roles SET portrait = NULL, full_illustration = NULL WHERE name = '老酒鬼';
+UPDATE roles SET portrait = NULL, full_illustration = NULL WHERE name = '诡术师';
+UPDATE roles SET portrait = NULL, full_illustration = NULL WHERE name = '魔术师';
+UPDATE roles SET portrait = NULL, full_illustration = NULL WHERE name = '摄梦人';
+UPDATE roles SET portrait = NULL, full_illustration = NULL WHERE name = '守墓人';
+UPDATE roles SET portrait = NULL, full_illustration = NULL WHERE name = '梦魇之影';
+UPDATE roles SET portrait = NULL, full_illustration = NULL WHERE name = '驯熊师';
+COMMIT;
+
+-- 如需恢复旧图，执行下面这段：
+-- UPDATE roles SET portrait = 'http://cos.godlei8.top/wolfbook/admin/assets/2026/04/09/574f4a02e95e486695bd9e38a9030abd.jpg', full_illustration = 'http://cos.godlei8.top/wolfbook/admin/assets/2026/04/09/ceb82856bbc84b4cae933c0e6f534e7b.jpg' WHERE name = '机械狼';
+-- UPDATE roles SET portrait = 'https://picsum.photos/seed/gargoyle/300/300', full_illustration = 'https://picsum.photos/seed/gargoylefull/700/900' WHERE name = '石像鬼';
+-- UPDATE roles SET portrait = 'https://picsum.photos/seed/spiritseer/300/300', full_illustration = 'https://picsum.photos/seed/spiritseerfull/700/900' WHERE name = '通灵师';
+-- UPDATE roles SET portrait = 'https://picsum.photos/seed/dreamweaver/300/300', full_illustration = 'https://picsum.photos/seed/dreamweaverfull/700/900' WHERE name = '织梦人';
+-- UPDATE roles SET portrait = 'https://picsum.photos/seed/cupid/300/300', full_illustration = 'https://picsum.photos/seed/cupidfull/700/900' WHERE name = '爱神';
+-- UPDATE roles SET portrait = 'https://picsum.photos/seed/drunk/300/300', full_illustration = 'https://picsum.photos/seed/drunkfull/700/900' WHERE name = '老酒鬼';
+-- UPDATE roles SET portrait = '/uploads/626006da1a5d4ec2b12c89311a8e6e5a.jpg', full_illustration = '/uploads/97c0aadf72514afa8f0bf04012c9142e.jpg' WHERE name = '诡术师';
+-- UPDATE roles SET portrait = 'http://cos.godlei8.top/wolfbook/admin/assets/2026/04/09/cb3423212c564ce8a4fae2da31cbf53a.jpg', full_illustration = 'http://cos.godlei8.top/wolfbook/admin/assets/2026/04/09/80645e5157a44e44ad1d8f99e4f9770d.jpg' WHERE name = '魔术师';
+-- UPDATE roles SET portrait = 'https://cos.godlei8.top/wolfbook/seed/default-media/role_dreamer_portrait.png', full_illustration = 'https://cos.godlei8.top/wolfbook/seed/default-media/role_dreamer_illustration.png' WHERE name = '摄梦人';
+-- UPDATE roles SET portrait = 'https://cos.godlei8.top/wolfbook/seed/default-media/role_gravekeeper_portrait.png', full_illustration = 'https://cos.godlei8.top/wolfbook/seed/default-media/role_gravekeeper_illustration.png' WHERE name = '守墓人';
+-- UPDATE roles SET portrait = 'https://cos.godlei8.top/wolfbook/seed/default-media/role_nightmare_portrait.png', full_illustration = 'https://cos.godlei8.top/wolfbook/seed/default-media/role_nightmare_illustration.png' WHERE name = '梦魇之影';
+-- UPDATE roles SET portrait = 'https://cos.godlei8.top/wolfbook/seed/default-media/role_bear_tamer_portrait.png', full_illustration = 'https://cos.godlei8.top/wolfbook/seed/default-media/role_bear_tamer_illustration.png' WHERE name = '驯熊师';
