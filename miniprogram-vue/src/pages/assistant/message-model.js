@@ -1,5 +1,3 @@
-const AUTO_DEFER_MARKDOWN_THRESHOLD = 360
-
 function resolveContentFormat(message) {
   if (message?.contentFormat) {
     return message.contentFormat
@@ -23,24 +21,17 @@ function filterVisibleCitations(citations = [], boards = []) {
   return visibleCitations.filter((citation) => citation?.sourceType === 'WEB')
 }
 
-function resolveRenderMode(role, contentFormat, isStreaming) {
+// 流式回答边收边按 markdown 渲染（流缓冲已经限了刷新频率），不然用户一直看到「## 结论」「- 」这些原始符号
+function resolveRenderMode(role, contentFormat) {
   if (role !== 'ASSISTANT') {
-    return 'plain'
-  }
-  if (isStreaming) {
     return 'plain'
   }
   return contentFormat === 'MARKDOWN' ? 'markdown' : 'plain'
 }
 
+// 只有进页面时一次性铺开的历史消息才分段延后渲染；刚回答完的消息直接渲染，避免答完又闪回原始文本
 function shouldDeferMarkdownRender(renderMode, content, options = {}) {
-  if (renderMode !== 'markdown') {
-    return false
-  }
-  if (options.deferMarkdown) {
-    return true
-  }
-  return String(content || '').length >= AUTO_DEFER_MARKDOWN_THRESHOLD
+  return renderMode === 'markdown' && !!options.deferMarkdown && !!content
 }
 
 export function normalizeChatMessage(message, renderers) {
@@ -48,7 +39,7 @@ export function normalizeChatMessage(message, renderers) {
   const citations = Array.isArray(message?.citations) ? message.citations : []
   const recommendedBoards = Array.isArray(message?.recommendedBoards) ? message.recommendedBoards : []
   const contentFormat = resolveContentFormat(message)
-  const renderMode = resolveRenderMode(message?.role, contentFormat, !!message?.isStreaming)
+  const renderMode = resolveRenderMode(message?.role, contentFormat)
   const content = message?.content || ''
 
   if (options.preserveRenderedContent) {

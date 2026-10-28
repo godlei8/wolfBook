@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 
 import { normalizeChatMessage } from '../src/pages/assistant/message-model.js'
 
-test('streaming assistant message stays in plain render mode', () => {
+test('streaming assistant message renders markdown as it arrives', () => {
   const normalized = normalizeChatMessage(
     {
       id: 'm1',
@@ -15,17 +15,15 @@ test('streaming assistant message stays in plain render mode', () => {
       isStreaming: true,
     },
     {
-      markdownRenderer: () => {
-        throw new Error('streaming message should not render markdown')
-      },
+      markdownRenderer: (content) => `markdown:${content}`,
       plainRenderer: () => {
-        throw new Error('streaming message should not render plain rich text either')
+        throw new Error('streaming message should not use plain renderer')
       },
     },
   )
 
-  assert.equal(normalized.renderMode, 'plain')
-  assert.equal(normalized.renderedContent, '## 结论\n\n女巫可以...')
+  assert.equal(normalized.renderMode, 'markdown')
+  assert.equal(normalized.renderedContent, 'markdown:## 结论\n\n女巫可以...')
 })
 
 test('completed assistant markdown message renders markdown once', () => {
@@ -51,7 +49,7 @@ test('completed assistant markdown message renders markdown once', () => {
   assert.equal(normalized.renderedContent, 'markdown:## 结论\n\n守卫和女巫通常会冲突。')
 })
 
-test('long completed assistant markdown message defers heavy rendering automatically', () => {
+test('long answer that just finished renders markdown right away instead of flashing raw text', () => {
   const normalized = normalizeChatMessage(
     {
       id: 'm2-long',
@@ -63,18 +61,16 @@ test('long completed assistant markdown message defers heavy rendering automatic
       isStreaming: false,
     },
     {
-      markdownRenderer: () => {
-        throw new Error('long completed message should defer markdown rendering')
-      },
+      markdownRenderer: (content) => `markdown:${content}`,
       plainRenderer: () => {
         throw new Error('long completed message should not use plain renderer helper')
       },
     },
   )
 
-  assert.equal(normalized.renderMode, 'plain')
-  assert.equal(normalized.isRenderPending, true)
-  assert.ok(normalized.renderedContent.startsWith('## 结论'))
+  assert.equal(normalized.renderMode, 'markdown')
+  assert.equal(normalized.isRenderPending, false)
+  assert.ok(normalized.renderedContent.startsWith('markdown:## 结论'))
 })
 
 test('deferred markdown mode keeps initial page entry cheap for historical assistant messages', () => {

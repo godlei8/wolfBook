@@ -1,5 +1,6 @@
 const BODY_STYLE = 'margin:0 0 16rpx 0;line-height:1.75;font-size:30rpx;color:#f4ead5;word-break:break-word;'
-const H2_STYLE = 'margin:0 0 18rpx 0;font-size:34rpx;font-weight:900;color:#f4ead5;line-height:1.45;font-family:"Noto Serif SC","Songti SC",serif;'
+// style 属性用双引号包着，里面的字体名只能用单引号，否则属性提前结束、整段样式失效
+const H2_STYLE = "margin:0 0 18rpx 0;font-size:34rpx;font-weight:900;color:#f4ead5;line-height:1.45;font-family:'Noto Serif SC','Songti SC',serif;"
 const H3_STYLE = 'margin:8rpx 0 14rpx 0;font-size:30rpx;font-weight:700;color:#f2b33d;line-height:1.5;'
 const LIST_STYLE = 'margin:0 0 18rpx 0;padding-left:32rpx;color:#e8dff0;line-height:1.75;font-size:28rpx;'
 const BLOCKQUOTE_STYLE = 'margin:0 0 18rpx 0;padding:16rpx 20rpx;border-left:6rpx solid #f2b33d;border-radius:12rpx;background:#2c2539;color:#d9cfe6;line-height:1.75;font-size:28rpx;'
@@ -9,6 +10,8 @@ const LINK_STYLE = 'color:#5fe3e0;text-decoration:underline;'
 const STRONG_STYLE = 'font-weight:700;color:#f2b33d;'
 const CURSOR_HTML = '<span style="display:inline-block;margin-left:8rpx;color:#5fe3e0;font-weight:700;">|</span>'
 const DEFAULT_SEGMENT_CHAR_LIMIT = 520
+// 无序列表项：「- 」「* 」，或「-」后面直接跟中文（有的模型输出「-经典高配」不带空格）
+const BULLET = /^[-*](?:\s+|(?=[一-龥]))/
 
 function escapeHtml(value = '') {
   return String(value)
@@ -102,10 +105,10 @@ function markdownToHtmlBlocks(markdown = '', options = {}) {
       continue
     }
 
-    if (/^[-*]\s+/.test(trimmed)) {
+    if (BULLET.test(trimmed)) {
       const items = []
-      while (index < lines.length && /^[-*]\s+/.test(lines[index].trim())) {
-        items.push(lines[index].trim().replace(/^[-*]\s+/, ''))
+      while (index < lines.length && BULLET.test(lines[index].trim())) {
+        items.push(lines[index].trim().replace(BULLET, ''))
         index += 1
       }
       blocks.push(listToHtml(items, false))
@@ -134,7 +137,7 @@ function markdownToHtmlBlocks(markdown = '', options = {}) {
         currentTrimmed.startsWith('#') ||
         currentTrimmed.startsWith('>') ||
         currentTrimmed.startsWith('```') ||
-        /^[-*]\s+/.test(currentTrimmed) ||
+        BULLET.test(currentTrimmed) ||
         /^\d+\.\s+/.test(currentTrimmed)
       ) {
         break
