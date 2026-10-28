@@ -2,6 +2,7 @@ const AUTH_TOKEN_KEY = 'auth_token'
 const USER_PROFILE_KEY = 'user_profile'
 const FAVORITES_KEY = 'favorite_boards'
 const SESSIONS_KEY = 'werewolf_sessions'
+// 旧版 AI 悬浮球的位置（悬浮球已去掉，只在清理本地数据时顺手删掉残留）
 const ASSISTANT_DOCK_KEY = 'assistant_dock_state'
 const JUDGE_INVITE_KEY = 'judge_invite_room'
 const COMMUNITY_CONTEXT_KEY = 'community_filter_context'
@@ -245,12 +246,6 @@ export default {
   clearSessions() {
     uni.removeStorageSync(SESSIONS_KEY)
   },
-  getAssistantDockState() {
-    return getJson(ASSISTANT_DOCK_KEY, { side: 'right', top: 420 })
-  },
-  setAssistantDockState(value) {
-    setJson(ASSISTANT_DOCK_KEY, value)
-  },
   getPendingJudgeInvite() {
     const raw = getJson(JUDGE_INVITE_KEY, null)
     if (!raw || typeof raw !== 'object') {
@@ -281,15 +276,17 @@ export default {
   clearPendingJudgeInvite() {
     uni.removeStorageSync(JUDGE_INVITE_KEY)
   },
-  // 法官房间 → 社区 tab 的跳转上下文（tabBar 页面不能带 query，只能借 storage 传一次）
+  // 跳到社区 tab 的筛选上下文（tabBar 页面不能带 query，只能借 storage 传一次）：
+  // 法官房间带 boardId 只看这个板子；「我的」带 mine 只看自己的帖子
   setCommunityFilterContext(value) {
     const boardId = Number(value?.boardId) || 0
     const boardName = typeof value?.boardName === 'string' ? value.boardName.trim() : ''
-    if (!boardId && !boardName) {
+    const mine = value?.mine === true
+    if (!boardId && !boardName && !mine) {
       uni.removeStorageSync(COMMUNITY_CONTEXT_KEY)
       return
     }
-    setJson(COMMUNITY_CONTEXT_KEY, { boardId, boardName, source: value?.source || '' })
+    setJson(COMMUNITY_CONTEXT_KEY, { boardId, boardName, mine, source: value?.source || '' })
   },
   consumeCommunityFilterContext() {
     const raw = getJson(COMMUNITY_CONTEXT_KEY, null)

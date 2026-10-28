@@ -4,52 +4,7 @@
       "path": "pages/boards/list",
       "style": {
         "navigationBarTitleText": "板子库",
-        "enablePullDownRefresh": true,
-        "backgroundTextStyle": "light"
-      }
-    },
-    {
-      "path": "pages/community/index",
-      "style": {
-        "navigationBarTitleText": "社区",
-        "enablePullDownRefresh": true,
-        "backgroundTextStyle": "light"
-      }
-    },
-    {
-      "path": "pages/sessions/index",
-      "style": {
-        "navigationBarTitleText": "笔记"
-      }
-    },
-    {
-      "path": "pages/user/index",
-      "style": {
-        "navigationBarTitleText": "我的"
-      }
-    },
-    {
-      "path": "pages/judge/index",
-      "style": {
-        "navigationBarTitleText": "电子法官"
-      }
-    },
-    {
-      "path": "pages/judge/create",
-      "style": {
-        "navigationBarTitleText": "创建法官房间"
-      }
-    },
-    {
-      "path": "pages/judge/room",
-      "style": {
-        "navigationBarTitleText": "法官房间"
-      }
-    },
-    {
-      "path": "pages/boards/detail",
-      "style": {
-        "navigationBarTitleText": "板子详情"
+        "enablePullDownRefresh": true
       }
     },
     {
@@ -59,9 +14,52 @@
       }
     },
     {
+      "path": "pages/judge/index",
+      "style": {
+        "navigationBarTitleText": "开局"
+      }
+    },
+    {
+      "path": "pages/community/index",
+      "style": {
+        "navigationBarTitleText": "酒馆",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/user/index",
+      "style": {
+        "navigationBarTitleText": "我的"
+      }
+    },
+    {
+      "path": "pages/boards/detail",
+      "style": {
+        "navigationBarTitleText": "板子详情"
+      }
+    },
+    {
       "path": "pages/roles/detail",
       "style": {
         "navigationBarTitleText": "角色详情"
+      }
+    },
+    {
+      "path": "pages/assistant/chat",
+      "style": {
+        "navigationBarTitleText": "规则速查"
+      }
+    },
+    {
+      "path": "pages/judge/create",
+      "style": {
+        "navigationBarTitleText": "建房"
+      }
+    },
+    {
+      "path": "pages/judge/room",
+      "style": {
+        "navigationBarTitleText": "法官房间"
       }
     },
     {
@@ -71,21 +69,21 @@
       }
     },
     {
-      "path": "pages/assistant/chat",
+      "path": "pages/community/post",
       "style": {
-        "navigationBarTitleText": "AI 助手"
+        "navigationBarTitleText": "发帖"
       }
     },
     {
-      "path": "pages/community/post",
+      "path": "pages/sessions/index",
       "style": {
-        "navigationBarTitleText": "发布帖子"
+        "navigationBarTitleText": "对局笔记"
       }
     },
     {
       "path": "pages/sessions/edit",
       "style": {
-        "navigationBarTitleText": "创建对局"
+        "navigationBarTitleText": "记一局"
       }
     },
     {
@@ -97,7 +95,7 @@
     {
       "path": "pages/user/favorites",
       "style": {
-        "navigationBarTitleText": "我的收藏"
+        "navigationBarTitleText": "收藏的板子"
       }
     },
     {
@@ -108,14 +106,17 @@
     }
   ],
   "globalStyle": {
+    "navigationStyle": "custom",
     "navigationBarTextStyle": "white",
-    "navigationBarTitleText": "狼人杀图鉴",
+    "navigationBarTitleText": "Wolfbook",
     "navigationBarBackgroundColor": "#15121C",
     "backgroundColor": "#15121C",
     "backgroundColorTop": "#15121C",
-    "backgroundColorBottom": "#15121C"
+    "backgroundColorBottom": "#15121C",
+    "backgroundTextStyle": "light"
   },
   "tabBar": {
+    "custom": true,
     "color": "#9A90AE",
     "selectedColor": "#F2B33D",
     "backgroundColor": "#0E0C13",
@@ -128,22 +129,22 @@
         "selectedIconPath": "static/tabbar/board-active.png"
       },
       {
-        "pagePath": "pages/community/index",
-        "text": "社区",
-        "iconPath": "static/tabbar/community-inactive.png",
-        "selectedIconPath": "static/tabbar/community-active.png"
+        "pagePath": "pages/sessions/index",
+        "text": "笔记",
+        "iconPath": "static/tabbar/notes-inactive.png",
+        "selectedIconPath": "static/tabbar/notes-active.png"
       },
       {
         "pagePath": "pages/judge/index",
-        "text": "法官",
+        "text": "开局",
         "iconPath": "static/tabbar/judge-inactive.png",
         "selectedIconPath": "static/tabbar/judge-active.png"
       },
       {
-        "pagePath": "pages/sessions/index",
-        "text": "笔记",
-        "iconPath": "static/tabbar/sessions-inactive.png",
-        "selectedIconPath": "static/tabbar/sessions-active.png"
+        "pagePath": "pages/community/index",
+        "text": "社区",
+        "iconPath": "static/tabbar/community-inactive.png",
+        "selectedIconPath": "static/tabbar/community-active.png"
       },
       {
         "pagePath": "pages/user/index",

@@ -83,7 +83,7 @@ export function campBreakdown(roles) {
  * 立绘优先用 fullIllustration，没有时退回头像；一张图都没有的角色不参与。
  * 返回按「左、中、右」排好的数组，可能少于三张。
  */
-export function pickLineupArt(roles) {
+export function pickLineupArt(roles, limit = 3) {
   const candidates = (Array.isArray(roles) ? roles : [])
     .filter(Boolean)
     .map((role) => ({ role, image: role.fullIllustration || role.portrait || '' }))
@@ -95,15 +95,24 @@ export function pickLineupArt(roles) {
 
   const sides = [...byGroup('god'), ...byGroup('third'), ...byGroup('villager'), ...wolves]
     .filter((item) => item !== center)
-    .slice(0, 2)
-  const ordered = sides.length === 2 ? [sides[0], center, sides[1]] : [...sides, center]
-  return ordered.map((item) => ({
-    roleId: item.role.roleId,
-    name: item.role.name,
-    image: item.image,
-    accent: roleAccent(item.role),
-    center: item === center,
-  }))
+    .slice(0, Math.max(0, limit - 1))
+  // 两边交替往外排：第 1 个在左内侧，第 2 个在右内侧，第 3 个左外侧……
+  const left = []
+  const right = []
+  sides.forEach((item, index) => (index % 2 === 0 ? left : right).push(item))
+  const ordered = [...left.reverse(), center, ...right]
+  return ordered.map((item, index) => {
+    const offset = index - left.length
+    return {
+      roleId: item.role.roleId,
+      name: item.role.name,
+      image: item.image,
+      accent: roleAccent(item.role),
+      center: item === center,
+      // 扇形位置：l2 l1 c r1 r2，页面按它摆角度和层级
+      slot: offset < 0 ? `l${-offset}` : offset > 0 ? `r${offset}` : 'c',
+    }
+  })
 }
 
 function cleanItems(items) {

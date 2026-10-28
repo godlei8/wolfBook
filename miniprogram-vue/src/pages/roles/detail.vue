@@ -1,28 +1,48 @@
 <script setup>
-// 角色详情（原型 D4）：顶部整幅立绘（底色 = 主题色），名字卡压在立绘下沿；
-// 下面是技能、人物设定、出现的板子、常见问题，最底下切换上一个 / 下一个角色。
+// 角色详情（原型 D4）：整幅立绘铺在顶部（底色 = 主题色），名字卡压在立绘下沿。
 import { computed, ref } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
-import AssistantDock from '../../components/assistant/AssistantDock.vue'
-import RoleToken from '../../components/RoleToken.vue'
+import { onLoad, onShareAppMessage } from '@dcloudio/uni-app'
+import NavBar from '../../components/NavBar.vue'
 import api from '../../services/api'
 import { withAlpha } from '../../utils/board-rules.js'
+import { openAssistant } from '../../utils/assistant-entry'
+import { getNavInsets, rpxToPx } from '../../utils/nav'
 
+const insets = getNavInsets()
 const role = ref(null)
 const allRoles = ref([])
 const openFaqs = ref({ 0: true })
-
-const position = computed(() => {
-  if (!role.value) return -1
-  return allRoles.value.findIndex((item) => item.id === role.value.id)
+const showAllBoards = ref(false)
+// 原型只列 3 个板子，其余点「展开全部」
+const visibleBoards = computed(() => {
+  const list = role.value?.boards || []
+  return showAllBoards.value ? list : list.slice(0, 3)
 })
+
+const position = computed(() => (role.value ? allRoles.value.findIndex((item) => item.id === role.value.id) : -1))
 const prevRole = computed(() => (position.value > 0 ? allRoles.value[position.value - 1] : null))
 const nextRole = computed(() =>
   position.value >= 0 && position.value < allRoles.value.length - 1 ? allRoles.value[position.value + 1] : null,
 )
+const heroHeight = computed(() => `${Math.round(insets.top + rpxToPx(880))}px`)
+const heroImage = computed(() => role.value?.fullIllustration || role.value?.portrait || '')
 const storyStyle = computed(() =>
   role.value ? { backgroundColor: withAlpha(role.value.accent, 0.16), borderColor: withAlpha(role.value.accent, 0.45) } : {},
 )
+// 在哪个板子里第几个醒来：取第一个写了夜间顺序的板子
+const wakeHint = computed(() => {
+  const board = (role.value?.boards || []).find((item) => item.wakeOrder)
+  return board ? `第 ${board.wakeOrder} 个醒来` : ''
+})
+const tags = computed(() => {
+  const value = role.value
+  if (!value) return []
+  const list = [{ text: `${value.faction}阵营`, color: value.campColor }]
+  if (value.roleType && value.roleType !== value.faction) list.push({ text: value.roleType })
+  if (wakeHint.value) list.push({ text: '每晚行动' }, { text: wakeHint.value })
+  return list
+})
+const followQuestion = computed(() => (role.value ? `${role.value.name}有哪些常见打法和误区？` : ''))
 
 async function loadRole(id) {
   try {
@@ -54,166 +74,238 @@ function switchRole(target) {
   uni.redirectTo({ url: `/pages/roles/detail?id=${target.id}` })
 }
 
+function ask(question) {
+  const value = role.value || {}
+  openAssistant('role_detail', { page: 'roles/detail', roleId: value.id, roleName: value.name, faction: value.faction, roleType: value.roleType }, question)
+}
+
+function boardMeta(board) {
+  return [`${board.playerCount} 人`, board.wakeOrder ? `第 ${board.wakeOrder} 个醒来` : ''].filter(Boolean).join(' · ')
+}
+
 onLoad((options) => {
   loadRole(Number(options?.id || 0))
   loadAllRoles()
 })
+
+onShareAppMessage(() => ({
+  title: role.value ? `狼人杀角色 · ${role.value.name}` : '狼人杀角色图鉴',
+  path: `/pages/roles/detail?id=${role.value?.id || ''}`,
+  imageUrl: heroImage.value,
+}))
 </script>
 
 <template>
-  <view v-if="role" class="role-page">
-    <view class="role-hero" :style="{ backgroundColor: role.accent }">
-      <image
-        v-if="role.fullIllustration || role.portrait"
-        class="role-hero-image"
-        :src="role.fullIllustration || role.portrait"
-        mode="aspectFill"
-        webp
-      />
-      <text v-if="position >= 0" class="role-hero-index">{{ position + 1 }} / {{ allRoles.length }}</text>
+  <view class="nt-page rd-page">
+    <NavBar back overlay>
+      <text v-if="position >= 0" class="rd-index serif">{{ position + 1 }} / {{ allRoles.length }}</text>
+    </NavBar>
+
+    <view v-if="role">
+      <view class="rd-hero" :style="{ height: heroHeight, backgroundColor: role.accent }">
+        <image v-if="heroImage" class="rd-hero__img" :src="heroImage" mode="aspectFill" webp />
+        <view v-else class="rd-hero__back">
+          <view class="rd-hero__line" />
+          <text class="rd-hero__moon">☾</text>
+          <text class="rd-hero__hint">立绘绘制中</text>
+        </view>
+      </view>
+
+      <view class="nt-gutter">
+        <view class="nt-ink rd-name">
+          <view class="rd-name__row">
+            <view class="rd-name__text">
+              <text class="rd-name__title serif">{{ role.name }}</text>
+              <text v-if="role.alias" class="nt-meta">又名 {{ role.alias }}</text>
+            </view>
+            <view class="rd-swatch" :style="{ backgroundColor: role.accent }" />
+          </view>
+          <view class="rd-tags">
+            <text v-for="tag in tags" :key="tag.text" class="nt-tag" :style="tag.color ? { color: tag.color } : {}">{{ tag.text }}</text>
+          </view>
+        </view>
+
+        <view class="nt-stack rd-panels">
+          <view class="nt-panel">
+            <text class="nt-label">技能</text>
+            <text class="rd-skill serif">{{ role.skill }}</text>
+          </view>
+
+          <view v-if="role.background" class="nt-panel" :style="storyStyle">
+            <text class="nt-label">人物设定</text>
+            <text class="rd-story serif">{{ role.background }}</text>
+          </view>
+
+          <view v-if="role.boards && role.boards.length" class="nt-panel">
+            <view class="nt-panel__head">
+              <text class="nt-h2">出现在这些板子</text>
+              <text class="nt-meta">共 {{ role.boards.length }} 个</text>
+            </view>
+            <view v-for="board in visibleBoards" :key="board.id" class="nt-row" @tap="openBoard(board.id)">
+              <view class="rd-board__text">
+                <text class="rd-board__name">{{ board.name }}</text>
+                <text class="nt-meta">{{ boardMeta(board) }}</text>
+              </view>
+              <view class="rd-stack">
+                <view
+                  v-for="(item, index) in board.lineup"
+                  :key="item.roleId"
+                  class="nt-token rd-stack__token"
+                  :style="{ marginLeft: index ? '-16rpx' : '0', zIndex: 3 - index }"
+                >
+                  <image v-if="item.portrait" class="nt-token__img" :src="item.portrait" mode="aspectFill" :style="{ borderColor: item.accent }" webp />
+                  <view v-else class="nt-token__text rd-text--sm" :style="{ borderColor: item.accent }">{{ item.name.slice(0, 1) }}</view>
+                </view>
+              </view>
+            </view>
+            <text v-if="role.boards.length > 3" class="rd-more" @tap="showAllBoards = !showAllBoards">
+              {{ showAllBoards ? '收起' : `展开全部 ${role.boards.length} 个` }}
+            </text>
+          </view>
+
+          <view class="nt-panel">
+            <text class="nt-h2">常见问题</text>
+            <view v-for="(faq, index) in role.faqs || []" :key="faq.question" class="nt-fold">
+              <view class="nt-fold__head" @tap="toggleFaq(index)">
+                <text class="nt-fold__question">{{ faq.question }}</text>
+                <text class="nt-fold__arrow" :class="{ 'nt-fold__arrow--open': openFaqs[index] }">›</text>
+              </view>
+              <text v-if="openFaqs[index]" class="rd-answer">{{ faq.answer }}</text>
+            </view>
+            <view class="nt-qchip" @tap="ask(followQuestion)">
+              <text>继续问：{{ followQuestion }}</text>
+              <text class="nt-qchip__ask">问 AI</text>
+            </view>
+          </view>
+        </view>
+
+        <view v-if="prevRole || nextRole" class="rd-switch">
+          <view class="nt-ink rd-switch__card" :class="{ 'rd-switch__card--empty': !prevRole }" @tap="switchRole(prevRole)">
+            <block v-if="prevRole">
+              <text class="nt-arrow">‹</text>
+              <view class="nt-token rd-switch__token">
+                <image v-if="prevRole.portrait" class="nt-token__img" :src="prevRole.portrait" mode="aspectFill" :style="{ borderColor: prevRole.accent }" webp />
+                <view v-else class="nt-token__text rd-text--sm" :style="{ borderColor: prevRole.accent }">{{ prevRole.name.slice(0, 1) }}</view>
+              </view>
+              <text class="rd-switch__name">{{ prevRole.name }}</text>
+            </block>
+          </view>
+          <view class="nt-ink rd-switch__card rd-switch__card--next" :class="{ 'rd-switch__card--empty': !nextRole }" @tap="switchRole(nextRole)">
+            <block v-if="nextRole">
+              <text class="rd-switch__name">{{ nextRole.name }}</text>
+              <view class="nt-token rd-switch__token">
+                <image v-if="nextRole.portrait" class="nt-token__img" :src="nextRole.portrait" mode="aspectFill" :style="{ borderColor: nextRole.accent }" webp />
+                <view v-else class="nt-token__text rd-text--sm" :style="{ borderColor: nextRole.accent }">{{ nextRole.name.slice(0, 1) }}</view>
+              </view>
+              <text class="nt-arrow">›</text>
+            </block>
+          </view>
+        </view>
+      </view>
     </view>
-
-    <view class="page-shell role-body">
-      <view class="name-card ink-card">
-        <view class="name-row">
-          <view class="name-text">
-            <view class="role-name serif">{{ role.name }}</view>
-            <view v-if="role.alias" class="role-alias">又名 {{ role.alias }}</view>
-          </view>
-          <view class="role-swatch" :style="{ backgroundColor: role.accent }" />
-        </view>
-        <view class="role-tags">
-          <text class="role-tag" :style="{ color: role.campColor }">{{ role.faction }}阵营</text>
-          <text v-if="role.roleType && role.roleType !== role.faction" class="role-tag">{{ role.roleType }}</text>
-        </view>
-      </view>
-
-      <view class="glass-card panel">
-        <text class="panel-label">技能</text>
-        <text class="skill-text serif">{{ role.skill }}</text>
-      </view>
-
-      <view v-if="role.background" class="glass-card panel" :style="storyStyle">
-        <text class="panel-label">人物设定</text>
-        <text class="story-text serif">{{ role.background }}</text>
-      </view>
-
-      <view v-if="role.boards && role.boards.length" class="glass-card panel">
-        <view class="panel-head">
-          <text class="section-title">出现在这些板子</text>
-          <text class="section-meta">共 {{ role.boards.length }} 个</text>
-        </view>
-        <view v-for="board in role.boards" :key="board.id" class="board-row" @tap="openBoard(board.id)">
-          <view class="board-row-text">
-            <text class="board-row-name">{{ board.name }}</text>
-            <text class="board-row-meta">{{ board.playerCount }} 人</text>
-          </view>
-          <text class="board-row-arrow">›</text>
-        </view>
-      </view>
-
-      <view v-if="role.faqs && role.faqs.length" class="glass-card panel panel--tight">
-        <text class="section-title">常见问题</text>
-        <view v-for="(faq, index) in role.faqs" :key="faq.question" class="fold">
-          <view class="fold-head" @tap="toggleFaq(index)">
-            <text class="fold-question">{{ faq.question }}</text>
-            <text class="fold-arrow" :class="{ open: openFaqs[index] }">›</text>
-          </view>
-          <view v-if="openFaqs[index]" class="fold-answer">{{ faq.answer }}</view>
-        </view>
-      </view>
-
-      <view v-if="prevRole || nextRole" class="switcher">
-        <view class="switch-card ink-card" :class="{ 'switch-card--empty': !prevRole }" @tap="switchRole(prevRole)">
-          <template v-if="prevRole">
-            <text class="switch-arrow">‹</text>
-            <RoleToken :image="prevRole.portrait" :accent="prevRole.accent" :size="64" />
-            <text class="switch-name">{{ prevRole.name }}</text>
-          </template>
-        </view>
-        <view class="switch-card switch-card--next ink-card" :class="{ 'switch-card--empty': !nextRole }" @tap="switchRole(nextRole)">
-          <template v-if="nextRole">
-            <text class="switch-name">{{ nextRole.name }}</text>
-            <RoleToken :image="nextRole.portrait" :accent="nextRole.accent" :size="64" />
-            <text class="switch-arrow">›</text>
-          </template>
-        </view>
-      </view>
-    </view>
-
-    <AssistantDock
-      scene="role_detail"
-      :page-context="{ page: 'roles/detail', roleId: role.id, roleName: role.name, faction: role.faction, roleType: role.roleType }"
-    />
   </view>
 </template>
 
 <style scoped lang="scss">
-.role-hero {
+.rd-page {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 60rpx);
+}
+
+.rd-index {
+  padding: 8rpx 22rpx;
+  border-radius: 20rpx;
+  background: var(--ink);
+  color: var(--text);
+  font-size: 26rpx;
+  font-weight: 700;
+  letter-spacing: 2rpx;
+}
+
+.rd-hero {
   position: relative;
-  height: 880rpx;
   border-bottom: 8rpx solid var(--ink);
   overflow: hidden;
 }
 
-.role-hero-image {
+.rd-hero__img {
   width: 100%;
   height: 100%;
   display: block;
 }
 
-.role-hero-index {
+/* 没有立绘：阵营色底 + 卡背（金色内框 + 月亮） */
+.rd-hero__back {
   position: absolute;
-  left: 28rpx;
-  top: 28rpx;
-  padding: 8rpx 20rpx;
-  border-radius: 16rpx;
-  background: var(--ink);
-  color: var(--text);
-  font-family: var(--serif);
-  font-size: 24rpx;
-  font-weight: 700;
-  letter-spacing: 2rpx;
-}
-
-.role-body {
-  padding-top: 0;
-}
-
-.name-card {
-  position: relative;
-  z-index: 2;
-  margin-top: -96rpx;
-  padding: 32rpx;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
   flex-direction: column;
-  gap: 18rpx;
-}
-
-.name-row {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: center;
   gap: 20rpx;
 }
 
-.name-text {
-  min-width: 0;
+.rd-hero__line {
+  position: absolute;
+  left: 120rpx;
+  right: 120rpx;
+  top: 220rpx;
+  bottom: 140rpx;
+  border: 4rpx solid var(--ink);
+  border-radius: 32rpx;
+  opacity: 0.35;
 }
 
-.role-name {
+.rd-hero__moon {
+  color: var(--ink);
+  font-size: 160rpx;
+  opacity: 0.55;
+}
+
+.rd-hero__hint {
+  color: var(--ink);
+  font-size: 28rpx;
+  font-weight: 700;
+  opacity: 0.6;
+}
+
+.rd-text--sm {
+  font-size: 26rpx;
+}
+
+.rd-name {
+  position: relative;
+  z-index: 2;
+  margin-top: -68rpx;
+  padding: 36rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.rd-name__row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24rpx;
+}
+
+.rd-name__text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.rd-name__title {
   font-size: 72rpx;
   font-weight: 900;
   line-height: 1.1;
 }
 
-.role-alias {
-  margin-top: 6rpx;
-  color: var(--text-2);
-  font-size: 26rpx;
-}
-
-.role-swatch {
+.rd-swatch {
   width: 80rpx;
   height: 80rpx;
   border-radius: 24rpx;
@@ -222,135 +314,75 @@ onLoad((options) => {
   box-sizing: border-box;
 }
 
-.role-tags {
+.rd-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 12rpx;
+  gap: 16rpx;
 }
 
-.role-tag {
-  padding: 6rpx 16rpx;
-  border-radius: 12rpx;
-  background: var(--panel-raised);
-  color: #d9cfe6;
-  font-size: 24rpx;
-}
-
-.panel {
+.rd-panels {
   margin-top: 32rpx;
-  padding: 34rpx 32rpx;
-  border-radius: 36rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 20rpx;
 }
 
-.panel--tight {
-  gap: 8rpx;
-}
-
-.panel-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.panel-label {
-  color: var(--text-2);
-  font-size: 26rpx;
-  font-weight: 700;
-}
-
-.skill-text {
-  font-size: 40rpx;
+.rd-skill {
+  font-size: 42rpx;
   font-weight: 900;
   line-height: 1.6;
 }
 
-.story-text {
+.rd-story {
   font-size: 32rpx;
   line-height: 1.85;
 }
 
-.board-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20rpx;
-  min-height: 104rpx;
-  padding: 16rpx 24rpx;
-  border-radius: 28rpx;
-  background: var(--panel-raised);
-  box-sizing: border-box;
-}
-
-.board-row-text {
+.rd-board__text {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 4rpx;
 }
 
-.board-row-name {
+.rd-board__name {
   font-size: 30rpx;
   font-weight: 700;
 }
 
-.board-row-meta {
-  color: var(--text-2);
-  font-size: 24rpx;
-}
-
-.board-row-arrow,
-.switch-arrow {
-  color: var(--text-2);
-  font-size: 40rpx;
-}
-
-.fold {
-  border-top: 2rpx solid var(--panel-line);
-  padding-top: 16rpx;
-  margin-top: 16rpx;
-}
-
-.fold-head {
-  min-height: 72rpx;
+.rd-stack {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 20rpx;
+  flex-shrink: 0;
+  padding-right: 8rpx;
 }
 
-.fold-question {
-  font-size: 30rpx;
+.rd-stack__token {
+  position: relative;
+  width: 60rpx;
+  height: 60rpx;
+}
+
+.rd-more {
+  align-self: center;
+  padding: 8rpx 24rpx;
+  color: var(--moon);
+  font-size: 28rpx;
   font-weight: 700;
-  line-height: 1.5;
 }
 
-.fold-arrow {
-  color: var(--text-2);
-  font-size: 40rpx;
-  transform: rotate(90deg);
-  transition: transform 0.2s;
-}
-
-.fold-arrow.open {
-  transform: rotate(-90deg);
-}
-
-.fold-answer {
-  padding-bottom: 8rpx;
-  color: #d9cfe6;
+.rd-answer {
+  display: block;
+  padding-bottom: 12rpx;
+  color: var(--text-soft);
   font-size: 28rpx;
   line-height: 1.75;
 }
 
-.switcher {
+.rd-switch {
   margin-top: 36rpx;
   display: flex;
   gap: 20rpx;
 }
 
-.switch-card {
+.rd-switch__card {
   flex: 1;
   min-height: 112rpx;
   padding: 20rpx 24rpx;
@@ -358,18 +390,22 @@ onLoad((options) => {
   display: flex;
   align-items: center;
   gap: 18rpx;
-  box-sizing: border-box;
 }
 
-.switch-card--next {
+.rd-switch__card--next {
   justify-content: flex-end;
 }
 
-.switch-card--empty {
+.rd-switch__card--empty {
   visibility: hidden;
 }
 
-.switch-name {
+.rd-switch__token {
+  width: 68rpx;
+  height: 68rpx;
+}
+
+.rd-switch__name {
   font-size: 28rpx;
   font-weight: 700;
 }

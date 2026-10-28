@@ -7,6 +7,8 @@ import { formatDateTime, fromNow } from '../../utils/format'
 import { normalizeChatMessage } from './message-model'
 import { createAssistantStreamBuffer, shouldAutoScrollOnMessageAppend } from './stream-buffer'
 import storage from '../../services/storage'
+import api from '../../services/api'
+import NavBar from '../../components/NavBar.vue'
 
 const bootstrap = ref(null)
 const sessions = ref([])
@@ -23,6 +25,12 @@ const draft = ref('')
 let activeStream = null
 const chatScrollIntoView = ref('')
 const loadError = ref('')
+// 原型 D5：顶部的「正在看：某板子」上下文条、历史会话开关、从别的页面带过来的问题
+const contextAvatars = ref([])
+const showHistory = ref(false)
+// 回答下面的「出处」角色卡：问题或回答里提到的角色（原型 D5）
+const roleIndex = ref([])
+let pendingQuestion = ''
 
 const streamRenderDelayMs = 120
 const historyHydrationDelayMs = 28
@@ -35,10 +43,71 @@ const pendingRenderTimers = new Map()
 const draftCount = computed(() => (draft.value || '').length)
 const assistantEnabled = computed(() => bootstrap.value?.enabled !== false)
 const canSend = computed(() => assistantEnabled.value && !!(draft.value || '').trim() && !sending.value)
+// 每条回答配一张角色卡：先看前一条提问里点到的角色，再看回答本身
+const answerRoles = computed(() => {
+  const map = {}
+  let lastQuestion = ''
+  messages.value.forEach((item) => {
+    if (item.role === 'USER') {
+      lastQuestion = item.content || ''
+      return
+    }
+    if (item.isStreaming) return
+    map[item.id] = findRole(lastQuestion) || findRole(item.content || '')
+  })
+  return map
+})
+const sourceLabel = computed(() => (pageContext.value?.boardName ? `出处：${pageContext.value.boardName} · 角色细则` : '出处：角色图鉴'))
+
+function findRole(text) {
+  if (!text) return null
+  // 长名字优先，避免「狼人」抢掉「白狼王」
+  return roleIndex.value.find((role) => text.includes(role.name)) || null
+}
+
+async function loadRoleIndex() {
+  try {
+    const roles = await api.getRoles()
+    roleIndex.value = roles.filter((role) => role.name && role.name !== '平民').sort((a, b) => b.name.length - a.name.length)
+  } catch (error) {
+    roleIndex.value = []
+  }
+}
+
+function openRole(id) {
+  uni.navigateTo({ url: `/pages/roles/detail?id=${id}` })
+}
+
+function openBoard(id) {
+  uni.navigateTo({ url: `/pages/boards/detail?id=${id}` })
+}
+
+function trySend() {
+  if (!canSend.value) return
+  sendQuestion()
+}
+
+function openTools() {
+  const items = [{ label: '新会话', run: startNewSession }]
+  if (sessions.value.length) items.push({ label: showHistory.value ? '收起历史会话' : `历史会话（${sessions.value.length}）`, run: () => (showHistory.value = !showHistory.value) })
+  if (latestSessionId.value && latestSessionId.value !== activeSessionId.value) items.push({ label: '恢复最近一次', run: resumeLatestSession })
+  if (activeSessionId.value) items.push({ label: '清空当前会话', run: resetCurrentSession })
+  uni.showActionSheet({
+    itemList: items.map((item) => item.label),
+    success: (res) => items[res.tapIndex]?.run(),
+  })
+}
 const quickQuestions = computed(() => bootstrap.value?.quickQuestions || [])
 const latestSessionId = computed(() => bootstrap.value?.latestSessionId || '')
 const hasMessages = computed(() => messages.value.length > 0)
 const showEmptyState = computed(() => !loading.value && !loadingHistory.value && !hasMessages.value)
+const contextLabel = computed(() => {
+  const ctx = pageContext.value || {}
+  if (ctx.boardName) return `正在看：${ctx.boardName}，回答会按这个板子的规则来`
+  if (ctx.roleName) return `正在看：${ctx.roleName}，回答会围绕这个角色`
+  if (ctx.phase) return `正在主持：${ctx.boardName || '当前对局'}`
+  return ''
+})
 
 function scrollChatToBottom() {
   chatScrollIntoView.value = ''
@@ -328,6 +397,23 @@ async function loadAll() {
   } finally {
     loading.value = false
   }
+  // 从板子 / 角色页的问题条进来：加载好就直接问
+  if (pendingQuestion && !loadError.value) {
+    const question = pendingQuestion
+    pendingQuestion = ''
+    sendQuestion(question)
+  }
+}
+
+async function loadContextAvatars() {
+  const boardId = Number(pageContext.value?.boardId || 0)
+  if (!boardId) return
+  try {
+    const board = await api.getBoardDetail(boardId)
+    contextAvatars.value = (board.cardRoles || []).filter((role) => role.portrait).slice(0, 4)
+  } catch (error) {
+    contextAvatars.value = []
+  }
 }
 
 async function sendQuestion(question) {
@@ -420,6 +506,7 @@ async function openSession(sessionId) {
   if (!sessionId || loadingHistory.value || sending.value) {
     return
   }
+  showHistory.value = false
   await loadMessages(sessionId)
 }
 
@@ -483,7 +570,10 @@ onLoad((options) => {
   } catch (error) {
     pageContext.value = {}
   }
+  pendingQuestion = decodeURIComponent(options?.question || '')
   loadAll()
+  loadContextAvatars()
+  loadRoleIndex()
 })
 
 onUnload(() => {
@@ -496,155 +586,133 @@ onUnload(() => {
 </script>
 
 <template>
-  <view class="page-shell assistant-page">
-    <view class="assistant-shell">
-      <view class="assistant-toolbar">
-        <view class="toolbar-title">AI 助手</view>
-        <view class="toolbar-actions">
-          <view class="toolbar-action" @tap="startNewSession">新会话</view>
+  <view class="nt-page chat-page">
+    <NavBar back title="规则速查">
+      <template #side>
+        <view class="chat-more" @tap="openTools"><view class="chat-more__dot" /><view class="chat-more__dot" /><view class="chat-more__dot" /></view>
+      </template>
+    </NavBar>
+
+    <view class="nt-gutter chat-top">
+      <view v-if="contextLabel" class="chat-context">
+        <view v-if="contextAvatars.length" class="chat-context__stack">
           <view
-            v-if="latestSessionId && latestSessionId !== activeSessionId"
-            class="toolbar-action toolbar-action--ghost"
-            @tap="resumeLatestSession"
+            v-for="(role, index) in contextAvatars"
+            :key="role.roleId"
+            class="nt-token chat-context__token"
+            :style="{ marginLeft: index ? '-16rpx' : '0', zIndex: 4 - index }"
           >
-            恢复最近
-          </view>
-          <view
-            v-if="activeSessionId"
-            class="toolbar-action toolbar-action--ghost"
-            @tap="resetCurrentSession"
-          >
-            清空当前
+            <image class="nt-token__img" :src="role.portrait" mode="aspectFill" :style="{ borderColor: role.accent }" webp />
           </view>
         </view>
+        <text class="chat-context__text">{{ contextLabel }}</text>
       </view>
 
-      <view v-if="sessions.length" class="glass-card session-panel">
-        <view class="panel-head">
-          <view class="panel-title">对话历史</view>
-          <view class="panel-meta">{{ sessions.length }} 条</view>
-        </view>
-
-        <scroll-view scroll-x class="session-scroll" show-scrollbar="false">
-          <view class="session-row">
-            <view
-              v-for="item in sessions.slice(0, 8)"
-              :key="item.sessionId"
-              class="session-pill"
-              :class="{ 'session-pill--active': item.sessionId === activeSessionId }"
-              @tap="openSession(item.sessionId)"
-            >
-              <view class="session-pill-title">{{ item.title }}</view>
-              <view class="session-pill-meta">{{ item.relativeUpdate || item.updateLabel }}</view>
-            </view>
-          </view>
-        </scroll-view>
-      </view>
-
-      <view v-if="loadError" class="glass-card state-panel state-panel--error">
-        <view class="state-title">当前加载失败</view>
-        <view class="state-desc">{{ loadError }}</view>
-        <view class="state-actions">
-          <view class="state-button" @tap="retryCurrentView">重新加载</view>
-          <view v-if="!storage.getAuthToken()" class="state-button state-button--ghost" @tap="goLogin">去登录</view>
+      <view v-if="showHistory && sessions.length" class="chat-history">
+        <view
+          v-for="item in sessions.slice(0, 8)"
+          :key="item.sessionId"
+          class="nt-row chat-history__row"
+          :class="{ 'chat-history__row--on': item.sessionId === activeSessionId }"
+          @tap="openSession(item.sessionId)"
+        >
+          <text class="chat-history__title">{{ item.title }}</text>
+          <text class="nt-meta">{{ item.relativeUpdate || item.updateLabel }}</text>
         </view>
       </view>
+    </view>
 
-      <scroll-view
-        class="assistant-chat-scroll"
-        scroll-y
-        show-scrollbar="false"
-        :scroll-into-view="chatScrollIntoView"
-      >
-        <view class="assistant-chat-content">
-          <view v-if="showEmptyState" class="glass-card empty-panel">
-            <view class="panel-title">开始对话</view>
-            <view class="panel-desc">从下方快捷提问开始，或者直接输入问题。</view>
+    <scroll-view class="chat-scroll" scroll-y :show-scrollbar="false" :scroll-into-view="chatScrollIntoView">
+      <view class="nt-gutter chat-list">
+        <view v-if="loadError" class="nt-panel chat-state">
+          <text class="nt-h2">当前加载失败</text>
+          <text class="nt-meta">{{ loadError }}</text>
+          <view class="chat-state__actions">
+            <view class="nt-btn nt-btn--gold nt-btn--small" @tap="retryCurrentView">重新加载</view>
+            <view v-if="!storage.getAuthToken()" class="nt-btn nt-btn--ghost nt-btn--small" @tap="goLogin">去登录</view>
           </view>
+        </view>
 
-          <view v-if="loading && !hasMessages" class="glass-card state-panel">
-            <view class="state-title">正在连接 AI 助手</view>
-            <view class="state-desc">正在准备会话数据。</view>
+        <view v-if="showEmptyState && !loadError" class="chat-empty">
+          <view class="chat-avatar">☾</view>
+          <view class="chat-bubble">
+            <text>我是法官台的规则速查。问我板子规则、角色技能或对局里的判定，会尽量按你正在看的板子来回答。</text>
           </view>
+        </view>
 
-          <view v-if="loadingHistory && !hasMessages" class="glass-card state-panel">
-            <view class="state-title">正在载入历史对话</view>
-            <view class="state-desc">会先恢复文本，再逐步整理长回答。</view>
+        <view v-if="(loading || loadingHistory) && !hasMessages" class="nt-empty">
+          {{ loading ? '正在连接规则速查…' : '正在载入历史对话…' }}
+        </view>
+
+        <view v-if="hydratingHistory && hasMessages" class="chat-hydrate">
+          正在整理 {{ pendingHistoryCount }} 条历史回答，不影响继续提问。
+        </view>
+
+        <view v-for="item in messages" :key="item.id" :id="`message-${item.id}`">
+          <view v-if="item.role === 'USER'" class="chat-self">
+            <text class="chat-self__bubble">{{ item.content }}</text>
           </view>
-
-          <view v-if="hydratingHistory && hasMessages" class="glass-card hydrate-panel">
-            <view class="hydrate-dot" />
-            <view class="hydrate-copy">正在整理 {{ pendingHistoryCount }} 条历史回答，不影响继续提问。</view>
-          </view>
-
-          <view
-            v-for="item in messages"
-            :key="item.id"
-            class="message-row"
-            :class="{ 'message-row--self': item.role === 'USER' }"
-            :id="`message-${item.id}`"
-          >
-            <view
-              class="glass-card message-card"
-              :class="{
-                'message-card--assistant': item.role === 'ASSISTANT',
-                'message-card--self': item.role === 'USER',
-              }"
-            >
-              <view class="message-head">
-                <view class="message-role">{{ item.role === 'USER' ? '我' : 'AI' }}</view>
-                <view class="message-time">{{ messageTimeLabel(item) }}</view>
+          <view v-else class="chat-answer">
+            <view class="chat-avatar">☾</view>
+            <view class="chat-answer__body">
+              <view class="chat-bubble">
+                <rich-text v-if="item.renderMode === 'markdown'" class="chat-markdown" :nodes="item.renderedContent" />
+                <text v-else class="chat-plain">{{ item.content }}</text>
               </view>
-
-              <rich-text
-                v-if="item.renderMode === 'markdown'"
-                class="message-content message-content--markdown"
-                :nodes="item.renderedContent"
-              />
-              <view v-else class="message-content message-content--plain">{{ item.content }}</view>
+              <view v-for="board in item.recommendedBoards || []" :key="board.id" class="chat-ref" @tap="openBoard(board.id)">
+                <view class="chat-ref__mark"><text>{{ board.playerCount }}</text></view>
+                <view class="chat-ref__text">
+                  <text class="chat-ref__name">{{ board.name }}</text>
+                  <text class="chat-ref__meta">{{ board.playerCount }} 人 · {{ board.difficulty }}</text>
+                </view>
+                <text class="nt-arrow">›</text>
+              </view>
+              <view v-if="answerRoles[item.id]" class="chat-ref" @tap="openRole(answerRoles[item.id].id)">
+                <view class="nt-token chat-ref__token">
+                  <image v-if="answerRoles[item.id].portrait" class="nt-token__img" :src="answerRoles[item.id].portrait" mode="aspectFill" :style="{ borderColor: answerRoles[item.id].accent }" webp />
+                  <view v-else class="nt-token__text" :style="{ borderColor: answerRoles[item.id].accent }">{{ answerRoles[item.id].name.slice(0, 1) }}</view>
+                </view>
+                <view class="chat-ref__text">
+                  <text class="chat-ref__name">{{ answerRoles[item.id].name }}</text>
+                  <text class="chat-ref__meta">{{ sourceLabel }}</text>
+                </view>
+                <text class="nt-arrow">›</text>
+              </view>
+              <view v-if="item.visibleCitations && item.visibleCitations.length" class="chat-cite">
+                <text class="chat-cite__label">联网来源</text>
+                <text v-for="(cite, index) in item.visibleCitations.slice(0, 3)" :key="index" class="chat-cite__item">{{ index + 1 }}. {{ cite.title || cite.url }}</text>
+              </view>
             </view>
           </view>
+        </view>
 
-          <view id="chat-scroll-anchor" class="scroll-anchor" />
+        <view id="chat-scroll-anchor" class="chat-anchor" />
+      </view>
+    </scroll-view>
+
+    <view class="chat-composer">
+      <scroll-view v-if="quickQuestions.length" scroll-x class="nt-chips" :show-scrollbar="false">
+        <view class="nt-chips__inner chat-quick">
+          <text v-for="item in quickQuestions" :key="item" class="nt-chip" @tap="sendQuestion(item)">{{ item }}</text>
         </view>
       </scroll-view>
-
-      <view class="glass-card composer-panel">
-        <scroll-view
-          v-if="quickQuestions.length"
-          scroll-x
-          class="quick-scroll"
-          show-scrollbar="false"
-        >
-          <view class="quick-row">
-            <view
-              v-for="item in quickQuestions"
-              :key="item"
-              class="quick-chip"
-              @tap="sendQuestion(item)"
-            >
-              {{ item }}
-            </view>
-          </view>
-        </scroll-view>
-
-        <view class="composer-editor">
+      <view class="chat-input-row">
+        <view class="chat-input">
           <textarea
             v-model="draft"
-            class="assistant-input"
+            class="chat-input__field"
             maxlength="300"
             auto-height
             :show-confirm-bar="false"
             :cursor-spacing="24"
-            placeholder="比如：守卫和女巫会不会冲突？"
+            placeholder="问规则、问打法"
+            placeholder-class="nt-placeholder"
           />
+          <text v-if="draftCount" class="chat-input__count">{{ draftCount }}/300</text>
         </view>
-
-        <view class="composer-footer">
-          <view class="composer-count">{{ draftCount }}/300</view>
-          <button class="composer-submit" :disabled="!canSend" :loading="sending" @tap="sendQuestion()">
-            发送
-          </button>
+        <view class="nt-btn nt-btn--gold chat-send" :class="{ 'nt-btn--disabled': sending }" @tap="trySend">
+          <text v-if="sending">…</text>
+          <image v-else class="chat-send__plane" src="/static/icons/send.png" mode="aspectFit" />
         </view>
       </view>
     </view>
@@ -652,314 +720,330 @@ onUnload(() => {
 </template>
 
 <style scoped lang="scss">
-.assistant-page {
+.chat-page {
   height: 100vh;
-  padding: 28rpx 24rpx calc(env(safe-area-inset-bottom) + 24rpx);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
-.assistant-shell {
-  height: 100%;
+.chat-top {
+  flex-shrink: 0;
+  padding-top: 8rpx;
   display: flex;
   flex-direction: column;
-  gap: 16rpx;
+  gap: 20rpx;
 }
 
-.assistant-toolbar,
-.panel-head,
-.message-head,
-.composer-footer,
-.state-actions {
+.chat-context {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 14rpx;
+  gap: 20rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 28rpx;
+  background: var(--panel);
+  border: 2rpx solid var(--panel-line);
 }
 
-.assistant-toolbar {
+.chat-context__stack {
+  display: flex;
+  padding-left: 4rpx;
   flex-shrink: 0;
 }
 
-.toolbar-title {
-  color: #fff6df;
-  font-size: 34rpx;
-  font-weight: 700;
-}
-
-.toolbar-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 10rpx;
-}
-
-.toolbar-action,
-.state-button {
-  min-width: 112rpx;
+.chat-context__token {
+  position: relative;
+  width: 56rpx;
   height: 56rpx;
-  padding: 0 20rpx;
-  border-radius: 999rpx;
-  background: rgba(255, 192, 0, 0.16);
-  color: #ffc000;
+}
+
+.chat-context__text {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 26rpx;
+  line-height: 1.5;
+}
+
+.chat-more {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 24rpx;
+  border: 4rpx solid var(--ink);
+  background: var(--panel);
+  box-shadow: 4rpx 4rpx 0 var(--ink);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22rpx;
-  font-weight: 700;
-}
-
-.toolbar-action--ghost,
-.state-button--ghost {
-  background: rgba(255, 255, 255, 0.06);
-  color: #ece4cf;
-}
-
-.panel-title,
-.state-title {
-  color: #fff6df;
-  font-size: 28rpx;
-  font-weight: 700;
-  line-height: 1.35;
-}
-
-.panel-desc,
-.state-desc,
-.hydrate-copy {
-  color: #cfc6b4;
-  line-height: 1.7;
-  font-size: 24rpx;
-}
-
-.panel-meta,
-.session-pill-meta,
-.message-time,
-.composer-count {
-  color: #938a79;
-  font-size: 22rpx;
-}
-
-.session-panel,
-.empty-panel,
-.state-panel,
-.hydrate-panel,
-.composer-panel,
-.message-card {
-  overflow: hidden;
-}
-
-.session-panel {
-  flex-shrink: 0;
-  padding: 22rpx 24rpx;
-  background: linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(10, 10, 10, 0.96));
-}
-
-.session-scroll {
-  margin-top: 14rpx;
-  white-space: nowrap;
-}
-
-.session-row {
-  display: inline-flex;
-  gap: 12rpx;
-  padding-bottom: 6rpx;
-}
-
-.session-pill {
-  min-width: 220rpx;
-  max-width: 280rpx;
-  padding: 18rpx 18rpx;
-  border-radius: 18rpx;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1rpx solid rgba(255, 255, 255, 0.04);
   box-sizing: border-box;
 }
 
-.session-pill--active {
-  background: rgba(255, 192, 0, 0.12);
-  border-color: rgba(255, 192, 0, 0.2);
+.chat-more__dot {
+  width: 8rpx;
+  height: 8rpx;
+  margin: 0 3rpx;
+  border-radius: 50%;
+  background: var(--text);
 }
 
-.session-pill-title {
-  color: #f8f1de;
-  font-size: 24rpx;
+.chat-history {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  max-height: 520rpx;
+  overflow-y: auto;
+}
+
+.chat-history__row--on {
+  border: 3rpx solid var(--moon);
+}
+
+.chat-history__title {
+  min-width: 0;
+  flex: 1;
+  font-size: 28rpx;
   font-weight: 700;
-  line-height: 1.4;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.assistant-chat-scroll {
+.chat-scroll {
   flex: 1;
   min-height: 0;
 }
 
-.assistant-chat-content {
-  display: grid;
-  gap: 18rpx;
-  padding-bottom: 10rpx;
-}
-
-.empty-panel,
-.state-panel,
-.hydrate-panel,
-.composer-panel {
-  padding: 24rpx;
-  background: linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(10, 10, 10, 0.96));
-}
-
-.state-panel--error {
-  border: 1rpx solid rgba(255, 114, 94, 0.18);
-  background:
-    linear-gradient(180deg, rgba(255, 114, 94, 0.06), rgba(255, 255, 255, 0.02)),
-    linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(10, 10, 10, 0.96));
-}
-
-.state-actions {
-  margin-top: 18rpx;
-  justify-content: flex-start;
-}
-
-.hydrate-panel {
+.chat-list {
+  padding-top: 32rpx;
+  padding-bottom: 24rpx;
   display: flex;
-  align-items: center;
-  gap: 14rpx;
-  padding: 16rpx 20rpx;
+  flex-direction: column;
+  gap: 32rpx;
 }
 
-.hydrate-dot {
-  width: 16rpx;
-  height: 16rpx;
-  border-radius: 999rpx;
-  background: #ffc000;
-  box-shadow: 0 0 14rpx rgba(255, 192, 0, 0.34);
-  flex-shrink: 0;
-}
-
-.message-row {
+.chat-state__actions {
   display: flex;
-  justify-content: flex-start;
+  gap: 16rpx;
 }
 
-.message-row--self {
+.chat-self {
+  display: flex;
   justify-content: flex-end;
 }
 
-.message-card {
-  width: 100%;
-  padding: 22rpx 22rpx;
-  background: linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(10, 10, 10, 0.96));
+.chat-self__bubble {
+  max-width: 78%;
+  padding: 24rpx 28rpx;
+  border-radius: 32rpx 32rpx 8rpx 32rpx;
+  background: var(--text);
+  color: var(--ink);
+  border: 4rpx solid var(--ink);
+  box-shadow: 4rpx 4rpx 0 var(--ink);
+  font-size: 30rpx;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-sizing: border-box;
 }
 
-.message-card--assistant {
-  max-width: 90%;
-  border: 1rpx solid rgba(255, 192, 0, 0.12);
-  background:
-    linear-gradient(180deg, rgba(255, 192, 0, 0.05), rgba(255, 255, 255, 0.02)),
-    linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(10, 10, 10, 0.96));
+.chat-answer,
+.chat-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 20rpx;
 }
 
-.message-card--self {
+.chat-avatar {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 24rpx;
+  background: var(--panel-raised);
+  border: 4rpx solid var(--ink);
+  color: var(--gold);
+  font-size: 36rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.chat-bubble {
+  flex: 1;
+  min-width: 0;
   max-width: 86%;
-  background: linear-gradient(180deg, rgba(36, 36, 36, 0.98), rgba(18, 18, 18, 0.98));
+  padding: 28rpx;
+  border-radius: 8rpx 32rpx 32rpx 32rpx;
+  background: var(--panel);
+  border: 2rpx solid var(--panel-line);
+  color: var(--text);
+  font-size: 30rpx;
+  line-height: 1.75;
+  box-sizing: border-box;
 }
 
-.message-role {
-  color: #ffc000;
-  font-size: 22rpx;
-  font-weight: 700;
+.chat-markdown {
+  display: block;
 }
 
-.message-content {
-  margin-top: 12rpx;
-}
-
-.message-content--plain {
-  color: #f3eee1;
-  font-size: 28rpx;
-  line-height: 1.8;
+.chat-plain {
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-.message-content--markdown {
-  display: block;
+.chat-hydrate {
+  color: var(--text-3);
+  font-size: 24rpx;
+  text-align: center;
 }
 
-.composer-panel {
+.chat-anchor {
+  height: 2rpx;
+}
+
+.chat-composer {
   flex-shrink: 0;
-  padding: 22rpx 22rpx 20rpx;
-  background: linear-gradient(180deg, rgba(17, 17, 17, 0.98), rgba(8, 8, 8, 0.98));
+  padding: 20rpx 0 calc(24rpx + env(safe-area-inset-bottom));
+  background: var(--bar-bg);
+  border-top: 4rpx solid var(--ink);
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
 }
 
-.quick-scroll {
-  white-space: nowrap;
+.chat-quick .nt-chip {
+  height: 60rpx;
+  font-size: 26rpx;
 }
 
-.quick-row {
-  display: inline-flex;
-  gap: 10rpx;
-  padding-bottom: 6rpx;
+.chat-input-row {
+  padding: 0 32rpx;
+  display: flex;
+  align-items: flex-end;
+  gap: 20rpx;
 }
 
-.quick-chip {
-  padding: 14rpx 18rpx;
-  border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.06);
-  color: #f4edd9;
-  font-size: 22rpx;
-  line-height: 1.4;
-}
-
-.composer-editor {
-  margin-top: 12rpx;
-  padding: 14rpx 16rpx;
-  border-radius: 18rpx;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1rpx solid rgba(255, 255, 255, 0.04);
-}
-
-.assistant-input {
-  width: 100%;
-  min-height: 92rpx;
-  max-height: 196rpx;
-  padding: 0;
-  background: transparent;
-  color: #ffffff;
-  font-size: 28rpx;
-  line-height: 1.7;
+.chat-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 96rpx;
+  padding: 22rpx 28rpx;
+  border-radius: 28rpx;
+  background: var(--panel);
+  border: 4rpx solid var(--ink);
   box-sizing: border-box;
+  position: relative;
 }
 
-.composer-footer {
-  margin-top: 16rpx;
-}
-
-.composer-submit {
-  margin: 0;
-  width: 168rpx;
-  height: 80rpx;
-  line-height: 80rpx;
-  border-radius: 16rpx;
-  background: linear-gradient(135deg, #ffd24f, #f3b91f);
-  color: #171105;
+.chat-input__field {
+  width: 100%;
+  min-height: 44rpx;
+  max-height: 200rpx;
+  color: var(--text);
   font-size: 30rpx;
-  font-weight: 800;
-  box-shadow: 0 14rpx 28rpx rgba(255, 192, 0, 0.2);
+  line-height: 1.5;
+}
+
+.chat-input__count {
+  position: absolute;
+  right: 20rpx;
+  bottom: 6rpx;
+  color: var(--text-3);
+  font-size: 20rpx;
+}
+
+.chat-send {
+  width: 96rpx;
+  padding: 0;
+  font-size: 36rpx;
   flex-shrink: 0;
 }
 
-.composer-submit::after {
-  border: none;
+.chat-send__plane {
+  width: 44rpx;
+  height: 44rpx;
 }
 
-.composer-submit[disabled] {
-  background: rgba(255, 255, 255, 0.1);
-  color: #8f8f8f;
-  box-shadow: none;
+.chat-answer__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  padding-right: 24rpx;
 }
 
-.scroll-anchor {
-  height: 1rpx;
+.chat-answer__body .chat-bubble {
+  max-width: none;
+}
+
+.chat-ref {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 28rpx;
+  background: var(--panel-raised);
+  border: 4rpx solid var(--ink);
+  box-shadow: 4rpx 4rpx 0 var(--ink);
+}
+
+.chat-ref__token {
+  width: 84rpx;
+  height: 84rpx;
+  flex-shrink: 0;
+}
+
+.chat-ref__mark {
+  width: 84rpx;
+  height: 84rpx;
+  flex-shrink: 0;
+  border-radius: 20rpx;
+  background: #3a2e14;
+  color: var(--gold);
+  font-family: var(--serif);
+  font-size: 34rpx;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-ref__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.chat-ref__name {
+  font-size: 30rpx;
+  font-weight: 900;
+}
+
+.chat-ref__meta {
+  color: var(--text-2);
+  font-size: 24rpx;
+}
+
+.chat-cite {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  padding: 0 8rpx;
+}
+
+.chat-cite__label {
+  color: var(--text-3);
+  font-size: 22rpx;
+}
+
+.chat-cite__item {
+  color: var(--moon);
+  font-size: 24rpx;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 </style>

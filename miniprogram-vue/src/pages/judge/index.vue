@@ -1,10 +1,11 @@
 <script setup>
 import { ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import AssistantDock from '../../components/assistant/AssistantDock.vue'
+import NavBar from '../../components/NavBar.vue'
 import api from '../../services/api'
 import storage from '../../services/storage'
 import { getJudgePhaseLabel, getJudgeRoomStatusLabel } from '../../utils/judge/meta'
+import { syncTabBar } from '../../utils/tabbar'
 import { goToUserTab, hasAuthToken, requireAuth } from '../../utils/auth'
 
 const loading = ref(false)
@@ -142,147 +143,314 @@ onLoad((options) => {
 })
 
 onShow(() => {
+  syncTabBar()
   syncPendingInvite()
   loadRooms()
 })
 </script>
 
 <template>
-  <view class="page-shell">
-    <view class="hero-title">电子法官</view>
-    <view class="hero-subtitle">从创建房间、发身份、推进流程到结算结果，都能在这里完成。</view>
+  <view class="nt-page nt-page--tab">
+    <NavBar wordmark="NIGHT" />
 
-    <view class="glass-card section-card launch-card">
-      <view class="launch-copy">
-        <view class="section-title">快速开局</view>
-        <view class="section-desc">优先上线主持人模式，法官不入局，适合线下和复盘局直接开房。</view>
+    <view class="nt-gutter ji-head">
+      <text class="nt-title">开一局</text>
+      <text class="nt-meta">你当法官，大家各拿手机翻自己的身份牌。</text>
+    </view>
+
+    <view class="nt-gutter nt-stack ji-body">
+      <view class="nt-ink ji-hero" @tap="openCreate">
+        <image class="ji-hero__bg" src="/static/scenes/moon.webp" mode="aspectFill" webp />
+        <view class="ji-hero__fan">
+          <view v-for="slot in ['l', 'c', 'r']" :key="slot" class="ji-back" :class="`ji-back--${slot}`">
+            <view class="ji-back__line" />
+            <text class="ji-back__moon">☾</text>
+          </view>
+        </view>
+        <view class="ji-hero__plate">
+          <view class="ji-hero__copy">
+            <text class="ji-hero__eyebrow">法官不入座 · 手机发身份</text>
+            <text class="ji-hero__title serif">建房当法官</text>
+          </view>
+          <view class="nt-btn nt-btn--gold nt-btn--small">{{ hasAuth ? '选板子建房' : '先登录' }}</view>
+        </view>
       </view>
-      <button class="button-primary launch-button" @tap="openCreate">
-        {{ hasAuth ? '创建房间' : '先去登录' }}
-      </button>
-    </view>
 
-    <view class="glass-card section-card">
-      <view class="section-title">进入房间</view>
-      <view class="section-desc">输入朋友发来的房间号，或者继续你最近使用过的房间。</view>
-      <view class="join-row">
-        <input
-          :value="roomIdInput"
-          class="field-input join-input"
-          placeholder="请输入 room_xxx 房间号"
-          @input="handleInput"
-        />
-        <button class="button-primary join-button" @tap="enterRoom">进入</button>
+      <view class="nt-panel">
+        <view class="nt-panel__head">
+          <text class="nt-h2">输入房号加入</text>
+          <text class="nt-meta">问法官要 4 位房号</text>
+        </view>
+        <view class="ji-join">
+          <input
+            :value="roomIdInput"
+            class="ji-join__input serif"
+            type="number"
+            maxlength="64"
+            placeholder="2847"
+            placeholder-class="ji-join__placeholder"
+            @input="handleInput"
+            @confirm="enterRoom"
+          />
+          <view class="nt-btn nt-btn--gold" @tap="enterRoom">入座</view>
+        </view>
+      </view>
+
+      <view v-if="sharedRoomId" class="nt-ink ji-invite">
+        <text class="nt-label c-gold">微信邀请</text>
+        <text class="ji-invite__text">{{ sharedInviteText() }}</text>
+        <view class="nt-btn nt-btn--gold nt-btn--block" @tap="openRoom(sharedRoomId)">
+          {{ hasAuth ? '进入房间' : '登录后进入房间' }}
+        </view>
+      </view>
+
+      <view v-if="!hasAuth" class="nt-panel ji-login">
+        <text class="nt-meta">建房和入座都需要先登录，登录后最近的房间会保留在这里。</text>
+        <view class="nt-btn nt-btn--cream nt-btn--block" @tap="openUserLogin">去登录</view>
+      </view>
+
+      <view v-else class="ji-rooms">
+        <view class="nt-panel__head">
+          <text class="nt-h2">最近的房间</text>
+          <text v-if="rooms.length" class="nt-meta">{{ rooms.length }} 间</text>
+        </view>
+        <view v-if="!rooms.length && !loading" class="nt-empty">还没有房间。建一间，或者输入朋友给的房号。</view>
+        <view v-for="item in rooms" :key="item.roomId" class="nt-ink ji-room" @tap="openRoom(item.roomId)">
+          <view class="ji-room__main">
+            <view class="ji-room__tags">
+              <text class="nt-tag" :class="`ji-status--${item.roomStatus}`">{{ getJudgeRoomStatusLabel(item.roomStatus) }}</text>
+              <text v-if="item.owned" class="nt-tag">我主持</text>
+            </view>
+            <text class="ji-room__name serif">{{ item.boardName }}</text>
+            <text class="nt-meta">{{ item.playerCount }} 人 · {{ phaseLabel(item) }} · 已入座 {{ item.joinedCount }}/{{ item.playerCount }}</text>
+          </view>
+          <view class="ji-room__code">
+            <text class="ji-room__label">房号</text>
+            <text class="ji-room__digits serif">{{ item.roomCode || '—' }}</text>
+          </view>
+        </view>
       </view>
     </view>
-
-    <view v-if="sharedRoomId" class="glass-card section-card invite-card">
-      <view class="section-title">微信邀请</view>
-      <view class="section-desc">{{ sharedInviteText() }}</view>
-      <view class="invite-room-id">房间号：{{ sharedRoomId }}</view>
-      <button class="button-primary launch-button" @tap="openRoom(sharedRoomId)">
-        {{ hasAuth ? '通过邀请进入房间' : '登录后进入房间' }}
-      </button>
-    </view>
-
-    <view v-if="!hasAuth" class="glass-card section-card empty-state">
-      电子法官需要登录后使用房间能力。
-      <button class="button-primary auth-button" @tap="openUserLogin">去登录</button>
-    </view>
-
-    <view v-else-if="!rooms.length && !loading" class="glass-card section-card empty-state">
-      还没有最近房间，创建一局之后这里会自动保留你的入口。
-    </view>
-
-    <view
-      v-for="item in rooms"
-      :key="item.roomId"
-      class="glass-card section-card room-card"
-      @tap="openRoom(item.roomId)"
-    >
-      <view class="room-top">
-        <view class="pill pill-gold">{{ getJudgeRoomStatusLabel(item.roomStatus) }}</view>
-        <view class="pill pill-white">{{ item.roomId }}</view>
-      </view>
-      <view class="room-title">{{ item.boardName }}</view>
-      <view class="room-meta">{{ item.playerCount }} 人局 · {{ phaseLabel(item) }}</view>
-      <view class="room-progress">
-        <view class="progress-item">已入座 {{ item.joinedCount }}/{{ item.playerCount }}</view>
-        <view class="progress-item">已准备 {{ item.readyCount }}/{{ item.playerCount }}</view>
-      </view>
-      <view v-if="item.latestAnnouncement" class="room-desc">{{ item.latestAnnouncement }}</view>
-    </view>
-
-    <AssistantDock
-      scene="judge_index"
-      :page-context="{ page: 'judge/index', roomCount: rooms.length, hasAuth }"
-    />
   </view>
 </template>
 
 <style scoped lang="scss">
-.launch-button,
-.auth-button {
-  margin-top: 18rpx;
-  width: 100%;
-}
-
-.join-row {
+.ji-head {
+  padding-top: 8rpx;
   display: flex;
-  gap: 14rpx;
-  margin-top: 16rpx;
-  align-items: center;
+  flex-direction: column;
+  gap: 8rpx;
 }
 
-.join-input {
-  flex: 1;
+.ji-body {
+  margin-top: 36rpx;
+}
+
+.ji-hero {
+  position: relative;
+  height: 460rpx;
+  border-radius: 40rpx;
+  overflow: hidden;
+  background: #1b1724;
+}
+
+.ji-hero__bg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.ji-hero__fan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 56rpx;
+  height: 260rpx;
+}
+
+.ji-back {
+  position: absolute;
+  width: 150rpx;
+  height: 200rpx;
+  border-radius: 20rpx;
+  border: 4rpx solid var(--ink);
+  background: var(--panel);
+  box-shadow: 6rpx 6rpx 0 var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.ji-back--l {
+  left: 150rpx;
+  top: 30rpx;
+  transform: rotate(-10deg);
+}
+
+.ji-back--c {
+  left: 260rpx;
+  top: 0;
+  z-index: 2;
+}
+
+.ji-back--r {
+  left: 370rpx;
+  top: 30rpx;
+  transform: rotate(10deg);
+}
+
+.ji-back__line {
+  position: absolute;
+  left: 12rpx;
+  top: 12rpx;
+  right: 12rpx;
+  bottom: 12rpx;
+  border: 3rpx solid var(--gold);
+  border-radius: 12rpx;
+  opacity: 0.55;
+}
+
+.ji-back__moon {
+  color: var(--gold);
+  font-size: 48rpx;
+}
+
+.ji-hero__plate {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 26rpx 32rpx;
+  background: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.ji-hero__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
   min-width: 0;
 }
 
-.join-button {
-  width: 144rpx;
+.ji-hero__eyebrow {
+  color: var(--gold);
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.ji-hero__title {
+  font-size: 44rpx;
+  font-weight: 900;
+}
+
+.ji-join {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.ji-join__input {
+  flex: 1;
+  min-width: 0;
+  height: 112rpx;
+  padding: 0 28rpx;
+  border-radius: 28rpx;
+  background: var(--bg);
+  border: 4rpx solid var(--ink);
+  color: var(--gold);
+  font-size: 56rpx;
+  font-weight: 900;
+  letter-spacing: 12rpx;
+  box-sizing: border-box;
+}
+
+.ji-join__placeholder {
+  color: #4a4060;
+  letter-spacing: 12rpx;
+}
+
+.ji-invite {
+  padding: 32rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.ji-invite__text {
+  color: var(--text-soft);
+  font-size: 28rpx;
+  line-height: 1.7;
+}
+
+.ji-login {
+  gap: 24rpx;
+}
+
+.ji-rooms {
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+  margin-top: 8rpx;
+}
+
+.ji-room {
+  padding: 28rpx 32rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+}
+
+.ji-room__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.ji-room__tags {
+  display: flex;
+  gap: 12rpx;
+}
+
+.ji-status--playing {
+  background: #3a2e14;
+  color: var(--gold);
+}
+
+.ji-status--finished {
+  color: var(--text-3);
+}
+
+.ji-room__name {
+  font-size: 36rpx;
+  font-weight: 900;
+}
+
+.ji-room__code {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4rpx;
   flex-shrink: 0;
 }
 
-.invite-room-id {
-  margin-top: 14rpx;
-  color: #f4d16c;
-  font-size: 26rpx;
-  font-weight: 700;
-}
-
-.room-top,
-.room-progress {
-  display: flex;
-  justify-content: space-between;
-  gap: 16rpx;
-  flex-wrap: wrap;
-}
-
-.room-title {
-  margin-top: 14rpx;
-  font-size: 38rpx;
-  font-weight: 700;
-  line-height: 1.24;
-}
-
-.room-meta {
-  margin-top: 8rpx;
-  color: #b5b5b5;
-  font-size: 24rpx;
-}
-
-.room-progress {
-  margin-top: 14rpx;
-  color: #f1ddb1;
+.ji-room__label {
+  color: var(--text-3);
   font-size: 22rpx;
-  line-height: 1.55;
 }
 
-.room-desc {
-  margin-top: 12rpx;
-  color: #8f8f8f;
-  font-size: 24rpx;
-  line-height: 1.76;
+.ji-room__digits {
+  color: var(--gold);
+  font-size: 44rpx;
+  font-weight: 900;
+  letter-spacing: 4rpx;
 }
 </style>

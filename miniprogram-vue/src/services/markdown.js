@@ -1,13 +1,13 @@
-const BODY_STYLE = 'margin:0 0 16rpx 0;line-height:1.8;font-size:28rpx;color:#f3eee1;word-break:break-word;'
-const H2_STYLE = 'margin:0 0 18rpx 0;font-size:32rpx;font-weight:700;color:#fff7df;line-height:1.45;'
-const H3_STYLE = 'margin:8rpx 0 14rpx 0;font-size:28rpx;font-weight:700;color:#ffd86b;line-height:1.5;'
-const LIST_STYLE = 'margin:0 0 18rpx 0;padding-left:30rpx;color:#ece4cf;line-height:1.8;font-size:26rpx;'
-const BLOCKQUOTE_STYLE = 'margin:0 0 18rpx 0;padding:14rpx 18rpx;border-left:6rpx solid rgba(255,192,0,0.5);background:rgba(255,255,255,0.04);color:#d8cfba;line-height:1.75;font-size:26rpx;'
-const CODE_BLOCK_STYLE = 'margin:0 0 18rpx 0;padding:18rpx;border-radius:18rpx;background:#111111;color:#f7e8b4;font-size:24rpx;line-height:1.7;white-space:pre-wrap;word-break:break-word;border:1rpx solid rgba(255,192,0,0.14);'
-const INLINE_CODE_STYLE = 'display:inline-block;padding:2rpx 10rpx;border-radius:10rpx;background:rgba(255,192,0,0.1);color:#ffd86b;font-size:24rpx;'
-const LINK_STYLE = 'color:#ffd86b;text-decoration:underline;'
-const STRONG_STYLE = 'font-weight:700;color:#fff9eb;'
-const CURSOR_HTML = '<span style="display:inline-block;margin-left:8rpx;color:#ffd86b;font-weight:700;">|</span>'
+const BODY_STYLE = 'margin:0 0 16rpx 0;line-height:1.75;font-size:30rpx;color:#f4ead5;word-break:break-word;'
+const H2_STYLE = 'margin:0 0 18rpx 0;font-size:34rpx;font-weight:900;color:#f4ead5;line-height:1.45;font-family:"Noto Serif SC","Songti SC",serif;'
+const H3_STYLE = 'margin:8rpx 0 14rpx 0;font-size:30rpx;font-weight:700;color:#f2b33d;line-height:1.5;'
+const LIST_STYLE = 'margin:0 0 18rpx 0;padding-left:32rpx;color:#e8dff0;line-height:1.75;font-size:28rpx;'
+const BLOCKQUOTE_STYLE = 'margin:0 0 18rpx 0;padding:16rpx 20rpx;border-left:6rpx solid #f2b33d;border-radius:12rpx;background:#2c2539;color:#d9cfe6;line-height:1.75;font-size:28rpx;'
+const CODE_BLOCK_STYLE = 'margin:0 0 18rpx 0;padding:18rpx;border-radius:18rpx;background:#07060a;color:#f4ead5;font-size:24rpx;line-height:1.7;white-space:pre-wrap;word-break:break-word;border:2rpx solid #352d44;'
+const INLINE_CODE_STYLE = 'display:inline-block;padding:2rpx 10rpx;border-radius:10rpx;background:#2c2539;color:#f2b33d;font-size:26rpx;'
+const LINK_STYLE = 'color:#5fe3e0;text-decoration:underline;'
+const STRONG_STYLE = 'font-weight:700;color:#f2b33d;'
+const CURSOR_HTML = '<span style="display:inline-block;margin-left:8rpx;color:#5fe3e0;font-weight:700;">|</span>'
 const DEFAULT_SEGMENT_CHAR_LIMIT = 520
 
 function escapeHtml(value = '') {

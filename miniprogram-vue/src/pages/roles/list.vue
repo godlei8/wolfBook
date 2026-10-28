@@ -1,9 +1,8 @@
 <script setup>
-// 角色图鉴（原型 D3）：按阵营分区的立绘卡牌墙，三列；顶部按阵营筛选。没有立绘的角色显示卡背。
+// 角色图鉴（原型 D3，tab 页）：按阵营分区的立绘卡牌墙，三列。没有立绘的角色显示卡背。
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import AssistantDock from '../../components/assistant/AssistantDock.vue'
-import RoleArtCard from '../../components/RoleArtCard.vue'
+import NavBar from '../../components/NavBar.vue'
 import api from '../../services/api'
 
 const FILTERS = [
@@ -29,6 +28,7 @@ function campKey(role) {
   return role.roleType === '平民' ? 'villager' : 'god'
 }
 
+const artCount = computed(() => roles.value.filter((role) => role.fullIllustration).length)
 const sections = computed(() => {
   const visible = filter.value === 'all' ? roles.value : roles.value.filter((role) => campKey(role) === filter.value)
   return SECTIONS.map((section) => ({ ...section, items: visible.filter((role) => role.faction === section.key) })).filter(
@@ -52,112 +52,108 @@ onLoad(loadRoles)
 </script>
 
 <template>
-  <view class="page-shell">
-    <view class="hero-wordmark">CODEX</view>
-    <view class="roles-heading">
-      <view class="hero-title">角色图鉴</view>
-      <text class="roles-count">共 {{ roles.length }} 个角色</text>
+  <view class="nt-page">
+    <NavBar back />
+
+    <view class="nt-gutter rl-head">
+      <text class="nt-title">角色图鉴</text>
+      <text class="nt-meta">{{ roles.length }} 个角色 · {{ artCount }} 张已上立绘</text>
     </view>
 
-    <scroll-view scroll-x class="chip-row roles-filters">
-      <view
-        v-for="item in FILTERS"
-        :key="item.value"
-        class="chip"
-        :class="{ active: filter === item.value }"
-        @tap="filter = item.value"
-      >
-        <view v-if="item.fill" class="filter-dot" :style="{ backgroundColor: item.fill }" />
-        {{ item.label }}
+    <scroll-view scroll-x class="nt-chips rl-chips" :show-scrollbar="false">
+      <view class="nt-chips__inner">
+        <view
+          v-for="item in FILTERS"
+          :key="item.value"
+          class="nt-chip"
+          :class="{ 'nt-chip--on': filter === item.value }"
+          @tap="filter = item.value"
+        >
+          <view v-if="item.fill" class="nt-dot" :style="{ backgroundColor: item.fill }" />
+          <text>{{ item.label }}</text>
+        </view>
       </view>
     </scroll-view>
 
-    <view v-for="section in sections" :key="section.key" class="roles-section">
-      <view class="roles-section-title">
-        <view class="filter-dot" :style="{ backgroundColor: section.fill }" />
-        <text class="serif" :style="{ color: section.color }">{{ section.title }}</text>
-        <text class="roles-section-count">{{ section.items.length }}</text>
-      </view>
-      <view class="roles-grid">
-        <view v-for="item in section.items" :key="item.id" @tap="openRole(item.id)">
-          <RoleArtCard
-            :image="item.fullIllustration || item.portrait"
-            :accent="item.accent"
-            :name="item.name"
-            :camp-fill="item.campFill"
-          />
+    <view class="nt-gutter">
+      <view v-for="section in sections" :key="section.key" class="rl-section">
+        <view class="rl-section__title">
+          <view class="nt-dot" :style="{ backgroundColor: section.fill }" />
+          <text class="serif" :style="{ color: section.color }">{{ section.title }}</text>
+          <text class="rl-section__count">{{ section.items.length }}</text>
+        </view>
+        <view class="rl-grid">
+          <view v-for="item in section.items" :key="item.id" class="nt-card" @tap="openRole(item.id)">
+            <view class="nt-card__frame" :style="{ backgroundColor: item.fullIllustration || item.portrait ? item.accent : '' }">
+              <image
+                v-if="item.fullIllustration || item.portrait"
+                class="nt-card__img"
+                :src="item.fullIllustration || item.portrait"
+                mode="aspectFill"
+                webp
+              />
+              <view v-else class="nt-card__back">
+                <view class="nt-card__line" />
+                <text class="nt-card__moon">☾</text>
+              </view>
+            </view>
+            <view class="nt-card__plate">
+              <text class="nt-card__name" :class="{ 'nt-card__name--muted': !(item.fullIllustration || item.portrait) }">{{ item.name }}</text>
+              <view class="nt-dot" :style="{ backgroundColor: item.campFill }" />
+            </view>
+          </view>
         </view>
       </view>
+
+      <view v-if="roles.length && !sections.length" class="nt-empty">这个阵营下还没有角色。</view>
+      <text v-if="roles.length" class="rl-note">还没画好的角色显示卡背，名字照常可点，详情页用阵营色代替立绘底色。</text>
     </view>
-
-    <view v-if="roles.length && !sections.length" class="empty-state">这个阵营下还没有角色。</view>
-
-    <AssistantDock scene="roles_list" :page-context="{ page: 'roles/list', filter }" />
   </view>
 </template>
 
 <style scoped lang="scss">
-.hero-wordmark {
-  color: var(--gold);
-  font-family: var(--serif);
-  font-size: 24rpx;
-  font-weight: 700;
-  letter-spacing: 8rpx;
-  margin-bottom: 8rpx;
-}
-
-.roles-heading {
+.rl-head {
+  padding-top: 8rpx;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 16rpx;
 }
 
-.roles-count {
-  color: var(--text-2);
-  font-size: 24rpx;
-  flex-shrink: 0;
+.rl-chips {
+  margin-top: 32rpx;
 }
 
-.roles-filters {
-  margin-top: 28rpx;
-  padding: 4rpx 4rpx 14rpx;
-  box-sizing: border-box;
+.rl-section {
+  margin-top: 44rpx;
 }
 
-.chip {
-  gap: 10rpx;
-}
-
-.filter-dot {
-  width: 16rpx;
-  height: 16rpx;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.roles-section {
-  margin-top: 40rpx;
-}
-
-.roles-section-title {
+.rl-section__title {
   display: flex;
   align-items: center;
-  gap: 14rpx;
+  gap: 16rpx;
   font-size: 34rpx;
   font-weight: 900;
 }
 
-.roles-section-count {
+.rl-section__count {
   color: var(--text-3);
   font-size: 24rpx;
   font-weight: 400;
 }
 
-.roles-grid {
+.rl-grid {
   margin-top: 24rpx;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 28rpx 24rpx;
+}
+
+.rl-note {
+  display: block;
+  margin-top: 36rpx;
+  color: var(--text-3);
+  font-size: 26rpx;
+  line-height: 1.7;
 }
 </style>

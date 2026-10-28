@@ -39,6 +39,23 @@ test('pickLineupArt puts the special wolf in the middle and the first two gods o
   assert.equal(art[1].accent, FACTION_ACCENTS['狼人'])
 })
 
+test('pickLineupArt can lay out a five-card fan with alternating sides', () => {
+  const art = pickLineupArt(
+    [
+      role(1, '预言家', '好人', '神职'),
+      role(2, '女巫', '好人', '神职'),
+      role(3, '猎人', '好人', '神职'),
+      role(8, '白痴', '好人', '神职'),
+      role(9, '平民', '好人', '平民'),
+      role(6, '狼人', '狼人', '狼人'),
+    ],
+    5,
+  )
+  assert.deepEqual(art.map((item) => item.name), ['猎人', '预言家', '狼人', '女巫', '白痴'])
+  assert.deepEqual(art.map((item) => item.slot), ['l2', 'l1', 'c', 'r1', 'r2'])
+  assert.deepEqual(pickLineupArt([role(6, '狼人', '狼人', '狼人')]).map((item) => item.slot), ['c'])
+})
+
 test('pickLineupArt falls back to the plain wolf, portraits, and villagers when needed', () => {
   const art = pickLineupArt([
     role(9, '平民', '好人', '平民'),

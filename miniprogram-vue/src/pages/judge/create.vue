@@ -1,7 +1,8 @@
 <script setup>
+// 建房：选板子（带阵容头像的列表，点选）→ 选法官模式 → 创建并进入等待入座。
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import AssistantDock from '../../components/assistant/AssistantDock.vue'
+import NavBar from '../../components/NavBar.vue'
 import api from '../../services/api'
 import { getJudgeSupportMeta, judgeModeOptions } from '../../utils/judge/meta'
 
@@ -22,7 +23,7 @@ const joinedDisabledReason = computed(() => {
 async function loadBoards(preferredBoardId = 0) {
   loading.value = true
   try {
-    const data = await api.getBoards({ page: 1, size: 100 })
+    const data = await api.getBoards({ page: 1, size: 50 })
     boards.value = data.list || []
     if (preferredBoardId) {
       const index = boards.value.findIndex((item) => item.id === preferredBoardId)
@@ -35,8 +36,8 @@ async function loadBoards(preferredBoardId = 0) {
   }
 }
 
-function chooseBoard(event) {
-  selectedBoardIndex.value = Number(event.detail?.value || 0)
+function chooseBoard(index) {
+  selectedBoardIndex.value = index
   judgeMode.value = 'observer'
 }
 
@@ -74,163 +75,268 @@ onLoad((options) => {
 </script>
 
 <template>
-  <view class="page-shell">
-    <view class="hero-title">创建法官房间</view>
-    <view class="hero-subtitle">优先支持主持人模式，先把线下对局和结构化流程稳定跑起来。</view>
+  <view class="nt-page nt-page--bar">
+    <NavBar back title="建房" />
 
-    <view class="glass-card section-card">
-      <view class="section-title">选择板子</view>
-      <view class="section-desc">会自动带入人数和法官支持层级，后续还能继续扩展到系统执法。</view>
-      <picker
-        mode="selector"
-        :range="boards"
-        range-key="name"
-        :value="selectedBoardIndex"
-        @change="chooseBoard"
-      >
-        <view class="field-input picker-field">
-          <view class="picker-value">{{ selectedBoard ? selectedBoard.name : '选择板子' }}</view>
-          <view class="picker-arrow">></view>
-        </view>
-      </picker>
-
-      <view v-if="selectedBoard" class="board-preview">
-        <image v-if="selectedBoard.coverImage" class="board-cover" :src="selectedBoard.coverImage" mode="aspectFill" />
-        <view class="board-copy">
-          <view class="board-top">
-            <view class="pill pill-gold">{{ selectedBoard.playerCount }} 人局</view>
-            <view class="pill pill-white">{{ supportMeta.label }}</view>
-          </view>
-          <view class="board-name">{{ selectedBoard.name }}</view>
-          <view class="board-meta">{{ selectedBoard.difficulty }} · {{ supportMeta.description }}</view>
-          <view class="board-desc">{{ selectedBoard.cardDescription || selectedBoard.summary || selectedBoard.briefConfig }}</view>
-        </view>
-      </view>
-    </view>
-
-    <view class="glass-card section-card">
-      <view class="section-title">法官模式</view>
-      <view class="section-desc">一期先开放主持人模式，系统执法模式预留入口但暂不开放。</view>
-      <view class="mode-grid">
+    <view v-if="selectedBoard" class="nt-gutter">
+      <view class="nt-ink jc-preview">
+        <image v-if="selectedBoard.backgroundImage" class="jc-preview__bg" :src="selectedBoard.backgroundImage" mode="aspectFill" webp />
         <view
-          v-for="item in judgeModeOptions"
-          :key="item.value"
-          class="mode-card"
-          :class="{ active: judgeMode === item.value, disabled: item.value === 'joined' }"
-          @tap="chooseMode(item.value)"
+          v-for="art in selectedBoard.lineupArt"
+          :key="art.roleId"
+          class="nt-card jc-preview__card"
+          :class="`jc-preview__card--${art.slot}`"
         >
-          <view class="mode-title">{{ item.title }}</view>
-          <view class="mode-desc">{{ item.value === 'joined' ? joinedDisabledReason : item.subtitle }}</view>
+          <view class="nt-card__frame" :style="{ backgroundColor: art.accent }">
+            <image class="nt-card__img" :src="art.image" mode="aspectFill" webp />
+          </view>
+        </view>
+        <view class="jc-preview__plate">
+          <view class="jc-preview__copy">
+            <text class="jc-preview__eyebrow">今晚开这一局</text>
+            <text class="jc-preview__name serif">{{ selectedBoard.name }}</text>
+          </view>
+          <text class="nt-meta jc-preview__meta">{{ selectedBoard.playerCount }} 人 · {{ supportMeta.label }}</text>
         </view>
       </view>
     </view>
 
-    <button class="button-primary create-button" :loading="creating" :disabled="creating" @tap="createRoom">创建并进入房间</button>
+    <view class="nt-gutter nt-stack jc-body">
+      <view class="nt-panel">
+        <view class="nt-panel__head">
+          <text class="nt-h2">法官模式</text>
+        </view>
+        <view class="jc-modes">
+          <view
+            v-for="item in judgeModeOptions"
+            :key="item.value"
+            class="jc-mode"
+            :class="{ 'jc-mode--on': judgeMode === item.value, 'jc-mode--off': item.value === 'joined' }"
+            @tap="chooseMode(item.value)"
+          >
+            <text class="jc-mode__title serif">{{ item.title }}</text>
+            <text class="jc-mode__desc">{{ item.value === 'joined' ? joinedDisabledReason : item.subtitle }}</text>
+          </view>
+        </view>
+      </view>
 
-    <AssistantDock
-      scene="judge_create"
-      :page-context="{ page: 'judge/create', boardId: selectedBoard?.id || 0, boardName: selectedBoard?.name || '', judgeMode }"
-    />
+      <view class="nt-panel">
+        <view class="nt-panel__head">
+          <text class="nt-h2">选板子</text>
+          <text class="nt-meta">{{ boards.length }} 个</text>
+        </view>
+        <view v-if="loading" class="nt-empty">正在加载板子…</view>
+        <view
+          v-for="(board, index) in boards"
+          :key="board.id"
+          class="jc-board"
+          :class="{ 'jc-board--on': index === selectedBoardIndex }"
+          @tap="chooseBoard(index)"
+        >
+          <view class="jc-board__main">
+            <text class="jc-board__name">{{ board.name }}</text>
+            <text class="nt-meta">{{ board.playerCount }} 人 · {{ board.difficulty }}{{ board.winCondition ? ` · ${board.winCondition}` : '' }}</text>
+          </view>
+          <view class="jc-board__stack">
+            <view
+              v-for="(role, roleIndex) in (board.cardRoles || []).slice(0, 4)"
+              :key="role.roleId"
+              class="nt-token jc-board__token"
+              :style="{ marginLeft: roleIndex ? '-14rpx' : '0', zIndex: 5 - roleIndex }"
+            >
+              <image v-if="role.portrait" class="nt-token__img" :src="role.portrait" mode="aspectFill" :style="{ borderColor: role.accent }" webp />
+              <view v-else class="nt-token__text jc-board__text" :style="{ borderColor: role.accent }">{{ role.name.slice(0, 1) }}</view>
+            </view>
+          </view>
+          <view class="jc-board__check">{{ index === selectedBoardIndex ? '✓' : '' }}</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="nt-bar">
+      <view class="nt-btn nt-btn--gold jc-create" :class="{ 'nt-btn--disabled': creating || !selectedBoard }" @tap="createRoom">
+        {{ creating ? '正在建房…' : '☾ 创建并进入房间' }}
+      </view>
+    </view>
   </view>
 </template>
 
 <style scoped lang="scss">
-.picker-field {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  min-height: 84rpx;
-}
-
-.picker-value {
-  font-size: 28rpx;
-  color: #ffffff;
-}
-
-.picker-arrow {
-  color: #ffc000;
-  font-size: 32rpx;
-}
-
-.board-preview {
+.jc-preview {
+  position: relative;
   margin-top: 16rpx;
+  height: 400rpx;
+  border-radius: 40rpx;
   overflow: hidden;
-  border-radius: 22rpx;
-  background: rgba(255, 255, 255, 0.04);
+  background: #1b1724;
 }
 
-.board-cover {
+.jc-preview__bg {
+  position: absolute;
+  left: 0;
+  top: 0;
   width: 100%;
-  height: 240rpx;
-  display: block;
+  height: 100%;
 }
 
-.board-copy {
-  padding: 24rpx;
+.jc-preview__card {
+  position: absolute;
+  width: 136rpx;
+  border-radius: 18rpx;
+  box-shadow: 4rpx 4rpx 0 var(--ink);
 }
 
-.board-top {
+.jc-preview__card--l1 {
+  left: 170rpx;
+  top: 60rpx;
+  transform: rotate(-9deg);
+}
+
+.jc-preview__card--c {
+  left: 263rpx;
+  top: 32rpx;
+  z-index: 2;
+}
+
+.jc-preview__card--r1 {
+  left: 356rpx;
+  top: 60rpx;
+  transform: rotate(9deg);
+}
+
+.jc-preview__plate {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  padding: 22rpx 32rpx;
+  background: var(--ink);
   display: flex;
-  gap: 12rpx;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
 }
 
-.board-name {
-  margin-top: 14rpx;
-  font-size: 34rpx;
+.jc-preview__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+  min-width: 0;
+}
+
+.jc-preview__eyebrow {
+  color: var(--gold);
+  font-size: 24rpx;
   font-weight: 700;
-  line-height: 1.24;
 }
 
-.board-meta {
-  margin-top: 10rpx;
-  color: #c9b483;
-  font-size: 24rpx;
+.jc-preview__name {
+  font-size: 40rpx;
+  font-weight: 900;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.board-desc {
-  margin-top: 12rpx;
-  color: #8f8f8f;
-  font-size: 24rpx;
-  line-height: 1.76;
+.jc-preview__meta {
+  flex-shrink: 0;
 }
 
-.mode-grid {
+.jc-body {
+  margin-top: 32rpx;
+}
+
+.jc-modes {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16rpx;
-  margin-top: 18rpx;
+  gap: 20rpx;
 }
 
-.mode-card {
-  min-height: 180rpx;
-  padding: 24rpx;
-  border-radius: 22rpx;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1rpx solid rgba(255, 255, 255, 0.08);
+.jc-mode {
+  padding: 28rpx;
+  border-radius: 28rpx;
+  background: var(--panel-raised);
+  border: 4rpx solid transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  box-sizing: border-box;
 }
 
-.mode-card.active {
-  background: rgba(255, 192, 0, 0.12);
-  border-color: rgba(255, 192, 0, 0.2);
+.jc-mode--on {
+  border-color: var(--moon);
 }
 
-.mode-card.disabled {
-  opacity: 0.7;
+.jc-mode--off {
+  opacity: 0.5;
 }
 
-.mode-title {
+.jc-mode__title {
+  font-size: 34rpx;
+  font-weight: 900;
+}
+
+.jc-mode__desc {
+  color: var(--text-2);
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+.jc-board {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  min-height: 112rpx;
+  padding: 18rpx 24rpx;
+  border-radius: 28rpx;
+  background: var(--panel-raised);
+  border: 4rpx solid transparent;
+  box-sizing: border-box;
+}
+
+.jc-board--on {
+  border-color: var(--moon);
+}
+
+.jc-board__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.jc-board__name {
   font-size: 30rpx;
   font-weight: 700;
 }
 
-.mode-desc {
-  margin-top: 12rpx;
-  color: #9d9d9d;
-  font-size: 22rpx;
-  line-height: 1.72;
+.jc-board__stack {
+  display: flex;
+  flex-shrink: 0;
 }
 
-.create-button {
-  margin-top: 24rpx;
+.jc-board__token {
+  position: relative;
+  width: 56rpx;
+  height: 56rpx;
+}
+
+.jc-board__text {
+  font-size: 24rpx;
+}
+
+.jc-board__check {
+  width: 40rpx;
+  color: var(--moon);
+  font-size: 36rpx;
+  font-weight: 900;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.jc-create {
+  flex: 1;
 }
 </style>

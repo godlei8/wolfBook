@@ -1,12 +1,15 @@
 <script setup>
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import AssistantDock from '../../components/assistant/AssistantDock.vue'
+import NavBar from '../../components/NavBar.vue'
 import api from '../../services/api'
 import storage from '../../services/storage'
 import userData from '../../services/user-data'
+import { getNavInsets } from '../../utils/nav'
+import { syncTabBar } from '../../utils/tabbar'
 
 const DEFAULT_NICKNAME_PREFIX = '微信用户'
+const insets = getNavInsets()
 
 const user = ref(null)
 const profileEditorVisible = ref(false)
@@ -16,10 +19,16 @@ const profileSaving = ref(false)
 const viewState = reactive({
   favoritesCount: 0,
   sessionsCount: 0,
+  hostedCount: 0,
+  playedCount: 0,
   profileStatusText: '未登录',
   avatarPreview: '',
   profileInitial: '我',
 })
+
+// 原型 D11：可以挑一张角色立绘当头像
+const artRoles = ref([])
+const avatarRole = computed(() => artRoles.value.find((role) => role.portrait && role.portrait === user.value?.avatar) || null)
 
 const profileForm = reactive({
   nickname: '',
@@ -49,6 +58,14 @@ async function refreshCounts() {
     ])
     viewState.favoritesCount = favoriteState?.boardIds?.length || 0
     viewState.sessionsCount = sessions?.length || 0
+    if (storage.getAuthToken()) {
+      const rooms = await api.getJudgeRecentRooms().catch(() => [])
+      viewState.hostedCount = rooms.filter((room) => room.owned).length
+      viewState.playedCount = rooms.filter((room) => !room.owned).length
+    } else {
+      viewState.hostedCount = 0
+      viewState.playedCount = 0
+    }
   } catch (error) {
     viewState.favoritesCount = storage.getFavorites().length
     viewState.sessionsCount = storage.getSessions().length
@@ -193,8 +210,50 @@ function openFavorites() {
   uni.navigateTo({ url: '/pages/user/favorites' })
 }
 
-function openSessions() {
-  uni.switchTab({ url: '/pages/sessions/index' })
+function openRoles() {
+  uni.navigateTo({ url: '/pages/roles/list' })
+}
+
+function openHosted() {
+  uni.switchTab({ url: '/pages/judge/index' })
+}
+
+function openMyPosts() {
+  if (!storage.getAuthToken()) {
+    uni.showToast({ title: '请先登录', icon: 'none' })
+    return
+  }
+  storage.setCommunityFilterContext({ mine: true })
+  uni.switchTab({ url: '/pages/community/index' })
+}
+
+async function loadArtRoles() {
+  try {
+    artRoles.value = (await api.getRoles()).filter((role) => role.portrait && role.fullIllustration)
+  } catch (error) {
+    artRoles.value = []
+  }
+}
+
+// 把一张角色立绘设成头像（直接用立绘的头像图地址）
+async function chooseRoleAvatar(role) {
+  if (!storage.getAuthToken() || !user.value) {
+    uni.showToast({ title: '登录后才能换头像', icon: 'none' })
+    return
+  }
+  if (profileSaving.value || role.portrait === user.value.avatar) return
+  profileSaving.value = true
+  try {
+    const latestUser = await api.updateUserInfo({ nickname: user.value.nickname, avatar: role.portrait })
+    storage.setUserProfile(latestUser)
+    user.value = latestUser
+    fillProfileForm(latestUser)
+    uni.showToast({ title: `头像换成了${role.name}`, icon: 'none' })
+  } catch (error) {
+    showRequestError(error, '头像更新失败')
+  } finally {
+    profileSaving.value = false
+  }
 }
 
 function openSettings() {
@@ -202,531 +261,444 @@ function openSettings() {
 }
 
 onShow(() => {
+  syncTabBar()
   refreshData()
+  if (!artRoles.value.length) loadArtRoles()
 })
 </script>
 
 <template>
-  <view class="page-shell">
-    <view class="hero-title">我的</view>
-    <view class="hero-subtitle">账号、收藏和对局笔记都在这里。</view>
+  <view class="nt-page nt-page--tab">
+    <NavBar overlay />
 
-    <view class="glass-card section-card profile-card">
-      <view class="profile-header">
-        <view class="profile-header-copy">
-          <view class="section-title">微信资料</view>
-          <view class="section-meta">
-            {{ user ? '社区互动、身份展示与资料同步入口' : '登录后可参与社区互动并同步微信资料' }}
-          </view>
-        </view>
-        <view class="profile-badge" :class="{ active: !!user }">{{ viewState.profileStatusText }}</view>
+    <view class="nt-gutter me-head" :style="{ paddingTop: `${insets.statusBar + 12}px` }">
+      <view class="me-avatar" :style="{ borderColor: avatarRole ? avatarRole.accent : '#3F9A6A' }" @tap="user ? openProfileEditor() : handleLogin()">
+        <image v-if="user && user.avatar" class="me-avatar__img" :src="user.avatar" mode="aspectFill" />
+        <text v-else class="me-avatar__text serif">{{ viewState.profileInitial }}</text>
       </view>
-
-      <template v-if="user">
-        <view class="profile-body">
-          <image v-if="user.avatar" class="profile-avatar" :src="user.avatar" mode="aspectFill" />
-          <view v-else class="profile-avatar profile-placeholder">{{ viewState.profileInitial }}</view>
-
-          <view class="profile-copy">
-            <view class="profile-name">{{ user.nickname || '微信用户' }}</view>
-            <view class="profile-openid">{{ user.openid }}</view>
-            <view class="profile-helper">用于社区身份展示、发帖互动和资料同步。</view>
-          </view>
-        </view>
-
-        <button class="action-button action-button--ghost profile-action" @tap="openProfileEditor">
-          更新微信头像和昵称
-        </button>
-      </template>
-
-      <template v-else>
-        <view class="login-panel">
-          <view class="login-title">未登录</view>
-          <view class="login-desc">登录后可发帖、评论、点赞，并同步你的微信资料。</view>
-        </view>
-        <button class="action-button action-button--primary profile-action" :loading="loginLoading" :disabled="loginLoading" @tap="handleLogin">
-          微信登录
-        </button>
-      </template>
+      <view class="me-head__text">
+        <text class="me-name serif">{{ user ? user.nickname || '微信用户' : '还没登录' }}</text>
+        <text class="nt-meta">{{ user ? (avatarRole ? `头像：${avatarRole.name}${avatarRole.alias ? ` · ${avatarRole.alias}` : ''}` : viewState.profileStatusText) : '登录后同步收藏、笔记和对局' }}</text>
+      </view>
+      <view class="nt-iconbtn me-gear" @tap="openSettings">⚙</view>
     </view>
 
-    <view class="entry-stack">
-      <view class="glass-card section-card entry-card" @tap="openFavorites">
-        <view class="entry-copy">
-          <view class="entry-title">我的收藏</view>
-          <view class="entry-desc">查看已收藏的板子与配置。</view>
-        </view>
-        <view class="entry-side">
-          <view class="entry-count">{{ viewState.favoritesCount }}</view>
-          <view class="entry-unit">个板子</view>
-          <view class="entry-arrow">›</view>
+    <view class="nt-gutter nt-stack me-body">
+      <view v-if="!user" class="nt-ink me-login">
+        <text class="me-login__title serif">登录 Wolfbook</text>
+        <text class="nt-meta">登录后可以建房当法官、入座、发帖评论，收藏和笔记也会同步到云端。</text>
+        <view class="nt-btn nt-btn--gold nt-btn--block" :class="{ 'nt-btn--disabled': loginLoading }" @tap="handleLogin">
+          {{ loginLoading ? '登录中…' : '微信登录' }}
         </view>
       </view>
 
-      <view class="glass-card section-card entry-card" @tap="openSessions">
-        <view class="entry-copy">
-          <view class="entry-title">我的笔记</view>
-          <view class="entry-desc">继续记录发言、投票和夜间信息。</view>
+      <view v-else class="nt-ink me-art">
+        <view class="nt-panel__head">
+          <text class="me-art__title">换一张立绘当头像</text>
+          <text class="nt-meta">{{ artRoles.length }} 张可选</text>
         </view>
-        <view class="entry-side">
-          <view class="entry-count">{{ viewState.sessionsCount }}</view>
-          <view class="entry-unit">场对局</view>
-          <view class="entry-arrow">›</view>
-        </view>
-      </view>
-
-      <view class="glass-card section-card entry-card" @tap="openSettings">
-        <view class="entry-copy">
-          <view class="entry-title">设置</view>
-          <view class="entry-desc">清理缓存、查看版本与本地数据状态。</view>
-        </view>
-        <view class="entry-side entry-side--solo">
-          <view class="entry-arrow">›</view>
-        </view>
-      </view>
-    </view>
-
-    <view v-if="profileEditorVisible" class="editor-mask" @tap="profileEditorVisible = false">
-      <view class="glass-card editor-panel" @tap.stop>
-        <view class="editor-handle" />
-
-        <view class="editor-header">
-          <view class="editor-header-copy">
-            <view class="editor-kicker">WECHAT PROFILE</view>
-            <view class="section-title">完善微信资料</view>
-            <view class="section-meta">同步头像和昵称后，社区展示与互动身份会更完整。</view>
-          </view>
-          <view class="editor-close" @tap="profileEditorVisible = false">关闭</view>
-        </view>
-
-        <view class="editor-hero">
-          <view class="editor-avatar-card">
-            <image
-              v-if="viewState.avatarPreview"
-              class="editor-avatar"
-              :src="viewState.avatarPreview"
-              mode="aspectFill"
-            />
-            <view v-else class="editor-avatar profile-placeholder">{{ viewState.profileInitial }}</view>
-            <view class="editor-avatar-meta">
-              <view class="editor-avatar-label">当前头像</view>
-              <view class="editor-avatar-hint">建议使用清晰的微信头像，社区展示会直接同步。</view>
+        <scroll-view scroll-x class="me-art__scroll" :show-scrollbar="false">
+          <view class="me-art__row">
+            <view
+              v-for="role in artRoles"
+              :key="role.id"
+              class="me-art__item"
+              :class="{ 'me-art__item--on': avatarRole && avatarRole.id === role.id }"
+              @tap="chooseRoleAvatar(role)"
+            >
+              <view class="nt-token me-art__token">
+                <image class="nt-token__img" :src="role.portrait" mode="aspectFill" :style="{ borderColor: role.accent }" webp />
+              </view>
             </view>
           </view>
+        </scroll-view>
+      </view>
 
-          <view class="editor-avatar-actions">
-            <button class="action-button action-button--ghost avatar-button" open-type="chooseAvatar" @chooseavatar="handleChooseAvatar">
-              选择微信头像
-            </button>
-            <view class="editor-tip-card">
-              <view class="editor-tip-title">资料同步</view>
-              <view class="editor-tip-desc">保存后会更新到账户资料里，后续发帖和评论会使用这份信息。</view>
-            </view>
-          </view>
+      <view class="me-stats">
+        <view class="me-stat" @tap="openHosted">
+          <text class="me-stat__num serif">{{ viewState.playedCount }}</text>
+          <text class="me-stat__label">参与对局</text>
         </view>
-
-        <view class="editor-field">
-          <view class="editor-label-row">
-            <view class="editor-label">微信昵称</view>
-            <view class="editor-label-hint">{{ profileForm.nickname.trim().length }}/20</view>
-          </view>
-          <view class="editor-input-shell">
-            <input
-              :value="profileForm.nickname"
-              type="nickname"
-              maxlength="20"
-              class="field-input editor-input"
-              placeholder="请输入或选择微信昵称"
-              placeholder-style="color: rgba(255, 255, 255, 0.26); font-size: 30rpx;"
-              @input="handleNicknameInput"
-            />
-          </view>
-          <view class="editor-field-tip">建议填写你常用的微信昵称，保存后会同步到社区展示资料。</view>
+        <view class="me-stat" @tap="openHosted">
+          <text class="me-stat__num serif">{{ viewState.hostedCount }}</text>
+          <text class="me-stat__label">主持对局</text>
         </view>
+        <view class="me-stat" @tap="openFavorites">
+          <text class="me-stat__num serif">{{ viewState.favoritesCount }}</text>
+          <text class="me-stat__label">收藏板子</text>
+        </view>
+      </view>
 
-        <view class="editor-actions">
-          <button class="action-button action-button--ghost half-button" @tap="profileEditorVisible = false">稍后再说</button>
-          <button class="action-button action-button--primary half-button" :loading="profileSaving" :disabled="profileSaving" @tap="saveWechatProfile">
-            保存资料
-          </button>
+      <view class="nt-panel nt-panel--tight me-menu">
+        <view class="me-row" @tap="openRoles">
+          <view class="me-row__icon"><view class="me-ico-cards" /></view>
+          <text class="me-row__label">角色图鉴</text>
+          <text class="nt-arrow">›</text>
+        </view>
+        <view class="me-row" @tap="openHosted">
+          <view class="me-row__icon"><text class="me-ico-moon">☾</text></view>
+          <text class="me-row__label">我主持过的房间</text>
+          <text class="nt-arrow">›</text>
+        </view>
+        <view class="me-row" @tap="openFavorites">
+          <view class="me-row__icon"><view class="me-ico-mark" /></view>
+          <text class="me-row__label">收藏的板子</text>
+          <text class="nt-arrow">›</text>
+        </view>
+        <view class="me-row" @tap="openMyPosts">
+          <view class="me-row__icon"><view class="me-ico-doc"><view class="me-ico-doc__line" /><view class="me-ico-doc__line" /><view class="me-ico-doc__line" /></view></view>
+          <text class="me-row__label">我的帖子</text>
+          <text class="nt-arrow">›</text>
         </view>
       </view>
     </view>
 
-    <AssistantDock
-      scene="user_index"
-      :page-context="{ page: 'user/index', loggedIn: !!user, favoritesCount: viewState.favoritesCount, sessionsCount: viewState.sessionsCount }"
-    />
+    <view v-if="profileEditorVisible" class="me-mask" @tap="profileEditorVisible = false">
+      <view class="me-sheet" @tap.stop>
+        <view class="me-sheet__handle" />
+        <text class="nt-h2">微信头像和昵称</text>
+        <text class="nt-meta">保存后，发帖、评论和入座都会用这份资料。</text>
+        <view class="me-sheet__avatar-row">
+          <view class="me-avatar me-avatar--sm">
+            <image v-if="viewState.avatarPreview" class="me-avatar__img" :src="viewState.avatarPreview" mode="aspectFill" />
+            <text v-else class="me-avatar__text serif">{{ viewState.profileInitial }}</text>
+          </view>
+          <button class="nt-btn nt-btn--ghost nt-btn--small me-sheet__choose" open-type="chooseAvatar" @chooseavatar="handleChooseAvatar">选择微信头像</button>
+        </view>
+        <view class="nt-field">
+          <input
+            :value="profileForm.nickname"
+            type="nickname"
+            maxlength="20"
+            class="nt-field__input"
+            placeholder="输入或选择微信昵称"
+            placeholder-class="nt-placeholder"
+            @input="handleNicknameInput"
+          />
+          <text class="nt-meta">{{ profileForm.nickname.trim().length }}/20</text>
+        </view>
+        <view class="me-sheet__actions">
+          <view class="nt-btn nt-btn--ghost me-sheet__half" @tap="profileEditorVisible = false">稍后再说</view>
+          <view class="nt-btn nt-btn--gold me-sheet__half" :class="{ 'nt-btn--disabled': profileSaving }" @tap="saveWechatProfile">
+            {{ profileSaving ? '保存中…' : '保存' }}
+          </view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
 <style scoped lang="scss">
-.profile-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18rpx;
-}
-
-.profile-header-copy {
-  min-width: 0;
-  flex: 1;
-}
-
-.profile-badge {
-  flex-shrink: 0;
-  max-width: 240rpx;
-  padding: 10rpx 18rpx;
-  border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.06);
-  color: #9f9f9f;
-  font-size: 22rpx;
-  line-height: 1.3;
-  text-align: center;
-}
-
-.profile-badge.active {
-  background: rgba(255, 192, 0, 0.14);
-  color: #ffc000;
-}
-
-.profile-body {
+.me-head {
+  padding-top: 16rpx;
   display: flex;
   align-items: center;
-  gap: 22rpx;
-  margin-top: 22rpx;
+  gap: 32rpx;
 }
 
-.profile-avatar,
-.editor-avatar {
-  width: 128rpx;
-  height: 128rpx;
-  flex-shrink: 0;
-  border-radius: 24rpx;
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.profile-placeholder {
+.me-avatar {
+  width: 152rpx;
+  height: 152rpx;
+  border-radius: 50%;
+  border: 6rpx solid #3f9a6a;
+  box-shadow:
+    0 0 0 4rpx var(--ink),
+    6rpx 8rpx 0 4rpx var(--ink);
+  background: var(--panel-raised);
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ffc000;
-  font-size: 44rpx;
-  font-weight: 700;
-}
-
-.profile-copy {
-  min-width: 0;
-  flex: 1;
-}
-
-.profile-name {
-  font-size: 46rpx;
-  line-height: 1.08;
-  font-weight: 700;
-  color: #ffffff;
-}
-
-.profile-openid {
-  margin-top: 10rpx;
-  color: #969696;
-  font-size: 24rpx;
-  word-break: break-all;
-}
-
-.profile-helper,
-.login-desc,
-.entry-desc {
-  margin-top: 6rpx;
-  color: #8e8e8e;
-  font-size: 20rpx;
-  line-height: 1.5;
-}
-
-.profile-action {
-  margin-top: 20rpx;
-}
-
-.login-panel {
-  margin-top: 20rpx;
-}
-
-.login-title,
-.entry-title {
-  color: #ffffff;
-  font-size: 30rpx;
-  line-height: 1.14;
-  font-weight: 700;
-}
-
-.entry-stack {
-  display: grid;
-  gap: 14rpx;
-  margin-top: 18rpx;
-}
-
-.entry-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18rpx;
-  min-height: 120rpx;
-  padding-top: 22rpx;
-  padding-bottom: 22rpx;
-}
-
-.entry-copy {
-  min-width: 0;
-  flex: 1;
-}
-
-.entry-side {
-  display: grid;
-  grid-template-columns: auto auto;
-  grid-template-rows: auto auto;
-  justify-items: end;
-  column-gap: 10rpx;
-  row-gap: 0;
-  min-width: 106rpx;
-  align-items: end;
-}
-
-.entry-side--solo {
-  min-width: auto;
-  align-self: stretch;
-  display: flex;
-  align-items: center;
-}
-
-.entry-count {
-  grid-column: 1;
-  grid-row: 1 / span 2;
-  align-self: center;
-  color: #ffc000;
-  font-size: 42rpx;
-  line-height: 0.94;
-  font-weight: 700;
-}
-
-.entry-unit {
-  grid-column: 2;
-  grid-row: 1;
-  align-self: end;
-  color: #969696;
-  font-size: 18rpx;
-  line-height: 1;
-}
-
-.entry-arrow {
-  grid-column: 2;
-  grid-row: 2;
-  color: #ffffff;
-  font-size: 30rpx;
-  line-height: 1;
-}
-
-.action-button {
-  height: 76rpx;
-  line-height: 76rpx;
-  padding: 0 24rpx;
-  border-radius: 16rpx;
-  font-size: 24rpx;
-  font-weight: 700;
-}
-
-.action-button::after {
-  border: none;
-}
-
-.action-button--primary {
-  background: #ffc000;
-  color: #000000;
-}
-
-.action-button--ghost {
-  background: rgba(255, 255, 255, 0.03);
-  color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-}
-
-.editor-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.78);
-  display: flex;
-  align-items: flex-end;
-  z-index: 30;
-}
-
-.editor-panel {
-  width: 100%;
-  padding: 22rpx 24rpx calc(env(safe-area-inset-bottom) + 30rpx);
-  border-top-left-radius: 28rpx;
-  border-top-right-radius: 28rpx;
-}
-
-.editor-handle {
-  width: 88rpx;
-  height: 8rpx;
-  border-radius: 999rpx;
-  margin: 0 auto 22rpx;
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.editor-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20rpx;
-}
-
-.editor-header-copy {
-  min-width: 0;
-  flex: 1;
-}
-
-.editor-kicker {
-  color: #ffc000;
-  font-size: 20rpx;
-  font-weight: 700;
-  letter-spacing: 4rpx;
-}
-
-.editor-close {
-  padding: 10rpx 18rpx;
-  border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.04);
-  color: #9c9c9c;
-  font-size: 24rpx;
+  box-sizing: border-box;
   flex-shrink: 0;
 }
 
-.editor-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-  gap: 18rpx;
-  margin-top: 24rpx;
+.me-avatar--sm {
+  width: 112rpx;
+  height: 112rpx;
 }
 
-.editor-avatar-card,
-.editor-tip-card {
-  padding: 22rpx;
-  border-radius: 22rpx;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 192, 0, 0.08);
+.me-avatar__img {
+  width: 100%;
+  height: 100%;
 }
 
-.editor-avatar-card {
-  display: flex;
-  align-items: center;
-  gap: 18rpx;
+.me-avatar__text {
+  color: var(--gold);
+  font-size: 56rpx;
+  font-weight: 900;
 }
 
-.editor-avatar-meta {
-  min-width: 0;
+.me-head__text {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
 }
 
-.editor-avatar-label,
-.editor-tip-title {
-  color: #ffffff;
-  font-size: 24rpx;
+.me-name {
+  font-size: 48rpx;
+  font-weight: 900;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 右上角是微信胶囊，齿轮贴着头像底边放，免得被胶囊挡住 */
+.me-gear {
+  align-self: flex-end;
+  font-size: 36rpx;
+}
+
+.me-body {
+  margin-top: 40rpx;
+}
+
+.me-login {
+  padding: 36rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.me-login__title {
+  font-size: 40rpx;
+  font-weight: 900;
+}
+
+.me-art {
+  padding: 32rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+}
+
+.me-art__title {
+  font-size: 30rpx;
   font-weight: 700;
 }
 
-.editor-avatar-hint,
-.editor-tip-desc {
-  margin-top: 8rpx;
-  color: #9c9c9c;
-  font-size: 22rpx;
-  line-height: 1.6;
+.me-art__scroll {
+  white-space: nowrap;
 }
 
-.editor-avatar-actions {
+.me-art__row {
+  display: inline-flex;
+  gap: 28rpx;
+  padding: 16rpx 8rpx 8rpx;
+}
+
+.me-art__item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12rpx;
+  width: 104rpx;
+}
+
+.me-art__item--on .me-art__token::after {
+  content: '';
+  position: absolute;
+  left: -14rpx;
+  top: -14rpx;
+  right: -14rpx;
+  bottom: -14rpx;
+  border-radius: 50%;
+  border: 5rpx solid var(--moon);
+}
+
+.me-art__token {
+  width: 96rpx;
+  height: 96rpx;
+}
+
+/* 菜单小图标：纯 CSS 画的卡牌、文档和书签 */
+.me-ico-cards {
+  position: relative;
+  width: 34rpx;
+  height: 34rpx;
+}
+
+.me-ico-cards::before,
+.me-ico-cards::after {
+  content: '';
+  position: absolute;
+  top: 2rpx;
+  width: 20rpx;
+  height: 28rpx;
+  border: 4rpx solid var(--gold);
+  border-radius: 5rpx;
+  background: var(--panel-raised);
+  box-sizing: border-box;
+}
+
+.me-ico-cards::before {
+  left: 0;
+}
+
+.me-ico-cards::after {
+  left: 12rpx;
+  transform: rotate(14deg);
+}
+
+.me-ico-doc {
+  width: 28rpx;
+  height: 34rpx;
+  border: 4rpx solid var(--gold);
+  border-radius: 6rpx;
+  padding: 6rpx 5rpx;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+}
+
+.me-ico-doc__line {
+  height: 3rpx;
+  border-radius: 2rpx;
+  background: var(--gold);
+}
+
+.me-ico-mark {
+  position: relative;
+  width: 26rpx;
+  height: 34rpx;
+  background: var(--gold);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%);
+}
+
+.me-ico-mark::after {
+  content: '';
+  position: absolute;
+  left: 4rpx;
+  top: 4rpx;
+  right: 4rpx;
+  bottom: 6rpx;
+  background: var(--panel-raised);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 66%, 0 100%);
+}
+
+.me-ico-moon {
+  color: var(--gold);
+  font-size: 34rpx;
+}
+
+.me-stats {
   display: grid;
-  gap: 14rpx;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20rpx;
 }
 
-.avatar-button {
-  width: 100%;
-  margin-top: 0;
+.me-stat {
+  padding: 24rpx;
+  border-radius: 28rpx;
+  background: var(--panel);
+  border: 2rpx solid var(--panel-line);
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
 }
 
-.editor-field {
-  margin-top: 22rpx;
-  padding: 20rpx 22rpx 18rpx;
-  border-radius: 22rpx;
-  background: rgba(255, 255, 255, 0.028);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+.me-stat__num {
+  color: var(--gold);
+  font-size: 48rpx;
+  font-weight: 900;
 }
 
-.editor-label-row {
+.me-stat__label {
+  color: var(--text-2);
+  font-size: 24rpx;
+}
+
+.me-menu {
+  padding: 12rpx 28rpx;
+}
+
+.me-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16rpx;
-  margin-bottom: 14rpx;
+  gap: 24rpx;
+  min-height: 112rpx;
+  border-top: 2rpx solid var(--panel-line);
 }
 
-.editor-label {
-  color: #ffffff;
-  font-size: 24rpx;
-  font-weight: 700;
-  letter-spacing: 1rpx;
+.me-row:first-child {
+  border-top: none;
 }
 
-.editor-label-hint {
-  padding: 6rpx 14rpx;
-  border-radius: 999rpx;
-  color: #b5b5b5;
-  font-size: 20rpx;
-  line-height: 1;
-  background: rgba(255, 255, 255, 0.05);
+.me-row__icon {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 20rpx;
+  background: var(--panel-raised);
+  color: var(--gold);
+  font-size: 34rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
-.editor-input-shell {
-  border-radius: 18rpx;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.032) 0%, rgba(255, 255, 255, 0.02) 100%);
-  border: 1px solid rgba(255, 192, 0, 0.08);
-  box-shadow: inset 0 1rpx 0 rgba(255, 255, 255, 0.04);
-}
-
-.editor-input {
-  height: 82rpx;
-  line-height: 82rpx;
-  padding: 0 22rpx;
-  margin-top: 0;
-  color: #ffffff;
+.me-row__label {
+  flex: 1;
   font-size: 30rpx;
-  border: none;
-  background: transparent;
 }
 
-.editor-field-tip {
-  margin-top: 12rpx;
-  color: #8f8f8f;
-  font-size: 22rpx;
-  line-height: 1.55;
+.me-mask {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  background: rgba(7, 6, 10, 0.7);
+  display: flex;
+  align-items: flex-end;
 }
 
-.editor-actions {
-  margin-top: 24rpx;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16rpx;
-}
-
-.half-button {
+.me-sheet {
   width: 100%;
+  padding: 24rpx 40rpx calc(40rpx + env(safe-area-inset-bottom));
+  border-radius: 40rpx 40rpx 0 0;
+  background: var(--panel);
+  border-top: 4rpx solid var(--ink);
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+  box-sizing: border-box;
 }
 
-@media (max-width: 640rpx) {
-  .editor-hero {
-    grid-template-columns: 1fr;
-  }
+.me-sheet__handle {
+  align-self: center;
+  width: 80rpx;
+  height: 8rpx;
+  border-radius: 4rpx;
+  background: var(--line);
+}
 
-  .editor-avatar-card {
-    align-items: flex-start;
-  }
+.me-sheet__avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 28rpx;
+}
+
+.me-sheet__choose {
+  margin: 0;
+  line-height: normal;
+}
+
+.me-sheet__choose::after {
+  border: none;
+}
+
+.me-sheet__actions {
+  display: flex;
+  gap: 20rpx;
+}
+
+.me-sheet__half {
+  flex: 1;
 }
 </style>

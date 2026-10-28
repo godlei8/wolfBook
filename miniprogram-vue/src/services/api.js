@@ -57,6 +57,7 @@ function normalizeBoard(board) {
     lineupSummary: board.lineupSummary || buildLineupSummary(roles),
     cardRoles: buildCardRoles(roles, featuredRoles),
     lineupArt: pickLineupArt(roles.length ? roles : featuredRoles),
+    heroArt: pickLineupArt(roles.length ? roles : featuredRoles, 5),
     campSegments: campBreakdown(roles.length ? roles : featuredRoles),
     lineupGroups: groupLineup(roles),
   }
@@ -75,6 +76,8 @@ function normalizeRole(role) {
     boards: (role.boards || []).map((board) => ({
       ...board,
       coverImage: withBaseUrl(board.coverImage),
+      backgroundImage: withBaseUrl(board.backgroundImage),
+      lineup: (board.lineup || []).map(normalizeBoardRole),
     })),
   }
 }
@@ -147,6 +150,7 @@ function normalizeJudgeRoomSnapshot(snapshot) {
     timeline: snapshot.timeline || [],
     voteTallies: snapshot.voteTallies || [],
     nightActions: snapshot.nightActions || [],
+    nightHistory: snapshot.nightHistory || [],
     pendingNightAction: snapshot.pendingNightAction || { submitted: false, targetSeatNo: null, note: '' },
   }
 }
@@ -168,8 +172,13 @@ export default {
   async getRoleDetail(id) {
     return normalizeRole(await request({ url: `/api/roles/${id}`, header: createAuthHeader() }))
   },
-  async getPosts(page = 1, size = 20) {
-    const data = await request({ url: '/api/posts', data: { page, size }, header: createAuthHeader() })
+  // filters: { sort: 'hot' | 'latest', category: '战报' | '教学' | '讨论', boardId }
+  async getPosts(page = 1, size = 20, filters = {}) {
+    const query = { page, size }
+    Object.entries(filters || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') query[key] = value
+    })
+    const data = await request({ url: '/api/posts', data: query, header: createAuthHeader() })
     return {
       ...data,
       list: (data.list || []).map(normalizePost),

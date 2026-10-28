@@ -1,55 +1,16 @@
 <script setup>
-// 板子列表卡片（原型 D1）：顶部是板子自己的背景图，没有时摆三张阵容立绘；
-// 下面是人数难度、阵容头像筹码和阵营比例条。粗黑描边 + 硬投影，像摆在桌上的卡牌。
-import RoleToken from './RoleToken.vue'
-
+// 板子卡片（原型 D1）：顶部 132px 横幅是板子自己的背景图，没有时摆三张阵容立绘；
+// 板子名压在左下角黑铭牌上，下面是「人数 · 难度 · 胜利条件」、阵容头像筹码和阵营比例条。
+// 头像和立绘直接写结构 + 全局类（App.vue 的 nt-*），不再嵌套子组件。
 const props = defineProps({
-  boardId: {
-    type: Number,
+  board: {
+    type: Object,
     required: true,
   },
-  name: {
-    type: String,
-    default: '',
-  },
-  playerCount: {
-    type: [Number, String],
-    default: '',
-  },
-  difficulty: {
-    type: String,
-    default: '',
-  },
-  tags: {
-    type: Array,
-    default: () => [],
-  },
-  // 板子自己的背景图；没有时用 lineupArt（utils/board-rules.js 的 pickLineupArt 挑好的三张立绘）
-  backgroundImage: {
-    type: String,
-    default: '',
-  },
-  lineupArt: {
-    type: Array,
-    default: () => [],
-  },
-  // 背景图和立绘都没有时的最后兜底
-  coverImage: {
-    type: String,
-    default: '',
-  },
-  cardRoles: {
-    type: Array,
-    default: () => [],
-  },
-  // 阵营比例条，来自 campBreakdown
-  campSegments: {
-    type: Array,
-    default: () => [],
-  },
-  description: {
-    type: String,
-    default: '',
+  // 收藏页才显示右上角的爱心
+  showFavorite: {
+    type: Boolean,
+    default: false,
   },
   favorite: {
     type: Boolean,
@@ -59,91 +20,93 @@ const props = defineProps({
 
 const emit = defineEmits(['select', 'favorite-toggle'])
 
+// 没有背景图时三张小立绘的位置（原型：62px 宽，左 / 中 / 右，-10° / 0 / 10°）
+const FALLBACK_SLOTS = {
+  l1: 'left: 330rpx; top: 60rpx; transform: rotate(-10deg);',
+  c: 'left: 430rpx; top: 32rpx; transform: rotate(0deg); z-index: 2;',
+  r1: 'left: 530rpx; top: 60rpx; transform: rotate(10deg);',
+}
+
+function meta(board) {
+  return [board.playerCount ? `${board.playerCount} 人` : '', board.difficulty, board.winCondition].filter(Boolean).join(' · ')
+}
+
 function handleSelect() {
-  emit('select', props.boardId)
+  emit('select', props.board.id)
 }
 
 function handleFavorite() {
-  emit('favorite-toggle', props.boardId)
-}
-
-function lineupSlot(art, index) {
-  if (art.center) return 'center'
-  return index === 0 ? 'left' : 'right'
+  emit('favorite-toggle', props.board.id)
 }
 </script>
 
 <template>
-  <view class="board-card ink-card" @tap="handleSelect">
-    <view class="board-banner">
-      <image v-if="backgroundImage" class="banner-image" :src="backgroundImage" mode="aspectFill" webp />
-      <view v-else-if="lineupArt.length" class="banner-lineup">
+  <view class="nt-ink bc" @tap="handleSelect">
+    <view class="bc-banner">
+      <image v-if="board.backgroundImage" class="bc-bg" :src="board.backgroundImage" mode="aspectFill" webp />
+      <block v-else>
         <view
-          v-for="(art, index) in lineupArt"
-          :key="`${boardId}-art-${art.roleId}`"
-          class="lineup-card"
-          :class="`lineup-card--${lineupSlot(art, index)}`"
-          :style="{ backgroundColor: art.accent }"
+          v-for="art in board.lineupArt || []"
+          :key="art.roleId"
+          class="nt-card bc-mini"
+          :style="FALLBACK_SLOTS[art.slot] || FALLBACK_SLOTS.c"
         >
-          <image class="lineup-card-image" :src="art.image" mode="aspectFill" webp />
+          <view class="nt-card__frame" :style="{ backgroundColor: art.accent }">
+            <image class="nt-card__img" :src="art.image" mode="aspectFill" webp />
+          </view>
         </view>
-      </view>
-      <image v-else-if="coverImage" class="banner-image" :src="coverImage" mode="aspectFill" />
+      </block>
 
-      <view v-if="tags.length" class="banner-tags">
-        <text v-for="tag in tags.slice(0, 2)" :key="tag" class="banner-tag">{{ tag }}</text>
+      <view v-if="board.tags && board.tags.length" class="bc-tags">
+        <text v-for="tag in board.tags.slice(0, 2)" :key="tag" class="nt-tag nt-tag--ink">{{ tag }}</text>
       </view>
-      <view class="banner-favorite" :class="{ active: favorite }" @tap.stop="handleFavorite">
+      <view v-if="showFavorite" class="bc-fav" :class="{ 'bc-fav--on': favorite }" @tap.stop="handleFavorite">
         {{ favorite ? '♥' : '♡' }}
       </view>
-      <view class="banner-plate serif">{{ name }}</view>
+      <view class="bc-plate serif">{{ board.name }}</view>
     </view>
 
-    <view class="board-body">
-      <view class="board-meta">
-        <text>{{ playerCount }} 人</text>
-        <text v-if="difficulty"> · {{ difficulty }}</text>
+    <view class="bc-body">
+      <text class="nt-meta">{{ meta(board) }}</text>
+
+      <view v-if="board.cardRoles && board.cardRoles.length" class="bc-tokens">
+        <view
+          v-for="role in board.cardRoles"
+          :key="`${board.id}-${role.roleId}`"
+          class="nt-token bc-token"
+        >
+          <image v-if="role.portrait" class="nt-token__img" :src="role.portrait" mode="aspectFill" :style="{ borderColor: role.accent }" webp />
+          <view v-else class="nt-token__text bc-token__text" :style="{ borderColor: role.accent }">{{ (role.name || '?').slice(0, 1) }}</view>
+          <text v-if="role.count > 1" class="nt-token__count">×{{ role.count }}</text>
+        </view>
       </view>
 
-      <view v-if="cardRoles.length" class="board-chips">
-        <RoleToken
-          v-for="role in cardRoles"
-          :key="`${boardId}-${role.roleId}-${role.name}`"
-          :image="role.portrait"
-          :accent="role.accent"
-          :count="role.count"
-        />
-      </view>
-
-      <view v-if="campSegments.length" class="camp-bar">
-        <view class="camp-bar-track">
+      <view v-if="board.campSegments && board.campSegments.length" class="nt-camp">
+        <view class="nt-camp__track">
           <view
-            v-for="segment in campSegments"
+            v-for="segment in board.campSegments"
             :key="segment.key"
-            class="camp-bar-segment"
+            class="nt-camp__seg"
             :style="{ flex: segment.count, backgroundColor: segment.fill }"
           />
         </view>
-        <view class="camp-bar-labels">
-          <view v-for="segment in campSegments" :key="segment.key" class="camp-bar-label">
-            <view class="camp-dot" :style="{ backgroundColor: segment.fill }" />
+        <view class="nt-camp__labels">
+          <view v-for="segment in board.campSegments" :key="segment.key" class="nt-camp__label">
+            <view class="nt-dot" :style="{ backgroundColor: segment.fill }" />
             <text>{{ segment.label }} {{ segment.count }}</text>
           </view>
         </view>
       </view>
-
-      <view v-if="description" class="board-summary">{{ description }}</view>
     </view>
   </view>
 </template>
 
 <style scoped lang="scss">
-.board-card {
-  margin-top: 32rpx;
+.bc {
   overflow: hidden;
 }
 
-.board-banner {
+.bc-banner {
   position: relative;
   height: 264rpx;
   background: #1b1724;
@@ -151,177 +114,87 @@ function lineupSlot(art, index) {
   overflow: hidden;
 }
 
-.banner-image {
+.bc-bg {
   width: 100%;
   height: 100%;
   display: block;
 }
 
-/* 三张立绘摆在右侧，左下角留给板子名铭牌 */
-.banner-lineup {
+.bc-mini {
   position: absolute;
-  top: 0;
-  right: 96rpx;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-}
-
-.lineup-card {
-  position: relative;
   width: 124rpx;
-  height: 165rpx;
-  border: 4rpx solid var(--ink);
   border-radius: 16rpx;
   box-shadow: 4rpx 4rpx 0 var(--ink);
-  overflow: hidden;
-  box-sizing: border-box;
 }
 
-.lineup-card-image {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-.lineup-card--left {
-  margin-right: -22rpx;
-  transform: translateY(20rpx) rotate(-10deg);
-}
-
-.lineup-card--center {
-  z-index: 2;
-  width: 136rpx;
-  height: 181rpx;
-  transform: translateY(-4rpx);
-}
-
-.lineup-card--right {
-  margin-left: -22rpx;
-  transform: translateY(20rpx) rotate(10deg);
-}
-
-.banner-tags {
+.bc-tags {
   position: absolute;
-  top: 20rpx;
   left: 20rpx;
+  top: 20rpx;
+  z-index: 3;
   display: flex;
   gap: 12rpx;
-  z-index: 3;
 }
 
-.banner-tag {
-  padding: 6rpx 16rpx;
-  border-radius: 12rpx;
-  background: var(--ink);
-  color: var(--text);
-  font-size: 22rpx;
-  line-height: 1.4;
-}
-
-.banner-favorite {
+.bc-fav {
   position: absolute;
-  top: 18rpx;
   right: 18rpx;
+  top: 18rpx;
   z-index: 3;
   width: 64rpx;
   height: 64rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   border-radius: 20rpx;
   background: var(--ink);
   color: var(--text);
   font-size: 32rpx;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.banner-favorite.active {
+.bc-fav--on {
   color: var(--gold);
 }
 
-.banner-plate {
+.bc-plate {
   position: absolute;
   left: 0;
   bottom: 0;
   z-index: 3;
-  max-width: 70%;
-  padding: 14rpx 32rpx 12rpx;
+  max-width: 76%;
+  padding: 16rpx 32rpx 14rpx;
   border-top-right-radius: 28rpx;
   background: var(--ink);
   color: var(--text);
-  font-size: 40rpx;
+  font-size: 44rpx;
   font-weight: 900;
-  line-height: 1.25;
+  line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   box-sizing: border-box;
 }
 
-.board-body {
-  padding: 22rpx 30rpx 30rpx;
+.bc-body {
+  padding: 24rpx 32rpx 32rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 28rpx;
 }
 
-.board-meta {
-  color: var(--text-2);
-  font-size: 26rpx;
-  line-height: 1.5;
-}
-
-.board-chips {
-  margin-top: 22rpx;
+.bc-tokens {
   display: flex;
   flex-wrap: wrap;
   gap: 18rpx;
-  padding-left: 4rpx;
+  padding: 4rpx 0 4rpx 4rpx;
 }
 
-.camp-bar {
-  margin-top: 30rpx;
+.bc-token {
+  width: 68rpx;
+  height: 68rpx;
 }
 
-.camp-bar-track {
-  display: flex;
-  gap: 4rpx;
-  height: 12rpx;
-  border-radius: 6rpx;
-  overflow: hidden;
-}
-
-.camp-bar-segment {
-  height: 100%;
-}
-
-.camp-bar-labels {
-  margin-top: 14rpx;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 28rpx;
-  color: var(--text-2);
-  font-size: 22rpx;
-}
-
-.camp-bar-label {
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-}
-
-.camp-dot {
-  width: 14rpx;
-  height: 14rpx;
-  border-radius: 50%;
-}
-
-.board-summary {
-  margin-top: 20rpx;
-  color: var(--text-3);
-  font-size: 24rpx;
-  line-height: 1.7;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
+.bc-token__text {
+  font-size: 28rpx;
 }
 </style>
