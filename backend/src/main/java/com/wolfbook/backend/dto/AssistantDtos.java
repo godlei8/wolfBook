@@ -275,7 +275,47 @@ public final class AssistantDtos {
             boolean success,
             String failureType,
             String traceId,
-            LocalDateTime createTime
+            LocalDateTime createTime,
+            // 这次的回答全文（按 traceId 从会话消息里找），后台日志里点开看答成了什么
+            String answer
+    ) {
+    }
+
+    /** 流式回答进行到哪一步了：小程序在还没出字的时候显示「正在查站内资料」之类的提示。 */
+    public record AssistantStreamStage(
+            String key,
+            String label
+    ) {
+    }
+
+    /** 后台调试台：用当前配置答一题，不落库、不写日志，返回判断过程。 */
+    public record AdminPlaygroundRequest(
+            @NotBlank(message = "message is required") @Size(max = 500, message = "message is too long") String message,
+            String scene,
+            Map<String, Object> pageContext
+    ) {
+    }
+
+    public record AdminPlaygroundHit(
+            String title,
+            String sourceType,
+            double score
+    ) {
+    }
+
+    public record AdminPlaygroundResponse(
+            String answer,
+            String answerType,
+            String intent,
+            String reason,
+            List<AdminPlaygroundHit> hits,
+            List<RecommendedBoardCard> boards,
+            boolean usedWebSearch,
+            String model,
+            String failureType,
+            // 各步耗时（毫秒）：route 判断问题、retrieve 查资料、generate 模型生成
+            Map<String, Long> timings,
+            long totalMs
     ) {
     }
 }

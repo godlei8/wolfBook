@@ -3,6 +3,7 @@ package com.wolfbook.backend.controller.admin;
 import com.wolfbook.backend.common.ApiResponse;
 import com.wolfbook.backend.dto.AssistantDtos;
 import com.wolfbook.backend.service.AdminService;
+import com.wolfbook.backend.service.assistant.AssistantAnswerService;
 import com.wolfbook.backend.service.assistant.AssistantConfigService;
 import com.wolfbook.backend.service.assistant.AssistantKnowledgeService;
 import com.wolfbook.backend.service.assistant.AssistantLogService;
@@ -25,6 +26,7 @@ public class AdminAiController {
     private final AssistantPublishService assistantPublishService;
     private final AssistantLogService assistantLogService;
     private final AssistantModelService assistantModelService;
+    private final AssistantAnswerService assistantAnswerService;
     private final TokenService tokenService;
 
     public AdminAiController(
@@ -34,6 +36,7 @@ public class AdminAiController {
             AssistantPublishService assistantPublishService,
             AssistantLogService assistantLogService,
             AssistantModelService assistantModelService,
+            AssistantAnswerService assistantAnswerService,
             TokenService tokenService
     ) {
         this.adminService = adminService;
@@ -42,7 +45,19 @@ public class AdminAiController {
         this.assistantPublishService = assistantPublishService;
         this.assistantLogService = assistantLogService;
         this.assistantModelService = assistantModelService;
+        this.assistantAnswerService = assistantAnswerService;
         this.tokenService = tokenService;
+    }
+
+    // ---------- 调试台：用当前配置答一题，看判断成了什么、查到了哪些资料、各步耗时 ----------
+
+    @PostMapping("/playground")
+    public ApiResponse<AssistantDtos.AdminPlaygroundResponse> playground(
+            @RequestHeader("Authorization") String authorization,
+            @RequestBody @Valid AssistantDtos.AdminPlaygroundRequest request
+    ) {
+        adminService.requireAdmin(authorization);
+        return ApiResponse.success(assistantAnswerService.playground(request));
     }
 
     // ---------- 模型管理：登记多个 OpenAI 兼容模型，选一个当前使用 ----------

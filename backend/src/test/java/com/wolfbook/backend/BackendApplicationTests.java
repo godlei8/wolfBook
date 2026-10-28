@@ -211,8 +211,48 @@ class BackendApplicationTests {
         mockMvc.perform(asyncDispatch(result))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("event:started")))
+                .andExpect(content().string(containsString("event:stage")))
                 .andExpect(content().string(containsString("event:delta")))
                 .andExpect(content().string(containsString("event:done")));
+    }
+
+    @Test
+    void adminPlaygroundShouldExplainHowAQuestionWasAnswered() throws Exception {
+        String authorization = "Bearer " + loginAndGetAdminToken();
+
+        mockMvc.perform(post("/admin/ai/playground")
+                        .header("Authorization", authorization)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "message": "9个人新手玩什么好？" }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.intent").value("RECOMMEND"))
+                .andExpect(jsonPath("$.data.reason").isNotEmpty())
+                .andExpect(jsonPath("$.data.boards[0].name").value("守卫九人局"))
+                .andExpect(jsonPath("$.data.answer").isNotEmpty())
+                .andExpect(jsonPath("$.data.timings.route").isNumber());
+
+        // 拦截词以当前配置为准（别的用例可能把它改成了 ["blocked"]），两个都带上
+        mockMvc.perform(post("/admin/ai/playground")
+                        .header("Authorization", authorization)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "message": "今晚刀谁比较好？blocked" }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.intent").value("REFUSE"))
+                .andExpect(jsonPath("$.data.answerType").value("REFUSAL"));
+
+        // 小程序用户的 token 不能用调试台
+        mockMvc.perform(post("/admin/ai/playground")
+                        .header("Authorization", "Bearer " + loginAndGetToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "message": "女巫能自救吗" }
+                                """))
+                .andExpect(jsonPath("$.code").value(4001));
     }
 
     @Test
