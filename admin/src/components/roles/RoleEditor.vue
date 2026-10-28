@@ -8,15 +8,11 @@ import { CAMP_META, campOf } from '../../utils/board'
 import { resolveMediaUrl } from '../../utils/media'
 import { cropPortrait } from '../../utils/portrait'
 
-// 角色表单：图鉴页右侧编辑已有角色、「新建角色」弹窗里都用它
-const props = withDefaults(
-  defineProps<{
-    role: Role | null
-    boards: Board[]
-    layout?: 'panel' | 'dialog'
-  }>(),
-  { layout: 'panel' },
-)
+// 角色表单：新建和编辑都在图鉴页的弹窗里用它。左边立绘 + 头像，右边文字设定
+const props = defineProps<{
+  role: Role | null
+  boards: Board[]
+}>()
 const emit = defineEmits<{ saved: [role: Role]; removed: []; close: [] }>()
 
 const FACTIONS = ['好人', '狼人', '第三方']
@@ -37,6 +33,10 @@ const COLOR_PRESETS = ['#7B4FD6', '#F2B33D', '#E8772E', '#4A78A8', '#B3263A', '#
 
 const saving = ref(false)
 const makingPortrait = ref(false)
+const uploadingPortrait = ref(false)
+const portraitInput = ref<HTMLInputElement | null>(null)
+// 这次弹窗里上传过的立绘文件：COS 不给跨域读图，只有它能在浏览器里重新裁头像
+const illustrationFile = ref<File | null>(null)
 
 const form = reactive({
   id: props.role?.id || 0,
@@ -59,6 +59,14 @@ const previewAccent = computed(() =>
   themeValid.value && form.themeColor ? form.themeColor : CAMP_META[campOf({ faction: form.faction, roleType: form.roleType })].color,
 )
 const usedIn = computed(() => (form.id ? props.boards.filter((board) => board.roles.some((item) => item.roleId === form.id)) : []))
+const portraitBusy = computed(() => makingPortrait.value || uploadingPortrait.value)
+const portraitHint = computed(() => {
+  if (makingPortrait.value) return '正在按立绘裁头像…'
+  if (uploadingPortrait.value) return '头像上传中…'
+  if (form.portrait) return '阵容、图鉴、法官房里显示的圆头像'
+  if (form.fullIllustration) return '还没有头像，暂时用立绘顶上'
+  return '上传立绘后会自动裁好'
+})
 
 function setFaction(faction: string) {
   form.faction = faction
@@ -68,18 +76,42 @@ function setFaction(faction: string) {
 }
 setFaction(form.faction)
 
-/** 上传了新立绘：按立绘裁一张方形头像并上传，不用再单独传头像。 */
-async function onIllustrationUploaded(file: File) {
+async function makePortraitFrom(file: File) {
   makingPortrait.value = true
   try {
-    const portrait = await cropPortrait(file)
-    const result = await api.upload(portrait)
+    const result = await api.upload(await cropPortrait(file))
     form.portrait = result.url
-    ElMessage.success('头像已按立绘自动裁好，不满意可以点「换头像」')
+    ElMessage.success('头像已按立绘自动裁好')
   } catch (error) {
     ElMessage.warning(error instanceof Error ? `${error.message}，请手动上传头像` : '头像自动生成失败，请手动上传')
   } finally {
     makingPortrait.value = false
+  }
+}
+
+/** 上传了新立绘：按立绘裁一张方形头像并上传，不用再单独传头像。 */
+function onIllustrationUploaded(file: File) {
+  illustrationFile.value = file
+  void makePortraitFrom(file)
+}
+
+async function uploadPortrait(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (!/^image\/(jpeg|png|gif|webp)$/.test(file.type) || file.size > 5 * 1024 * 1024) {
+    ElMessage.error('头像只能是 5MB 以内的 jpg / png / gif / webp')
+    return
+  }
+  uploadingPortrait.value = true
+  try {
+    form.portrait = (await api.upload(file)).url
+    ElMessage.success('头像已上传')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '头像上传失败')
+  } finally {
+    uploadingPortrait.value = false
   }
 }
 
@@ -92,8 +124,8 @@ async function save() {
     ElMessage.warning('主题色要写成 #RRGGBB，比如 #D63A7A')
     return
   }
-  if (makingPortrait.value) {
-    ElMessage.info('头像还在生成，稍等一下')
+  if (portraitBusy.value) {
+    ElMessage.info('头像还在处理，稍等一下')
     return
   }
   const payload = {
@@ -145,82 +177,93 @@ async function remove() {
 </script>
 
 <template>
-  <div class="editor" :class="`editor--${layout}`">
-    <div v-if="layout === 'panel'" class="nt-row-between editor__top">
-      <h2 class="editor__title">{{ form.name || '未命名角色' }}</h2>
-      <button class="nt-iconbtn" type="button" aria-label="关闭编辑" @click="emit('close')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
-      </button>
-    </div>
+  <div class="editor">
+    <!-- 左：立绘 + 头像 -->
+    <section class="art" aria-label="图片">
+      <ImageField v-model="form.fullIllustration" name="fullIllustration" label="立绘" hint="3:4 竖版" aspect="3 / 4" @uploaded="onIllustrationUploaded" />
 
-    <div class="editor__art">
-      <ImageField v-model="form.fullIllustration" class="editor__illustration" name="fullIllustration" label="立绘" hint="3:4 竖版，上传后自动裁头像" aspect="3 / 4" @uploaded="onIllustrationUploaded" />
-      <div class="editor__side">
-        <ImageField v-model="form.portrait" name="portrait" label="头像" hint="方形" aspect="1 / 1" />
-        <div class="token-preview">
-          <span class="nt-token" :style="{ width: '56px', height: '56px', boxShadow: `0 0 0 3px ${previewAccent}` }">
-            <img v-if="form.portrait || form.fullIllustration" :src="resolveMediaUrl(form.portrait || form.fullIllustration)" alt="" />
-            <span v-else>{{ form.name.slice(0, 1) || '?' }}</span>
-          </span>
-          <small>{{ makingPortrait ? '正在按立绘裁头像…' : '阵容里的样子' }}</small>
+      <div class="portrait">
+        <span class="nt-token portrait__token" :style="{ boxShadow: `0 0 0 3px ${previewAccent}` }">
+          <img v-if="form.portrait || form.fullIllustration" :src="resolveMediaUrl(form.portrait || form.fullIllustration)" alt="头像预览" />
+          <span v-else>{{ form.name.slice(0, 1) || '?' }}</span>
+        </span>
+        <div class="portrait__body">
+          <strong>头像</strong>
+          <small>{{ portraitHint }}</small>
+          <div class="portrait__btns">
+            <button v-if="illustrationFile" type="button" class="nt-btn nt-btn--ghost nt-btn--small" :disabled="portraitBusy" @click="makePortraitFrom(illustrationFile)">按立绘重裁</button>
+            <button type="button" class="nt-btn nt-btn--ghost nt-btn--small" :disabled="portraitBusy" @click="portraitInput?.click()">{{ form.portrait ? '换头像' : '上传头像' }}</button>
+            <button v-if="form.portrait" type="button" class="nt-iconbtn" aria-label="清空头像" title="清空头像" :disabled="portraitBusy" @click="form.portrait = ''">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+            </button>
+          </div>
         </div>
-      </div>
-    </div>
-
-    <div class="editor__fields">
-      <div class="two">
-        <div class="nt-field">
-          <label class="nt-label" :for="`r-name-${layout}`">名称</label>
-          <input :id="`r-name-${layout}`" v-model="form.name" class="nt-input" maxlength="30" placeholder="比如：狼美人" />
-        </div>
-        <div class="nt-field">
-          <label class="nt-label" :for="`r-alias-${layout}`">别名</label>
-          <input :id="`r-alias-${layout}`" v-model="form.alias" class="nt-input" placeholder="可不填" />
-        </div>
+        <input ref="portraitInput" class="nt-sr-only" type="file" accept="image/jpeg,image/png,image/gif,image/webp" aria-label="上传头像" @change="uploadPortrait" />
       </div>
 
       <div class="nt-field">
-        <span class="nt-label">阵营</span>
-        <div class="nt-seg" role="radiogroup" aria-label="阵营">
-          <button v-for="faction in FACTIONS" :key="faction" type="button" role="radio" :aria-checked="form.faction === faction" :class="{ on: form.faction === faction }" @click="setFaction(faction)">{{ faction }}</button>
-        </div>
-      </div>
-      <div class="nt-field">
-        <span class="nt-label">类型</span>
-        <div class="nt-seg" role="radiogroup" aria-label="类型">
-          <button v-for="option in typeOptions" :key="option.value" type="button" role="radio" :aria-checked="form.roleType === option.value" :class="{ on: form.roleType === option.value }" @click="form.roleType = option.value">{{ option.label }}</button>
-        </div>
-      </div>
-
-      <div class="nt-field">
-        <label class="nt-label" :for="`r-color-${layout}`">主题色 <small>· 图鉴卡底条、阵容头像描边，不填按阵营色</small></label>
+        <span class="nt-label">主题色 <small>· 不填按阵营色</small></span>
         <div class="colors">
           <span class="colors__swatch" :style="{ background: previewAccent }"></span>
-          <input :id="`r-color-${layout}`" v-model.trim="form.themeColor" class="nt-input colors__hex" :class="{ invalid: !themeValid }" placeholder="#RRGGBB" maxlength="7" />
+          <input v-model.trim="form.themeColor" class="nt-input colors__hex" :class="{ invalid: !themeValid }" aria-label="主题色色值" placeholder="#RRGGBB" maxlength="7" />
+        </div>
+        <div class="colors__presets">
           <button v-for="color in COLOR_PRESETS" :key="color" type="button" class="colors__preset" :class="{ on: form.themeColor.toUpperCase() === color }" :style="{ background: color }" :aria-label="`用 ${color}`" @click="form.themeColor = color"></button>
           <button type="button" class="colors__preset colors__preset--clear" aria-label="清空主题色，按阵营色" title="清空，按阵营色" @click="form.themeColor = ''"></button>
         </div>
       </div>
+    </section>
+
+    <!-- 右：文字设定 -->
+    <section class="fields" aria-label="设定">
+      <div class="grid2">
+        <div class="nt-field">
+          <label class="nt-label" for="role-name">名称</label>
+          <input id="role-name" v-model="form.name" class="nt-input" maxlength="30" placeholder="比如：狼美人" />
+        </div>
+        <div class="nt-field">
+          <label class="nt-label" for="role-alias">别名</label>
+          <input id="role-alias" v-model="form.alias" class="nt-input" placeholder="可不填" />
+        </div>
+        <div class="nt-field">
+          <span class="nt-label">阵营</span>
+          <div class="nt-seg" role="radiogroup" aria-label="阵营">
+            <button v-for="faction in FACTIONS" :key="faction" type="button" role="radio" :aria-checked="form.faction === faction" :class="{ on: form.faction === faction }" @click="setFaction(faction)">{{ faction }}</button>
+          </div>
+        </div>
+        <div class="nt-field">
+          <span class="nt-label">类型</span>
+          <div class="nt-seg" role="radiogroup" aria-label="类型">
+            <button v-for="option in typeOptions" :key="option.value" type="button" role="radio" :aria-checked="form.roleType === option.value" :class="{ on: form.roleType === option.value }" @click="form.roleType = option.value">{{ option.label }}</button>
+          </div>
+        </div>
+      </div>
 
       <div class="nt-field">
-        <label class="nt-label" :for="`r-skill-${layout}`">技能</label>
-        <textarea :id="`r-skill-${layout}`" v-model="form.skill" class="nt-input" rows="4"></textarea>
+        <label class="nt-label" for="role-skill">技能</label>
+        <textarea id="role-skill" v-model="form.skill" class="nt-input" rows="4" placeholder="夜里能做什么、白天有什么能力"></textarea>
       </div>
       <div class="nt-field">
-        <label class="nt-label" :for="`r-bg-${layout}`">背景故事 <small>· 图鉴详情页展示</small></label>
-        <textarea :id="`r-bg-${layout}`" v-model="form.background" class="nt-input" rows="4"></textarea>
+        <label class="nt-label" for="role-bg">背景故事 <small>· 图鉴详情页展示</small></label>
+        <textarea id="role-bg" v-model="form.background" class="nt-input" rows="4"></textarea>
       </div>
 
       <div class="nt-field">
-        <span class="nt-label">常见问题 <small>· {{ form.faqs.length }} 组</small></span>
+        <div class="nt-row-between">
+          <span class="nt-label">常见问题 <small>· {{ form.faqs.length }} 组</small></span>
+          <button type="button" class="nt-btn nt-btn--ghost nt-btn--small" @click="form.faqs.push({ question: '', answer: '' })">+ 加一组问答</button>
+        </div>
         <div v-for="(faq, index) in form.faqs" :key="index" class="faq">
           <input v-model="faq.question" class="nt-input" :aria-label="`第 ${index + 1} 个问题`" placeholder="问题" />
           <textarea v-model="faq.answer" class="nt-input" rows="2" :aria-label="`第 ${index + 1} 个回答`" placeholder="回答"></textarea>
-          <button type="button" class="nt-btn nt-btn--ghost nt-btn--small" @click="form.faqs.splice(index, 1)">删除这组</button>
+          <button type="button" class="nt-iconbtn" :aria-label="`删除第 ${index + 1} 组问答`" title="删除这组" @click="form.faqs.splice(index, 1)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
         </div>
-        <button type="button" class="nt-btn nt-btn--ghost nt-btn--small faq-add" @click="form.faqs.push({ question: '', answer: '' })">+ 加一组问答</button>
       </div>
+    </section>
 
+    <footer class="actions">
       <p v-if="!isNew" class="used">
         出现在：
         <template v-if="usedIn.length">
@@ -228,130 +271,104 @@ async function remove() {
         </template>
         <span v-else>还没有板子用它</span>
       </p>
-    </div>
-
-    <div class="editor__actions">
+      <span v-else class="used">新角色保存后可以在板子的阵容里选到</span>
       <button v-if="!isNew" class="nt-btn nt-btn--ghost" type="button" @click="remove">删除</button>
-      <button v-else class="nt-btn nt-btn--ghost" type="button" @click="emit('close')">取消</button>
-      <button class="nt-btn nt-btn--gold editor__save" type="button" :disabled="saving || makingPortrait" @click="save">
-        {{ saving ? '保存中…' : makingPortrait ? '头像生成中…' : isNew ? '创建角色' : '保存角色' }}
+      <button class="nt-btn nt-btn--ghost" type="button" @click="emit('close')">取消</button>
+      <button class="nt-btn nt-btn--gold actions__save" type="button" :disabled="saving || portraitBusy" @click="save">
+        {{ saving ? '保存中…' : portraitBusy ? '头像处理中…' : isNew ? '创建角色' : '保存角色' }}
       </button>
-    </div>
+    </footer>
   </div>
 </template>
 
 <style scoped>
 .editor {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 22px 28px;
 }
 
-.editor__title {
-  margin: 0;
-  font: 900 24px var(--serif);
-}
-
-.editor__art {
-  display: flex;
-  gap: 14px;
-  align-items: flex-start;
-}
-
-.editor__illustration {
-  flex: 1 1 0;
-}
-
-.editor__side {
-  flex: 0 0 132px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.editor__fields {
+.art,
+.fields {
   display: flex;
   flex-direction: column;
   gap: 18px;
   min-width: 0;
 }
 
-/* 弹窗里横向排：左边图，右边表单 */
-.editor--dialog {
-  display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
-  gap: 24px;
+.portrait {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 16px;
+  background: var(--panel-raised);
 }
 
-.editor--dialog .editor__art {
-  flex-direction: column;
+.portrait__token {
+  width: 72px;
+  height: 72px;
+  font-size: 26px;
 }
 
-.editor--dialog .editor__illustration,
-.editor--dialog .editor__side {
-  flex: none;
-  width: 100%;
-}
-
-.editor--dialog .editor__side {
-  display: grid;
-  grid-template-columns: 132px 1fr;
-  align-items: end;
-}
-
-.editor--dialog .editor__actions {
-  grid-column: 1 / -1;
-  justify-content: flex-end;
-}
-
-.editor--dialog .editor__save {
-  flex: 0 0 200px;
-}
-
-@media (max-width: 760px) {
-  .editor--dialog {
-    grid-template-columns: 1fr;
-  }
-}
-
-.token-preview {
+.portrait__body {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 8px;
+  gap: 4px;
+}
+
+.portrait__body strong {
+  font-size: 14px;
+}
+
+.portrait__body small {
   font-size: 12px;
   color: var(--text-3);
-  text-align: center;
 }
 
-.two {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.colors {
+.portrait__btns {
+  margin-top: 6px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
 
+.portrait__btns .nt-btn {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.colors {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .colors__swatch {
   width: 44px;
   height: 44px;
+  flex: none;
   border-radius: 12px;
   border: 2px solid var(--ink);
   box-shadow: 3px 3px 0 var(--ink);
 }
 
 .colors__hex {
-  width: 116px;
   font-family: ui-monospace, monospace;
 }
 
 .colors__hex.invalid {
   border-color: var(--camp-wolf);
+}
+
+.colors__presets {
+  display: grid;
+  grid-template-columns: repeat(9, 26px);
+  gap: 7px;
 }
 
 .colors__preset {
@@ -374,25 +391,31 @@ async function remove() {
   border-color: var(--text-3);
 }
 
+.grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
 .faq {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) 32px;
+  gap: 10px;
+  align-items: start;
+}
+
+.actions {
+  grid-column: 1 / -1;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  border-radius: 14px;
-  background: var(--panel-raised);
-}
-
-.faq .nt-btn {
-  align-self: flex-end;
-}
-
-.faq-add {
-  align-self: flex-start;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--panel-line);
 }
 
 .used {
-  margin: 0;
+  margin: 0 auto 0 0;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -404,12 +427,15 @@ async function remove() {
   text-decoration: none;
 }
 
-.editor__actions {
-  display: flex;
-  gap: 10px;
+.actions__save {
+  min-width: 160px;
 }
 
-.editor__save {
-  flex: 1;
+@media (max-width: 760px) {
+  .editor,
+  .grid2,
+  .faq {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

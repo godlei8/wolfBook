@@ -16,9 +16,8 @@ const boards = ref<Board[]>([])
 const campFilter = ref<CampKey | 'ALL'>('ALL')
 const onlyMissingArt = ref(false)
 const keyword = ref('')
-// 右侧面板编辑已有角色；新建走弹窗
-const selectedId = ref<number | null>(null)
-const creating = ref(false)
+// 新建和编辑都在弹窗里：editingId 为 0 表示新建，null 表示没打开
+const editingId = ref<number | null>(null)
 
 const counts = computed(() => {
   const result: Record<CampKey, number> = { god: 0, villager: 0, wolf: 0, third: 0 }
@@ -28,7 +27,13 @@ const counts = computed(() => {
   return result
 })
 const missingArt = computed(() => roles.value.filter((role) => !role.fullIllustration).length)
-const selected = computed(() => roles.value.find((role) => role.id === selectedId.value) || null)
+const editing = computed(() => (editingId.value ? roles.value.find((role) => role.id === editingId.value) || null : null))
+const dialogOpen = computed({
+  get: () => editingId.value !== null,
+  set: (open: boolean) => {
+    if (!open) editingId.value = null
+  },
+})
 
 const filtered = computed(() => {
   const text = keyword.value.trim()
@@ -57,15 +62,14 @@ async function load() {
   }
 }
 
-async function onSaved(role: Role) {
-  creating.value = false
+async function onSaved() {
+  editingId.value = null
   await load()
-  selectedId.value = role.id
   emit('changed')
 }
 
 async function onRemoved() {
-  selectedId.value = null
+  editingId.value = null
   await load()
   emit('changed')
 }
@@ -79,7 +83,7 @@ onMounted(load)
       {{ roles.length }} 个角色，{{ roles.length - missingArt }} 个有立绘。立绘、头像和主题色会用在图鉴、板子阵容和法官房。
     </template>
     <template #actions>
-      <button class="nt-btn nt-btn--gold" type="button" @click="creating = true">
+      <button class="nt-btn nt-btn--gold" type="button" @click="editingId = 0">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
         新建角色
       </button>
@@ -108,9 +112,8 @@ onMounted(load)
         :key="role.id"
         type="button"
         class="rc"
-        :class="{ 'rc--on': selectedId === role.id }"
-        :aria-pressed="selectedId === role.id"
-        @click="selectedId = role.id"
+        :class="{ 'rc--on': editingId === role.id }"
+        @click="editingId = role.id"
       >
         <span class="rc__art" :class="{ 'nt-cardback': !cardImage(role) }">
           <img v-if="cardImage(role)" :src="cardImage(role)" alt="" loading="lazy" />
@@ -126,13 +129,17 @@ onMounted(load)
       </button>
     </section>
 
-    <aside v-if="selected" class="panel" :aria-label="`编辑${selected.name}`">
-      <RoleEditor :key="selected.id" :role="selected" :boards="boards" @saved="onSaved" @removed="onRemoved" @close="selectedId = null" />
-    </aside>
   </div>
 
-  <el-dialog v-model="creating" title="新建角色" width="min(920px, 94vw)" top="5vh" destroy-on-close append-to-body class="role-dialog">
-    <RoleEditor v-if="creating" :role="null" :boards="boards" layout="dialog" @saved="onSaved" @close="creating = false" />
+  <el-dialog
+    v-model="dialogOpen"
+    :title="editingId ? `编辑「${editing?.name || ''}」` : '新建角色'"
+    width="min(1000px, 94vw)"
+    top="4vh"
+    destroy-on-close
+    append-to-body
+  >
+    <RoleEditor v-if="dialogOpen" :key="editingId ?? 'none'" :role="editing" :boards="boards" @saved="onSaved" @removed="onRemoved" @close="editingId = null" />
   </el-dialog>
 </template>
 
@@ -165,7 +172,7 @@ onMounted(load)
   flex: 999 1 480px;
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 18px;
 }
 
@@ -240,22 +247,4 @@ onMounted(load)
   font-size: 12px;
 }
 
-.panel {
-  flex: 1 0 360px;
-  max-width: 100%;
-  padding: 24px;
-  border-radius: 22px;
-  background: var(--panel);
-  border: 2px solid var(--ink);
-  box-shadow: 5px 5px 0 var(--ink);
-}
-
-@media (min-width: 1200px) {
-  .panel {
-    position: sticky;
-    top: 0;
-    max-height: calc(100vh - 64px);
-    overflow-y: auto;
-  }
-}
 </style>

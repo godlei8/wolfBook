@@ -74,8 +74,8 @@ function onLoad(event: Event) {
       <div class="image-field__bar">
         <button class="nt-btn nt-btn--gold nt-btn--small" type="button" :disabled="uploading" @click="pick">{{ uploading ? '上传中…' : '更换' }}</button>
         <button class="nt-btn nt-btn--ghost nt-btn--small" type="button" @click="model = ''">清空</button>
-        <span v-if="meta" class="image-field__meta">{{ meta }}</span>
       </div>
+      <span v-if="meta" class="image-field__meta">{{ meta }}</span>
     </div>
 
     <button
@@ -129,7 +129,9 @@ function onLoad(event: Event) {
 }
 
 .image-field__meta {
-  margin-left: auto;
+  position: absolute;
+  top: 10px;
+  right: 10px;
   padding: 4px 10px;
   border-radius: 10px;
   background: rgba(14, 12, 19, 0.82);
