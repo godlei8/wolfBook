@@ -41,14 +41,14 @@ npm run dev:mp-weixin     # 增量构建 → 用微信开发者工具打开 dist
 npm run build:mp-weixin   # 生产构建
 ```
 前端单测在 `miniprogram-vue/tests/*.test.mjs`，使用 **Node 内置测试运行器**（package.json 里没有配 script）：`node --test "tests/*.test.mjs"`（新版 Node 需要 glob 形式，直接传目录会报模块找不到）。覆盖范围：
-- `assistant-*.test.mjs`：助手的 markdown 分段 / 流式缓冲 / 消息模型。
+- `assistant-*.test.mjs`：助手的 markdown 渲染 / 流式缓冲 / 消息模型。
 - `judge-voice.test.mjs`：电子法官语音脚本生成，以及 WechatSI 插件不可用时的降级。
 - `mp-weixin-app-config.test.mjs`：开发构建时从 `app.json` 剔除 WechatSI 插件的构建策略（`build/mp-weixin-app-config.mjs`）。
 - `board-rules.test.mjs`：板子详细规则的整理（空条目过滤、图片地址、序号）、角色主题色按阵营兜底、阵营分组与比例条统计，以及列表卡片没背景图时挑哪几张阵容立绘（`utils/board-rules.js`）。
 - `judge-night-order.test.mjs`：法官主持台的夜间步骤（板子没配夜间顺序时的通用顺序、狼队合并成一步）、女巫剩余用药、查验结果（`utils/judge/night-order.js`）。
 - `request-errors.test.mjs`：`services/request-errors.js` 里把 HTTP / 网络错误翻译成中文文案的纯函数，以及 4001 判定。
 
-后端测试（`backend/src/test`，H2）：`BackendApplicationTests`（接口冒烟，含后台能清空角色立绘/主题色）、`SecurityIntegrationTests`（伪造 token、禁用管理员、匿名/非图片上传、错误信息不泄露）、`JudgeFlowIntegrationTests`（用种子板子 3 跑完整法官流程：权限、身份可见性、座位校验、状态机、短房号、法官代记夜间行动）、`CommunityIntegrationTests`（下线帖子、评论数、分页上限、帖子标题/分类/关联板子筛选、只看我的）、`TokenServiceTests`。新增后端行为时优先往这几个文件里加 MockMvc 用例。
+后端测试（`backend/src/test`，H2）：`BackendApplicationTests`（接口冒烟，含后台能清空角色立绘/主题色）、`SecurityIntegrationTests`（伪造 token、禁用管理员、匿名/非图片上传、错误信息不泄露）、`JudgeFlowIntegrationTests`（用种子板子 3 跑完整法官流程：权限、身份可见性、座位校验、状态机、短房号、法官代记夜间行动）、`CommunityIntegrationTests`（下线帖子、评论数、分页上限、帖子标题/分类/关联板子筛选、只看我的）、`TokenServiceTests`，以及助手的纯逻辑单测 `AssistantIntentRouterTests`（问题分流）、`BoardRecommenderTests`（板子打分）。新增后端行为时优先往这几个文件里加 MockMvc 用例。
 
 ## 架构
 
@@ -77,7 +77,17 @@ npm run build:mp-weixin   # 生产构建
 - **向量模型**：火山方舟 Embedding（`VolcengineEmbeddingModel/Service`），存入 **PostgreSQL + pgvector**（Spring AI 的 `PgVectorStore`）。
 - **联网搜索兜底**：火山方舟 `web_search`（`VolcengineWebSearchService`）。
 
-回答链路（`AssistantAnswerService`）：结构化板子推荐优先命中站内数据 → 知识类问题走 pgvector 语义检索（`AssistantKnowledgeService`）→ 检索不足时走联网搜索兜底。流式回答用 `SseEmitter` + 虚拟线程（`/api/assistant/ask/stream`）。后台管理端控制 AI 开关、Prompt、检索参数、联网搜索开关以及 DeepSeek Key（`AdminAiController` + `AssistantConfigService`）；火山方舟的 Key 保留在服务端，不下发给后台。
+回答链路：`AssistantAnswerService` 只管鉴权、会话、落库和日志，怎么答在 `AssistantAnswerPipeline`（普通接口、流式接口、后台调试台共用这一条）：
+- **分流** `AssistantIntentRouter`（纯规则，有单测）：命中拦截词 → 婉拒；在挑板子（推荐 / 玩什么 / 只报人数难度）→ 推荐；点了具体板子名、角色名、在详情页里问 → 按资料回答。「预女猎白这个板子女巫能自救吗」不是推荐。
+- **推荐** `BoardRecommender`：按人数（认中文数字）、难度和标签的常见说法、阵容里的角色给上架板子打分，有对得上的就只给对得上的（最多 3 个），模型只负责介绍候选。
+- **按资料回答**：问题里点名的板子 / 角色直接取结构化资料全文；追问（「第一个具体怎么玩」）取上一轮回答里提到的板子；再加 `AssistantKnowledgeService` 检索（向量出错时退回关键词）。站内什么都没有且开了联网搜索才走火山 `web_search`；否则也交给模型按通用规则答。
+- **页面上下文** `AssistantPageContext`：小程序 `openAssistant` 带的 `pageContext`（板子 / 角色详情、法官房）会把对应资料全文写进系统提示词，模型才知道「这个板子」「她」是谁。
+- **提示词** `AssistantPromptFactory`：后台的系统 Prompt 只是人设；格式（先给结论、不套固定段落、不用大标题）、只用站内资料、不替玩家做局中决策这些规矩写在代码里。历史对话按多轮消息传。
+- **流式事件**：`started` → `stage`（「正在查站内资料」等进度，小程序在出字前显示等待卡片）→ `delta` → `done`；准备阶段出错（未登录、助手关闭）才发 `error`。流程里出意外也会给一句话、存进会话并记成失败日志。
+- 结构化资料（板子含阵容、角色含称号 / 真名 / 身世 / 人物关系、世界观）只在数据改动时由 `requestStructuredKnowledgeRebuild` 同步，空库启动时补一次，**不再每问一次全量重写**；要进检索仍需在后台「发布中心」发布。
+- 评测：`node scripts/assistant-eval.mjs http://127.0.0.1:8088 out.md` 把 `scripts/assistant-eval-questions.json` 的 19 题问一遍出报告（会真调模型，只对本地跑）。
+
+流式回答用 `SseEmitter` + 虚拟线程（`/api/assistant/ask/stream`）。后台「AI 助手」页：控制台（开关、人设、拦截词）、模型管理、**调试台**（`POST /admin/ai/playground`，用当前配置答一题，返回分流理由、命中资料、各步耗时，不落库）、知识库、发布中心、问答日志（最近 500 条，可筛失败 / 慢的，点开看当时的回答）。火山方舟的 Key 保留在服务端，不下发给后台。
 
 **对话模型可切换**：后台「AI 助手 → 模型管理」登记多个 OpenAI 兼容模型（`assistant_models` 表：接口地址、模型编码、Key、启用、`disable_thinking`、`active`），`AssistantConfigService.getRuntimeConfig()` 把 provider 换成 `active = 1` 的那一个，问答和「按世界观起草」都跟着切；一个都没设时退回 `assistant_config` 里原来的 DeepSeek 配置（第一次打开模型管理会把它搬进来当第一项）。`DeepSeekChatService` 实际是通用的 OpenAI 兼容客户端（`{baseUrl}/chat/completions`）；模型开了「关闭思考」会带 `chat_template_kwargs: {thinking: false, enable_thinking: false}`，给 vLLM 部署的推理模型（比如学校的 `deepseek-v4-flash-0731`）用，不开它每次先想几十秒到几分钟。Key 只存在后端，接口返回打码值（`********` + 后 4 位），原样传回表示不改。没开 pgvector 时知识检索走 `AssistantKnowledgeService` 的关键词兜底：中文按相邻两字切词（`fallbackTokens`），资料要在「发布中心」发布后才会被检索到。
 

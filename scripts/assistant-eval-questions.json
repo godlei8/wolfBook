@@ -1,0 +1,27 @@
+[
+  { "id": "rule-witch", "group": "规则", "question": "女巫第一晚能自救吗？", "expect": "能说出常见规则（多数板子首夜可自救/看板子），不能只回答资料没写" },
+  { "id": "rule-guard", "group": "规则", "question": "守卫能连续两晚守同一个人吗？", "expect": "不能连续守同一人" },
+  { "id": "rule-idiot", "group": "规则", "question": "白痴被投出去会怎样？", "expect": "翻牌免死、失去投票权" },
+  { "id": "rule-hunter", "group": "规则", "question": "猎人被女巫毒死还能开枪吗？", "expect": "通常不能开枪" },
+  { "id": "rule-whitewolf", "group": "规则", "question": "白狼王什么时候可以自爆带人？", "expect": "白天自爆时带走一名玩家" },
+
+  { "id": "rec-12-adv", "group": "推荐", "question": "12人进阶推荐什么板子", "expect": "推荐 12 人进阶板子，介绍内容和阵容一致，不编造阵容" },
+  { "id": "rec-9-new", "group": "推荐", "question": "9个人新手玩什么好？", "expect": "守卫九人局" },
+  { "id": "rec-fun", "group": "推荐", "question": "有没有适合朋友聚会娱乐的板子？", "expect": "偏娱乐的板子，比如爱神混情局或守卫九人局" },
+  { "id": "rec-third", "group": "推荐", "question": "想玩有第三方阵营的板子", "expect": "爱神混情局" },
+
+  { "id": "board-witch", "group": "板子规则（不该被当成推荐）", "question": "预女猎白这个板子女巫能自救吗？", "expect": "回答规则，不是推荐板子" },
+  { "id": "board-knight", "group": "板子规则（不该被当成推荐）", "question": "狼美人骑士板子里骑士怎么决斗？", "expect": "解释骑士决斗，不是推荐板子" },
+
+  { "id": "world-bell", "group": "世界观", "question": "夜镇的银钟是什么来历？", "expect": "三百年前银钟之约、月升自响、今年秋天裂了" },
+  { "id": "world-guard", "group": "世界观", "question": "守卫的真名是什么，他喜欢谁？", "expect": "罗兰·维斯特，喜欢女巫薇洛·艾许" },
+  { "id": "world-feud", "group": "世界观", "question": "黑狼王和猎人有什么仇？", "expect": "二十年前林边满月，猎人妻女被狼拖走" },
+
+  { "id": "page-board", "group": "页面上下文", "scene": "board_detail", "pageContext": { "page": "boards/detail", "boardId": 1, "boardName": "狼美人骑士" }, "question": "这个板子女巫能自救吗？", "expect": "按狼美人骑士回答，知道「这个板子」指的是哪个" },
+  { "id": "page-role", "group": "页面上下文", "scene": "role_detail", "pageContext": { "page": "roles/detail", "roleId": 7, "roleName": "狼美人" }, "question": "她出局的时候会带走谁？", "expect": "知道「她」是狼美人：带走当晚被魅惑的人" },
+
+  { "id": "follow-1", "group": "追问", "question": "12人进阶推荐什么板子", "followUp": "第一个具体怎么玩？", "expect": "追问能接上第一个推荐的板子" },
+
+  { "id": "guard-judge", "group": "边界", "question": "今晚刀谁比较好？", "expect": "礼貌拒绝替玩家做局中决策" },
+  { "id": "offtopic", "group": "边界", "question": "今天天气怎么样？", "expect": "说明只回答狼人杀相关问题" }
+]
