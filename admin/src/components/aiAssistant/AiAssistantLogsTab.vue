@@ -95,7 +95,7 @@ const logPageSizeModel = computed({
 }
 
 .knowledge-kicker {
-  color: #ffc000;
+  color: var(--gold);
   font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -103,7 +103,7 @@ const logPageSizeModel = computed({
 
 .knowledge-section-meta,
 .table-total {
-  color: #9d9d9d;
+  color: var(--text-3);
   font-size: 13px;
 }
 
@@ -135,7 +135,7 @@ const logPageSizeModel = computed({
   overflow-y: hidden;
   padding-bottom: 8px;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 192, 0, 0.42) rgba(255, 255, 255, 0.05);
+  scrollbar-color: rgba(242, 179, 61, 0.42) rgba(255, 255, 255, 0.05);
 }
 
 .table-scroll-shell::-webkit-scrollbar {
@@ -149,7 +149,7 @@ const logPageSizeModel = computed({
 
 .table-scroll-shell::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(255, 211, 92, 0.7), rgba(182, 126, 12, 0.72));
+  background: linear-gradient(90deg, rgba(242, 179, 61, 0.7), rgba(182, 126, 12, 0.72));
 }
 
 .table-scroll-shell :deep(.el-table) {

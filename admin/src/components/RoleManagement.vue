@@ -1,208 +1,162 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import type { UploadRequestOptions } from 'element-plus'
+import PageHeader from './ui/PageHeader.vue'
+import ImageField from './ui/ImageField.vue'
 import { api } from '../services/api'
-import type { Role } from '../types'
+import type { Board, Role } from '../types'
+import { CAMP_META, CAMP_ORDER, type CampKey, campOf, roleAccent } from '../utils/board'
 import { resolveMediaUrl } from '../utils/media'
-import { clampPage, paginate } from '../utils/pagination'
 
 const emit = defineEmits<{ changed: [] }>()
 
-const roles = ref<Role[]>([])
+const FACTIONS = ['好人', '狼人', '第三方']
+// 值和小程序、后端一致，标签换成更好懂的说法
+const ROLE_TYPES: Record<string, { value: string; label: string }[]> = {
+  好人: [
+    { value: '神职', label: '神职' },
+    { value: '平民', label: '平民' },
+  ],
+  狼人: [
+    { value: '狼人', label: '普通狼' },
+    { value: '功能狼', label: '特殊狼' },
+  ],
+  第三方: [{ value: '第三方', label: '第三方' }],
+}
+/** 和美术提示词里各角色的专属色一致，方便直接点选。 */
+const COLOR_PRESETS = ['#7B4FD6', '#F2B33D', '#E8772E', '#4A78A8', '#B3263A', '#C0262D', '#D63A7A', '#2FB8A6', '#2F5D46', '#7FC8E8', '#7A1A22', '#9A6A3A', '#2A8FB8', '#3F3DA8', '#F28CB8', '#D9902A']
+
 const loading = ref(false)
-const dialogVisible = ref(false)
-
+const saving = ref(false)
+const roles = ref<Role[]>([])
+const boards = ref<Board[]>([])
+const campFilter = ref<CampKey | 'ALL'>('ALL')
+const onlyMissingArt = ref(false)
 const keyword = ref('')
-const factionFilter = ref('ALL')
-const roleTypeFilter = ref('ALL')
-const currentPage = ref(1)
-const pageSize = ref(8)
+const editing = ref(false)
 
-const factionOptions = ['好人', '狼人', '第三方']
-const roleTypeOptionsMap: Record<string, string[]> = {
-  好人: ['平民', '神职'],
-  狼人: ['狼人', '功能狼'],
-  第三方: ['第三方'],
-}
-
-const allRoleTypes = ['平民', '神职', '狼人', '功能狼', '第三方']
-
-function buildCamp(faction: string, roleType: string) {
-  if (!faction && !roleType) return ''
-  if (!roleType) return faction
-  return `${faction}·${roleType}`
-}
-
-function splitCamp(camp = '') {
-  if (!camp) {
-    return { faction: '好人', roleType: '神职' }
-  }
-  const normalized = camp.replace('/', '·').replace('-', '·')
-  if (normalized.includes('·')) {
-    const [faction, roleType] = normalized.split('·', 2)
-    return { faction, roleType }
-  }
-  if (normalized.startsWith('狼人')) {
-    return { faction: '狼人', roleType: '狼人' }
-  }
-  if (normalized.startsWith('第三方')) {
-    return { faction: '第三方', roleType: '第三方' }
-  }
-  return { faction: '好人', roleType: '神职' }
-}
-
-const emptyRole = (): Role => ({
+const form = reactive({
   id: 0,
   name: '',
   alias: '',
   faction: '好人',
   roleType: '神职',
-  camp: '好人·神职',
   skill: '',
   background: '',
-  faqs: [{ question: '', answer: '' }],
   portrait: '',
   fullIllustration: '',
-  themeColor: null,
+  themeColor: '',
+  faqs: [] as { question: string; answer: string }[],
 })
 
-const form = reactive<Role>(emptyRole())
+const counts = computed(() => {
+  const result: Record<CampKey, number> = { god: 0, villager: 0, wolf: 0, third: 0 }
+  roles.value.forEach((role) => {
+    result[campOf(role)] += 1
+  })
+  return result
+})
+const missingArt = computed(() => roles.value.filter((role) => !role.fullIllustration).length)
 
-/** 和美术提示词里各角色的专属色一致，方便直接点选。 */
-const themeColorPresets = [
-  '#7B4FD6', '#F2B33D', '#E8772E', '#4A78A8', '#B3263A', '#C0262D', '#D63A7A', '#2FB8A6', '#2F5D46',
-  '#7FC8E8', '#7A1A22', '#9A6A3A', '#6B7280', '#2A8FB8', '#3F3DA8', '#F28CB8', '#D9902A',
-]
-
-const availableRoleTypes = computed(() => roleTypeOptionsMap[form.faction] || [])
-const portraitPreviewUrl = computed(() => resolveMediaUrl(form.portrait))
-const illustrationPreviewUrl = computed(() => resolveMediaUrl(form.fullIllustration))
-const filteredRoles = computed(() => {
-  const normalizedKeyword = keyword.value.trim().toLowerCase()
+const filtered = computed(() => {
+  const text = keyword.value.trim()
   return roles.value.filter((role) => {
-    const searchableText = [role.name, role.alias || '', role.camp, role.faction, role.roleType]
-      .join(' ')
-      .toLowerCase()
-    const matchesKeyword = !normalizedKeyword || searchableText.includes(normalizedKeyword)
-    const matchesFaction = factionFilter.value === 'ALL' || role.faction === factionFilter.value
-    const matchesType = roleTypeFilter.value === 'ALL' || role.roleType === roleTypeFilter.value
-    return matchesKeyword && matchesFaction && matchesType
+    if (campFilter.value !== 'ALL' && campOf(role) !== campFilter.value) return false
+    if (onlyMissingArt.value && role.fullIllustration) return false
+    if (text && !`${role.name}${role.alias || ''}`.includes(text)) return false
+    return true
   })
 })
 
-const pagedRoles = computed(() => paginate(filteredRoles.value, currentPage.value, pageSize.value))
-
-watch([keyword, factionFilter, roleTypeFilter, pageSize], () => {
-  currentPage.value = 1
-})
-
-watch(
-  () => filteredRoles.value.length,
-  (total) => {
-    currentPage.value = clampPage(currentPage.value, pageSize.value, total)
-  },
+const typeOptions = computed(() => ROLE_TYPES[form.faction] || [])
+const themeValid = computed(() => !form.themeColor || /^#[0-9a-fA-F]{6}$/.test(form.themeColor))
+const previewAccent = computed(() =>
+  themeValid.value && form.themeColor ? form.themeColor : CAMP_META[campOf({ faction: form.faction, roleType: form.roleType })].color,
 )
+const usedIn = computed(() => (form.id ? boards.value.filter((board) => board.roles.some((item) => item.roleId === form.id)) : []))
 
-function syncCamp() {
-  form.camp = buildCamp(form.faction, form.roleType)
+function cardImage(role: Role) {
+  return resolveMediaUrl(role.fullIllustration)
 }
 
-function ensureRoleType() {
-  if (!availableRoleTypes.value.includes(form.roleType)) {
-    form.roleType = availableRoleTypes.value[0] || ''
+function setFaction(faction: string) {
+  form.faction = faction
+  if (!typeOptions.value.some((option) => option.value === form.roleType)) {
+    form.roleType = typeOptions.value[0]?.value || ''
   }
-  syncCamp()
 }
 
-function normalizeRole(role?: Role): Role {
-  if (!role) {
-    return emptyRole()
-  }
-  const next = JSON.parse(JSON.stringify(role)) as Role
-  const fallback = splitCamp(next.camp)
-  next.faction = next.faction || fallback.faction
-  next.roleType = next.roleType || fallback.roleType
-  next.camp = buildCamp(next.faction, next.roleType)
-  next.alias = next.alias || ''
-  next.skill = next.skill || ''
-  next.background = next.background || ''
-  next.portrait = next.portrait || ''
-  next.fullIllustration = next.fullIllustration || ''
-  next.themeColor = next.themeColor || null
-  next.faqs = next.faqs?.length ? next.faqs : [{ question: '', answer: '' }]
-  return next
-}
-
-function resetForm(role?: Role) {
-  Object.assign(form, normalizeRole(role))
-  ensureRoleType()
-}
-
-function resetFilters() {
-  keyword.value = ''
-  factionFilter.value = 'ALL'
-  roleTypeFilter.value = 'ALL'
-  currentPage.value = 1
-}
-
-function addFaq() {
-  form.faqs.push({ question: '', answer: '' })
-}
-
-function removeFaq(index: number) {
-  if (form.faqs.length === 1) {
-    form.faqs.splice(0, 1, { question: '', answer: '' })
-    return
-  }
-  form.faqs.splice(index, 1)
+function open(role?: Role) {
+  form.id = role?.id || 0
+  form.name = role?.name || ''
+  form.alias = role?.alias || ''
+  form.faction = role?.faction || '好人'
+  form.roleType = role?.roleType || '神职'
+  form.skill = role?.skill || ''
+  form.background = role?.background || ''
+  form.portrait = role?.portrait || ''
+  form.fullIllustration = role?.fullIllustration || ''
+  form.themeColor = role?.themeColor || ''
+  form.faqs = (role?.faqs || []).map((faq) => ({ ...faq }))
+  setFaction(form.faction)
+  editing.value = true
 }
 
 async function load() {
   loading.value = true
   try {
-    roles.value = await api.getRoles()
+    const [roleData, boardData] = await Promise.all([api.getRoles(), api.getBoards()])
+    roles.value = roleData
+    boards.value = boardData
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '角色数据加载失败')
+    ElMessage.error(error instanceof Error ? error.message : '角色加载失败')
   } finally {
     loading.value = false
   }
 }
 
-async function submit() {
-  ensureRoleType()
+async function save() {
+  if (!form.name.trim()) {
+    ElMessage.warning('角色名称没填')
+    return
+  }
+  if (!themeValid.value) {
+    ElMessage.warning('主题色要写成 #RRGGBB，比如 #D63A7A')
+    return
+  }
   const payload = {
-    name: form.name,
-    alias: form.alias || '',
+    name: form.name.trim(),
+    alias: form.alias.trim(),
     faction: form.faction,
     roleType: form.roleType,
     skill: form.skill,
     background: form.background,
-    faqs: form.faqs.filter((faq) => faq.question && faq.answer),
+    faqs: form.faqs.filter((faq) => faq.question.trim() && faq.answer.trim()),
     portrait: form.portrait,
     fullIllustration: form.fullIllustration,
     themeColor: form.themeColor || null,
   }
-
+  saving.value = true
   try {
-    if (form.id) {
-      await api.updateRole(form.id, payload)
-      ElMessage.success('角色已更新')
-    } else {
-      await api.createRole(payload)
-      ElMessage.success('角色已创建')
-    }
-    dialogVisible.value = false
+    const saved = form.id ? await api.updateRole(form.id, payload) : await api.createRole(payload)
+    ElMessage.success(form.id ? '角色已保存' : '角色已创建')
     await load()
+    open(roles.value.find((role) => role.id === saved.id) || saved)
     emit('changed')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '角色保存失败')
+  } finally {
+    saving.value = false
   }
 }
 
-async function removeRole(id: number) {
+async function remove() {
+  if (usedIn.value.length) {
+    ElMessage.warning(`「${form.name}」还在 ${usedIn.value.map((board) => board.name).join('、')} 里，先从这些板子的阵容里去掉`)
+    return
+  }
   try {
-    await ElMessageBox.confirm('删除后引用该角色的板子配置会失效，且不可恢复。', '删除角色', {
+    await ElMessageBox.confirm(`删除「${form.name}」，不能恢复。`, '删除角色', {
       type: 'warning',
       confirmButtonText: '删除',
       cancelButtonText: '取消',
@@ -211,8 +165,9 @@ async function removeRole(id: number) {
     return
   }
   try {
-    await api.deleteRole(id)
+    await api.deleteRole(form.id)
     ElMessage.success('角色已删除')
+    editing.value = false
     await load()
     emit('changed')
   } catch (error) {
@@ -220,478 +175,396 @@ async function removeRole(id: number) {
   }
 }
 
-async function uploadTo(target: 'portrait' | 'fullIllustration', options: UploadRequestOptions) {
-  try {
-    const result = await api.upload(options.file as File)
-    form[target] = result.url
-    ElMessage.success(target === 'portrait' ? '头像已上传' : '立绘已上传')
-    options.onSuccess?.(result)
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '图片上传失败')
-    options.onError?.(Object.assign(new Error('upload failed'), { status: 0, method: 'post', url: '' }) as never)
-  }
-}
-
-function uploadPortrait(options: UploadRequestOptions) {
-  return uploadTo('portrait', options)
-}
-
-function uploadIllustration(options: UploadRequestOptions) {
-  return uploadTo('fullIllustration', options)
-}
-
 onMounted(load)
 </script>
 
 <template>
-  <el-card class="panel-card">
-    <div class="table-toolbar">
-      <el-input v-model="keyword" clearable placeholder="搜索角色名称、别名或组合标签" />
-      <el-select v-model="factionFilter">
-        <el-option label="全部阵营" value="ALL" />
-        <el-option v-for="item in factionOptions" :key="item" :label="item" :value="item" />
-      </el-select>
-      <el-select v-model="roleTypeFilter">
-        <el-option label="全部类型" value="ALL" />
-        <el-option v-for="item in allRoleTypes" :key="item" :label="item" :value="item" />
-      </el-select>
-      <el-button @click="resetFilters">重置</el-button>
-      <div class="toolbar-summary">当前 {{ filteredRoles.length }} 条</div>
-      <el-button type="primary" @click="resetForm(); dialogVisible = true">新建角色</el-button>
-    </div>
-
-    <el-table :data="pagedRoles" v-loading="loading" empty-text="暂无符合条件的角色">
-      <el-table-column prop="name" label="角色名称" min-width="150" />
-      <el-table-column prop="faction" label="阵营" width="110">
-        <template #default="{ row }">
-          <el-tag :type="row.faction === '狼人' ? 'danger' : row.faction === '第三方' ? 'info' : 'warning'">
-            {{ row.faction }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="roleType" label="角色类型" width="120" />
-      <el-table-column prop="camp" label="组合标签" min-width="140" />
-      <el-table-column prop="alias" label="别名" min-width="120" />
-      <el-table-column label="操作" width="180" fixed="right">
-        <template #default="{ row }">
-          <el-button text type="primary" @click="resetForm(row); dialogVisible = true">编辑</el-button>
-          <el-button text type="danger" @click="removeRole(row.id)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <div class="table-footer">
-      <div class="table-total">共 {{ filteredRoles.length }} 条角色</div>
-      <el-pagination
-        v-model:current-page="currentPage"
-        v-model:page-size="pageSize"
-        background
-        size="small"
-        layout="sizes, prev, pager, next"
-        :pager-count="5"
-        :page-sizes="[8, 10, 20, 30]"
-        :total="filteredRoles.length"
-      />
-    </div>
-  </el-card>
-
-  <el-dialog v-model="dialogVisible" width="880px" :title="form.id ? '编辑角色' : '新建角色'">
-    <el-form label-position="top">
-      <div class="form-grid form-grid-role">
-        <el-form-item label="名称">
-          <el-input v-model="form.name" />
-        </el-form-item>
-        <el-form-item label="别名">
-          <el-input v-model="form.alias" />
-        </el-form-item>
-        <el-form-item label="阵营">
-          <el-select v-model="form.faction" @change="ensureRoleType">
-            <el-option v-for="item in factionOptions" :key="item" :label="item" :value="item" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="角色类型">
-          <el-select v-model="form.roleType" @change="syncCamp">
-            <el-option v-for="item in availableRoleTypes" :key="item" :label="item" :value="item" />
-          </el-select>
-        </el-form-item>
-      </div>
-      <el-form-item label="技能说明">
-        <el-input v-model="form.skill" type="textarea" :rows="3" />
-      </el-form-item>
-      <el-form-item label="背景故事">
-        <el-input v-model="form.background" type="textarea" :rows="3" />
-      </el-form-item>
-      <el-form-item label="专属主题色">
-        <div class="theme-color-field">
-          <el-color-picker v-model="form.themeColor" :predefine="themeColorPresets" />
-          <el-input v-model="form.themeColor" class="theme-color-input" placeholder="#RRGGBB，留空则按阵营默认色" clearable />
-          <span class="theme-color-note">小程序角色卡的底色、描边和夜间顺序的色条都用这个颜色。</span>
-        </div>
-      </el-form-item>
-
-      <div class="form-grid">
-        <el-form-item label="头像">
-          <div class="media-field">
-            <div class="upload-stack">
-              <el-input v-model="form.portrait" placeholder="粘贴头像地址或直接上传" />
-              <el-upload :show-file-list="false" :http-request="uploadPortrait">
-                <el-button>上传</el-button>
-              </el-upload>
-            </div>
-            <div class="inline-preview-card inline-preview-card--portrait">
-              <el-image
-                v-if="portraitPreviewUrl"
-                :key="portraitPreviewUrl"
-                class="inline-image-preview inline-image-preview--portrait"
-                :src="portraitPreviewUrl"
-                fit="cover"
-                :preview-src-list="[portraitPreviewUrl]"
-                preview-teleported
-              >
-                <template #error>
-                  <div class="inline-preview-empty">头像回显失败</div>
-                </template>
-              </el-image>
-              <div v-else class="inline-preview-empty">上传后显示头像缩略图</div>
-            </div>
-          </div>
-        </el-form-item>
-        <el-form-item label="全身立绘">
-          <div class="media-field">
-            <div class="upload-stack">
-              <el-input v-model="form.fullIllustration" placeholder="粘贴立绘地址或直接上传" />
-              <el-upload :show-file-list="false" :http-request="uploadIllustration">
-                <el-button>上传</el-button>
-              </el-upload>
-            </div>
-            <div class="inline-preview-card inline-preview-card--illustration">
-              <el-image
-                v-if="illustrationPreviewUrl"
-                :key="illustrationPreviewUrl"
-                class="inline-image-preview inline-image-preview--illustration"
-                :src="illustrationPreviewUrl"
-                fit="cover"
-                :preview-src-list="[illustrationPreviewUrl]"
-                preview-teleported
-              >
-                <template #error>
-                  <div class="inline-preview-empty">立绘回显失败</div>
-                </template>
-              </el-image>
-              <div v-else class="inline-preview-empty">上传后显示立绘缩略图</div>
-            </div>
-          </div>
-        </el-form-item>
-      </div>
-
-      <div class="array-section">
-        <div class="array-header">
-          <strong>FAQ</strong>
-          <el-button text type="primary" @click="addFaq">新增 FAQ</el-button>
-        </div>
-        <div v-for="(faq, index) in form.faqs" :key="index" class="faq-row">
-          <el-input v-model="faq.question" placeholder="问题" />
-          <el-input v-model="faq.answer" type="textarea" :rows="2" placeholder="答案" />
-          <el-button text type="danger" @click="removeFaq(index)">删除</el-button>
-        </div>
-      </div>
-    </el-form>
-
-    <template #footer>
-      <el-button @click="dialogVisible = false">取消</el-button>
-      <el-button type="primary" @click="submit">保存角色</el-button>
+  <PageHeader eyebrow="ROLES" title="角色图鉴">
+    <template #description>
+      {{ roles.length }} 个角色，{{ roles.length - missingArt }} 个有立绘。立绘、头像和主题色会用在图鉴、板子阵容和法官房。
     </template>
-  </el-dialog>
+    <template #actions>
+      <button class="nt-btn nt-btn--gold" type="button" @click="open()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        新建角色
+      </button>
+    </template>
+  </PageHeader>
+
+  <section class="filters" aria-label="筛选">
+    <button type="button" class="nt-chip" :class="{ 'nt-chip--on': campFilter === 'ALL' }" @click="campFilter = 'ALL'">全部 {{ roles.length }}</button>
+    <button v-for="camp in CAMP_ORDER" :key="camp" type="button" class="nt-chip" :class="{ 'nt-chip--on': campFilter === camp }" @click="campFilter = camp">
+      <span class="nt-dot" :style="{ background: CAMP_META[camp].color }"></span>{{ CAMP_META[camp].label }} {{ counts[camp] }}
+    </button>
+    <span class="nt-divider"></span>
+    <button type="button" class="nt-chip" :class="{ 'nt-chip--on': onlyMissingArt }" :aria-pressed="onlyMissingArt" @click="onlyMissingArt = !onlyMissingArt">只看缺立绘 {{ missingArt }}</button>
+    <label class="search">
+      <span class="nt-sr-only">搜索角色</span>
+      <input v-model="keyword" type="search" class="nt-input" placeholder="搜角色名" />
+    </label>
+  </section>
+
+  <div class="layout">
+    <section class="grid" aria-label="角色">
+      <p v-if="loading && !roles.length" class="nt-empty">正在翻图鉴…</p>
+      <p v-else-if="!filtered.length" class="nt-empty">没有符合条件的角色</p>
+      <button
+        v-for="role in filtered"
+        :key="role.id"
+        type="button"
+        class="rc"
+        :class="{ 'rc--on': editing && form.id === role.id }"
+        :aria-pressed="editing && form.id === role.id"
+        @click="open(role)"
+      >
+        <span class="rc__art" :class="{ 'nt-cardback': !cardImage(role) }">
+          <img v-if="cardImage(role)" :src="cardImage(role)" alt="" loading="lazy" />
+          <span v-else class="rc__missing">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" /></svg>
+            待上传立绘
+          </span>
+        </span>
+        <span class="rc__foot" :style="{ borderTopColor: roleAccent(role) }">
+          <strong>{{ role.name }}</strong>
+          <small :style="{ color: CAMP_META[campOf(role)].color }">{{ CAMP_META[campOf(role)].label }}</small>
+        </span>
+      </button>
+    </section>
+
+    <aside v-if="editing" class="editor" :aria-label="form.id ? `编辑${form.name}` : '新建角色'">
+      <div class="nt-row-between">
+        <h2 class="editor__title">{{ form.id ? form.name || '未命名角色' : '新建角色' }}</h2>
+        <button class="nt-iconbtn" type="button" aria-label="关闭编辑" @click="editing = false">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+        </button>
+      </div>
+
+      <div class="art-row">
+        <ImageField v-model="form.fullIllustration" class="art-row__main" name="fullIllustration" label="立绘" hint="3:4 竖版" aspect="3 / 4" />
+        <div class="art-row__side">
+          <ImageField v-model="form.portrait" name="portrait" label="头像" hint="方形" aspect="1 / 1" />
+          <div class="token-preview">
+            <span class="nt-token" :style="{ width: '56px', height: '56px', boxShadow: `0 0 0 3px ${previewAccent}` }">
+              <img v-if="form.portrait || form.fullIllustration" :src="resolveMediaUrl(form.portrait || form.fullIllustration)" alt="" />
+              <span v-else>{{ form.name.slice(0, 1) || '?' }}</span>
+            </span>
+            <small>阵容里的样子</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="two">
+        <div class="nt-field">
+          <label class="nt-label" for="r-name">名称</label>
+          <input id="r-name" v-model="form.name" class="nt-input" maxlength="30" />
+        </div>
+        <div class="nt-field">
+          <label class="nt-label" for="r-alias">别名</label>
+          <input id="r-alias" v-model="form.alias" class="nt-input" placeholder="可不填" />
+        </div>
+      </div>
+
+      <div class="nt-field">
+        <span class="nt-label">阵营</span>
+        <div class="nt-seg" role="radiogroup" aria-label="阵营">
+          <button v-for="faction in FACTIONS" :key="faction" type="button" role="radio" :aria-checked="form.faction === faction" :class="{ on: form.faction === faction }" @click="setFaction(faction)">{{ faction }}</button>
+        </div>
+      </div>
+      <div class="nt-field">
+        <span class="nt-label">类型</span>
+        <div class="nt-seg" role="radiogroup" aria-label="类型">
+          <button v-for="option in typeOptions" :key="option.value" type="button" role="radio" :aria-checked="form.roleType === option.value" :class="{ on: form.roleType === option.value }" @click="form.roleType = option.value">{{ option.label }}</button>
+        </div>
+      </div>
+
+      <div class="nt-field">
+        <label class="nt-label" for="r-color">主题色 <small>· 图鉴卡底条、阵容头像描边，不填按阵营色</small></label>
+        <div class="colors">
+          <span class="colors__swatch" :style="{ background: previewAccent }"></span>
+          <input id="r-color" v-model.trim="form.themeColor" class="nt-input colors__hex" :class="{ invalid: !themeValid }" placeholder="#RRGGBB" maxlength="7" />
+          <button v-for="color in COLOR_PRESETS" :key="color" type="button" class="colors__preset" :class="{ on: form.themeColor.toUpperCase() === color }" :style="{ background: color }" :aria-label="`用 ${color}`" @click="form.themeColor = color"></button>
+          <button type="button" class="colors__preset colors__preset--clear" aria-label="清空主题色，按阵营色" title="清空，按阵营色" @click="form.themeColor = ''"></button>
+        </div>
+      </div>
+
+      <div class="nt-field">
+        <label class="nt-label" for="r-skill">技能</label>
+        <textarea id="r-skill" v-model="form.skill" class="nt-input" rows="4"></textarea>
+      </div>
+      <div class="nt-field">
+        <label class="nt-label" for="r-bg">背景故事 <small>· 图鉴详情页展示</small></label>
+        <textarea id="r-bg" v-model="form.background" class="nt-input" rows="4"></textarea>
+      </div>
+
+      <div class="nt-field">
+        <span class="nt-label">常见问题 <small>· {{ form.faqs.length }} 组</small></span>
+        <div v-for="(faq, index) in form.faqs" :key="index" class="faq">
+          <input v-model="faq.question" class="nt-input" :aria-label="`第 ${index + 1} 个问题`" placeholder="问题" />
+          <textarea v-model="faq.answer" class="nt-input" rows="2" :aria-label="`第 ${index + 1} 个回答`" placeholder="回答"></textarea>
+          <button type="button" class="nt-btn nt-btn--ghost nt-btn--small" @click="form.faqs.splice(index, 1)">删除这组</button>
+        </div>
+        <button type="button" class="nt-btn nt-btn--ghost nt-btn--small faq-add" @click="form.faqs.push({ question: '', answer: '' })">+ 加一组问答</button>
+      </div>
+
+      <p v-if="form.id" class="used">
+        出现在：
+        <template v-if="usedIn.length">
+          <a v-for="board in usedIn" :key="board.id" :href="`#/boards/${board.id}`">{{ board.name }}</a>
+        </template>
+        <span v-else>还没有板子用它</span>
+      </p>
+
+      <div class="editor__actions">
+        <button v-if="form.id" class="nt-btn nt-btn--ghost" type="button" @click="remove">删除</button>
+        <button class="nt-btn nt-btn--gold editor__save" type="button" :disabled="saving" @click="save">{{ saving ? '保存中…' : form.id ? '保存角色' : '创建角色' }}</button>
+      </div>
+    </aside>
+  </div>
 </template>
 
 <style scoped>
-:deep(.el-dialog) {
-  max-height: calc(100vh - 40px);
+.filters {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
 }
 
-:deep(.el-dialog__header),
-:deep(.el-dialog__footer) {
-  flex: 0 0 auto;
+.search {
+  margin-left: auto;
+  width: 200px;
 }
 
-:deep(.el-dialog__body) {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 192, 0, 0.42) rgba(255, 255, 255, 0.05);
-}
-
-:deep(.el-dialog__body::-webkit-scrollbar) {
-  width: 8px;
-}
-
-:deep(.el-dialog__body::-webkit-scrollbar-track) {
-  background: rgba(255, 255, 255, 0.05);
+.search .nt-input {
+  height: 36px;
   border-radius: 999px;
 }
 
-:deep(.el-dialog__body::-webkit-scrollbar-thumb) {
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(255, 211, 92, 0.72), rgba(182, 126, 12, 0.74));
-}
-
-.panel-card {
-  border-radius: 18px;
-}
-
-.panel-header {
+.layout {
   display: flex;
-  justify-content: space-between;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 28px;
   align-items: flex-start;
 }
 
-.panel-copy {
+.grid {
+  flex: 999 1 480px;
+  min-width: 0;
   display: grid;
-  gap: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));
+  gap: 18px;
 }
 
-.panel-kicker {
-  color: #ffc000;
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
-.panel-header h3 {
+.grid .nt-empty {
+  grid-column: 1 / -1;
   margin: 0;
-  font-size: 22px;
-  line-height: 1.1;
 }
 
-.panel-header p {
-  margin: 0;
-  color: #8d8d8d;
-  line-height: 1.55;
-}
-
-.table-toolbar {
-  margin-bottom: 14px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.table-toolbar > :nth-child(1) {
-  flex: 1 1 360px;
-  min-width: 280px;
-}
-
-.table-toolbar > :nth-child(2),
-.table-toolbar > :nth-child(3) {
-  flex: 0 0 150px;
-}
-
-.table-toolbar > :nth-child(4) {
-  flex: 0 0 90px;
-}
-
-.table-toolbar > :nth-child(5) {
-  margin-left: auto;
-  flex: 0 0 auto;
-}
-
-.table-toolbar > :nth-child(6) {
-  flex: 0 0 auto;
-}
-
-.toolbar-summary {
-  color: #8d8d8d;
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.table-footer {
-  margin-top: 14px;
-  padding-top: 14px;
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.table-total {
-  color: #8d8d8d;
-  font-size: 13px;
-}
-
-.table-footer :deep(.el-pagination) {
-  margin-left: auto;
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.form-grid-role {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.array-section {
-  margin-top: 22px;
-  padding-top: 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.array-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.faq-row {
-  display: grid;
-  grid-template-columns: 1fr 1.4fr 70px;
-  gap: 12px;
-  align-items: start;
-  margin-bottom: 12px;
-}
-
-.media-field {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 124px;
-  gap: 12px;
-  align-items: start;
-}
-
-.inline-preview-card {
-  width: 124px;
-}
-
-.inline-image-preview,
-.inline-preview-empty {
-  width: 124px;
+.rc {
+  padding: 0;
+  border-radius: 18px;
+  border: 2px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--ink);
+  background: var(--panel);
+  color: var(--text);
+  text-align: left;
   overflow: hidden;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 192, 0, 0.14);
-  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  transition: transform 0.1s ease;
 }
 
-.inline-image-preview :deep(img) {
+.rc:hover {
+  transform: translateY(-2px);
+}
+
+.rc--on {
+  border: 3px solid var(--moon);
+  box-shadow: 5px 5px 0 var(--ink);
+}
+
+.rc__art {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+}
+
+.rc__art img {
   width: 100%;
   height: 100%;
-  display: block;
   object-fit: cover;
+  object-position: 50% 10%;
 }
 
-.inline-image-preview--portrait {
-  aspect-ratio: 1 / 1;
-}
-
-.inline-image-preview--illustration {
-  aspect-ratio: 3 / 4;
-}
-
-.inline-preview-empty {
-  display: grid;
-  place-items: center;
-  padding: 12px;
-  color: #8d8d8d;
-  text-align: center;
-  line-height: 1.5;
-  min-height: 124px;
-}
-
-.inline-preview-card--illustration .inline-preview-empty {
-  min-height: 165px;
-}
-
-.upload-stack {
+.rc__missing {
+  position: absolute;
+  inset: 0;
   display: flex;
-  gap: 12px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-3);
+  font-size: 12px;
 }
 
-@media (max-width: 1080px) {
-  .table-toolbar > :nth-child(1) {
-    flex-basis: 100%;
-  }
-
-  .table-toolbar > :nth-child(5) {
-    margin-left: 0;
-  }
-
-  .table-footer {
-    flex-direction: column;
-    align-items: flex-start;
-  }
+.rc__foot {
+  padding: 10px 12px;
+  border-top: 4px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-@media (max-width: 980px) {
-  .panel-header {
-    display: grid;
-  }
+.rc__foot strong {
+  font: 900 16px var(--serif);
+}
 
-  .form-grid,
-  .form-grid-role,
-  .faq-row {
-    grid-template-columns: 1fr;
-  }
+.rc__foot small {
+  margin-left: auto;
+  font-size: 12px;
+}
 
-  .table-toolbar {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
+.editor {
+  flex: 1 0 360px;
+  max-width: 100%;
+  padding: 24px;
+  border-radius: 22px;
+  background: var(--panel);
+  border: 2px solid var(--ink);
+  box-shadow: 5px 5px 0 var(--ink);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
 
-  .table-toolbar > :nth-child(1),
-  .table-toolbar > :nth-child(2),
-  .table-toolbar > :nth-child(3),
-  .table-toolbar > :nth-child(4),
-  .table-toolbar > :nth-child(5),
-  .table-toolbar > :nth-child(6),
-  .toolbar-summary {
-    flex: initial;
-    min-width: 0;
-    margin-left: 0;
-  }
-
-  .upload-stack {
-    flex-direction: column;
-  }
-
-  .media-field {
-    grid-template-columns: 1fr;
-  }
-
-  .inline-preview-card,
-  .inline-image-preview,
-  .inline-preview-empty {
-    width: 100%;
-    max-width: 180px;
+@media (min-width: 1200px) {
+  .editor {
+    position: sticky;
+    top: 0;
+    max-height: calc(100vh - 64px);
+    overflow-y: auto;
   }
 }
 
-.theme-color-field {
+.editor__title {
+  margin: 0;
+  font: 900 24px var(--serif);
+}
+
+.art-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.art-row__main {
+  flex: 1 1 0;
+}
+
+.art-row__side {
+  flex: 0 0 132px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.token-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.colors {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
   align-items: center;
+  gap: 8px;
 }
 
-.theme-color-input {
-  width: 260px;
+.colors__swatch {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 2px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
 }
 
-.theme-color-note {
-  color: #8d8d8d;
-  font-size: 12px;
-  line-height: 1.6;
+.colors__hex {
+  width: 116px;
+  font-family: ui-monospace, monospace;
+}
+
+.colors__hex.invalid {
+  border-color: var(--camp-wolf);
+}
+
+.colors__preset {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 8px;
+  border: 2px solid var(--ink);
+  cursor: pointer;
+}
+
+.colors__preset.on {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+
+.colors__preset--clear {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--text-3);
+}
+
+.faq {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--panel-raised);
+}
+
+.faq .nt-btn {
+  align-self: flex-end;
+}
+
+.faq-add {
+  align-self: flex-start;
+}
+
+.used {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.used a {
+  text-decoration: none;
+}
+
+.editor__actions {
+  display: flex;
+  gap: 10px;
+}
+
+.editor__save {
+  flex: 1;
 }
 </style>

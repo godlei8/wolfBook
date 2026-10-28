@@ -94,12 +94,24 @@ export interface LoginResponse {
   user: UserView
 }
 
+export interface RecentBoard {
+  id: number
+  name: string
+  updateTime: string
+}
+
 export interface DashboardSummary {
   boardCount: number
+  onlineBoardCount: number
+  boardsWithoutBackground: number
   roleCount: number
+  rolesWithoutIllustration: number
   postCount: number
   commentCount: number
   openReportCount: number
+  assistantQuestionsToday: number
+  assistantFailuresToday: number
+  recentBoards: RecentBoard[]
 }
 
 export interface PostSummary {
@@ -108,6 +120,10 @@ export interface PostSummary {
   nickname: string
   avatar: string
   content: string
+  title: string | null
+  category: string | null
+  boardId: number | null
+  boardName: string | null
   images: string[]
   likeCount: number
   commentCount: number

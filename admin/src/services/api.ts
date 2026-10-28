@@ -102,6 +102,9 @@ export const api = {
   async updateBoard(id: number, payload: Partial<Board>) {
     return unwrap<Board>(http.put(`/admin/boards/${id}`, payload))
   },
+  async updateBoardStatus(id: number, online: boolean) {
+    return unwrap<Board>(http.patch(`/admin/boards/${id}/status`, { status: online ? '1' : '0' }))
+  },
   async deleteBoard(id: number) {
     return unwrap<void>(http.delete(`/admin/boards/${id}`))
   },

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from './ui/PageHeader.vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadRequestOptions } from 'element-plus'
@@ -300,16 +301,18 @@ onMounted(loadAll)
 </script>
 
 <template>
-  <el-card
-    class="panel-card"
-    v-loading="loading"
-    element-loading-text="正在同步 AI 助手控制台..."
-    element-loading-background="rgba(8, 8, 8, 0.74)"
-  >
-    <div class="panel-actions">
-      <el-button @click="loadAll">刷新数据</el-button>
-    </div>
+  <PageHeader eyebrow="ASSISTANT" title="AI 助手" description="管理知识库、发布版本、联网搜索开关和问答日志。">
+    <template #actions>
+      <button class="nt-btn nt-btn--ghost" type="button" :disabled="loading" @click="loadAll">{{ loading ? '同步中…' : '刷新数据' }}</button>
+    </template>
+  </PageHeader>
 
+  <div
+    class="ai-panel"
+    v-loading="loading"
+    element-loading-text="正在同步 AI 助手控制台…"
+    element-loading-background="rgba(21, 18, 28, 0.74)"
+  >
     <el-tabs v-model="activeTab" class="ai-tabs">
       <el-tab-pane label="控制台" name="control">
         <AiAssistantControlTab
@@ -375,86 +378,40 @@ onMounted(loadAll)
         />
       </el-tab-pane>
     </el-tabs>
-  </el-card>
+  </div>
 </template>
 
 <style scoped>
-.panel-card {
+.ai-panel {
   position: relative;
-  border-radius: 18px;
   min-width: 0;
-}
-
-.panel-card :deep(.el-card__body) {
-  padding-top: 10px;
-}
-
-.panel-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 4px;
-  min-width: 0;
-}
-
-.panel-actions :deep(.el-button) {
-  min-width: 116px;
-  height: 36px;
-  padding: 0 18px;
-  border-radius: 12px;
-  border-color: rgba(255, 192, 0, 0.22);
-  background:
-    radial-gradient(circle at top left, rgba(255, 203, 75, 0.08), transparent 58%),
-    linear-gradient(180deg, rgba(39, 36, 28, 0.94), rgba(24, 22, 18, 0.98));
-  color: #f1cf72;
-  font-weight: 700;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  padding: 8px 24px 24px;
+  border-radius: 22px;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
 }
 
 .ai-tabs {
-  display: grid;
   min-width: 0;
 }
 
 .ai-tabs :deep(.el-tabs__header) {
-  position: sticky;
-  top: var(--panel-sticky-offset, 0px);
-  z-index: 15;
-  margin: 0 -12px 14px;
-  padding: 4px 12px 10px;
-  padding-right: 148px;
-  background:
-    linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(18, 18, 18, 0.94) 72%, rgba(18, 18, 18, 0.84));
-  backdrop-filter: blur(14px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 18px;
 }
 
-.ai-tabs :deep(.el-tabs__content) {
-  position: relative;
-  z-index: 1;
+.ai-tabs :deep(.el-tabs__item) {
+  height: 52px;
+  font-size: 16px;
 }
 
 .ai-tabs :deep(.el-tabs__nav-wrap::after) {
-  background-color: rgba(255, 255, 255, 0.06);
+  height: 1px;
+  background-color: var(--panel-line);
 }
 
-@media (max-width: 960px) {
-  .panel-actions {
-    position: static;
-    margin-bottom: 12px;
-    display: flex;
-    justify-content: flex-end;
-  }
-
-  .ai-tabs :deep(.el-tabs__header) {
-    position: static;
-    top: auto;
-    z-index: auto;
-    margin: 0 0 18px;
-    padding: 0;
-    padding-right: 0;
-    background: transparent;
-    backdrop-filter: none;
-    border-bottom: none;
+@media (max-width: 720px) {
+  .ai-panel {
+    padding: 4px 14px 16px;
   }
 }
 </style>

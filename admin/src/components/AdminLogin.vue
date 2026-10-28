@@ -3,6 +3,7 @@ import { reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api, setStoredToken } from '../services/api'
 import type { LoginResponse } from '../types'
+import moonScene from '../assets/scenes/moon.webp'
 
 const emit = defineEmits<{
   loggedIn: [payload: LoginResponse]
@@ -15,12 +16,15 @@ const form = reactive({
 })
 
 async function submit() {
+  if (!form.username || !form.password) {
+    ElMessage.warning('请填写账号和密码')
+    return
+  }
   loading.value = true
   try {
     const result = await api.adminLogin(form.username, form.password)
     setStoredToken(result.token)
     emit('loggedIn', result)
-    ElMessage.success('登录成功')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '登录失败')
   } finally {
@@ -30,199 +34,127 @@ async function submit() {
 </script>
 
 <template>
-  <div class="login-shell">
-    <div class="login-hero">
-      <div class="hero-visual" aria-hidden="true">
-        <svg viewBox="0 0 520 520" class="wolf-crest" role="presentation">
-          <defs>
-            <linearGradient id="wolfGold" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#ffe287" />
-              <stop offset="45%" stop-color="#ffc000" />
-              <stop offset="100%" stop-color="#8f5d00" />
-            </linearGradient>
-            <radialGradient id="wolfGlow" cx="50%" cy="38%" r="52%">
-              <stop offset="0%" stop-color="#ffda6a" stop-opacity="0.32" />
-              <stop offset="100%" stop-color="#ffda6a" stop-opacity="0" />
-            </radialGradient>
-          </defs>
+  <div class="login">
+    <img class="login__bg" :src="moonScene" alt="" />
+    <div class="login__shade"></div>
 
-          <circle cx="260" cy="220" r="160" fill="url(#wolfGlow)" />
-          <path
-            d="M150 120 220 182 248 154 274 186 370 124 332 238 376 286 314 320 286 404 260 356 232 404 204 320 142 286 186 238Z"
-            fill="rgba(255, 192, 0, 0.04)"
-            stroke="url(#wolfGold)"
-            stroke-width="10"
-            stroke-linejoin="round"
-          />
-          <path
-            d="M205 225 236 256M315 225 284 256M220 309 260 338 300 309"
-            fill="none"
-            stroke="url(#wolfGold)"
-            stroke-width="10"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-          <path
-            d="M203 188 188 142M317 188 332 142"
-            fill="none"
-            stroke="url(#wolfGold)"
-            stroke-width="8"
-            stroke-linecap="round"
-          />
-          <circle cx="224" cy="234" r="8" fill="#ffc000" />
-          <circle cx="296" cy="234" r="8" fill="#ffc000" />
-        </svg>
+    <form class="login__card" aria-labelledby="login-title" @submit.prevent="submit">
+      <div class="login__head">
+        <span class="login__mark" aria-hidden="true">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" /></svg>
+        </span>
+        <h1 id="login-title">WOLFBOOK</h1>
+        <p>夜镇控制台 · 管理员登录</p>
       </div>
 
-      <div class="hero-copy">
-        <div class="eyebrow">WOLFBOOK ADMIN</div>
-        <h1>BLACK GOLD CONTROL</h1>
-        <p>管理板子资料、角色设定、社区内容与 AI 狼人顾问，保持整套运营控制台统一运转。</p>
+      <div class="nt-field">
+        <label class="nt-label" for="login-user">账号</label>
+        <input id="login-user" v-model.trim="form.username" class="nt-input" autocomplete="username" placeholder="管理员账号" />
       </div>
-    </div>
-
-    <div class="login-panel">
-      <div class="panel-head">
-        <div class="panel-kicker">SIGN IN</div>
-        <div class="panel-title">管理员登录</div>
-        <div class="panel-sub">输入当前管理员账号与密码后进入后台，不再在界面上展示默认口令。</div>
+      <div class="nt-field">
+        <label class="nt-label" for="login-pass">密码</label>
+        <input id="login-pass" v-model="form.password" class="nt-input" type="password" autocomplete="current-password" placeholder="密码" />
       </div>
 
-      <el-form label-position="top" @submit.prevent="submit">
-        <el-form-item label="用户名">
-          <el-input v-model="form.username" placeholder="请输入管理员账号" />
-        </el-form-item>
-        <el-form-item label="密码">
-          <el-input v-model="form.password" show-password placeholder="请输入登录密码" />
-        </el-form-item>
-        <el-button class="login-button" type="primary" :loading="loading" @click="submit">
-          登录后台
-        </el-button>
-      </el-form>
-    </div>
+      <button class="nt-btn nt-btn--gold login__submit" type="submit" :disabled="loading">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" /></svg>
+        {{ loading ? '进门中…' : '进入夜镇' }}
+      </button>
+      <p class="login__foot">登录 30 天内有效，换浏览器需要重新登录</p>
+    </form>
   </div>
 </template>
 
 <style scoped>
-.login-shell {
-  min-height: 100vh;
-  display: grid;
-  grid-template-columns: 1.1fr 460px;
-  gap: 24px;
-  align-items: stretch;
-  padding: 32px;
-}
-
-.login-hero,
-.login-panel {
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: linear-gradient(180deg, rgba(17, 17, 17, 0.98), rgba(4, 4, 4, 0.98));
-}
-
-.login-hero {
+.login {
   position: relative;
+  min-height: 100vh;
+  padding: 40px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
-  padding: 40px 48px 48px;
+  background: var(--bg);
+}
+
+.login__bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 30%;
+}
+
+.login__shade {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 45%, rgba(21, 18, 28, 0.55) 0%, rgba(21, 18, 28, 0.92) 70%);
+}
+
+.login__card {
+  position: relative;
+  width: 420px;
+  max-width: 100%;
+  padding: 36px 34px 30px;
+  border-radius: 28px;
+  background: var(--panel);
+  border: 3px solid var(--ink);
+  box-shadow: 8px 8px 0 var(--ink);
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  min-height: 520px;
-  background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.14), rgba(0, 0, 0, 0.84)),
-    radial-gradient(circle at top right, rgba(255, 192, 0, 0.14), transparent 24%),
-    linear-gradient(180deg, #121212 0%, #050505 100%);
+  gap: 20px;
 }
 
-.hero-visual {
+.login__head {
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.login__mark {
+  width: 60px;
+  height: 60px;
+  border-radius: 18px;
+  background: var(--gold);
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--ink);
+  display: flex;
+  align-items: center;
   justify-content: center;
-  align-items: flex-start;
-  pointer-events: none;
 }
 
-.wolf-crest {
-  width: min(100%, 430px);
-  filter:
-    drop-shadow(0 0 28px rgba(255, 192, 0, 0.14))
-    drop-shadow(0 24px 44px rgba(0, 0, 0, 0.46));
-}
-
-.hero-copy {
-  display: grid;
-  gap: 0;
-}
-
-.eyebrow,
-.panel-kicker {
-  color: #ffc000;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-}
-
-.login-hero h1 {
-  margin: 18px 0 12px;
-  font-size: 64px;
-  line-height: 0.94;
-  max-width: 520px;
-}
-
-.login-hero p {
+.login__head h1 {
   margin: 0;
-  max-width: 520px;
-  color: #9e9e9e;
-  line-height: 1.8;
+  font: 900 30px var(--serif);
+  letter-spacing: 0.1em;
 }
 
-.login-panel {
-  padding: 32px;
-  display: grid;
-  align-content: center;
+.login__head p {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-2);
 }
 
-.panel-head {
-  margin-bottom: 18px;
+.login .nt-input {
+  height: 50px;
+  font-size: 16px;
 }
 
-.panel-title {
-  margin-top: 12px;
-  font-size: 34px;
-  font-weight: 700;
+.login__submit {
+  height: 52px;
+  font-size: 17px;
+  font-weight: 900;
+  border-radius: 16px;
 }
 
-.panel-sub {
-  margin-top: 10px;
-  color: #8d8d8d;
-  line-height: 1.7;
-}
-
-.login-button {
-  width: 100%;
-  margin-top: 8px;
-  font-weight: 700;
-}
-
-@media (max-width: 980px) {
-  .login-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .login-hero {
-    min-height: 320px;
-    padding: 32px;
-  }
-
-  .login-hero h1 {
-    font-size: 48px;
-  }
-
-  .hero-visual {
-    justify-content: flex-start;
-  }
-
-  .wolf-crest {
-    width: min(100%, 280px);
-  }
+.login__foot {
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-3);
 }
 </style>
