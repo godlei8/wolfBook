@@ -18,3 +18,8 @@ SecretKey.csv
 awesome-design-md-main/
 deploy/.env.prod
 deploy/certs/
+
+# 部署时拷进来的构建产物（docker-compose.caddy.yml 用）
+deploy/runtime/backend/app.jar
+deploy/runtime/admin/dist/
+deploy/runtime/admin/nginx.prod.conf

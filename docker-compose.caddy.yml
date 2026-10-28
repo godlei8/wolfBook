@@ -1,0 +1,140 @@
+# 生产服务器和别的项目共用、80/443 已被对方的 Caddy 占用时用这份（124.222.9.209 的现状，对方是 online-safe）。
+# 和 docker-compose.prod.yml 的区别：
+# - 不起自己的 nginx 网关；wolfbook-backend / wolfbook-admin 挂到 Caddy 所在网络，Caddy 按 deploy/caddy/wolfbook.caddy 反代。
+# - 所有服务名都带 wolfbook- 前缀：compose 会把服务名注册成网络别名，对方在共享网络里也有 backend、mysql，
+#   撞名时 Caddy 会转错、后端会连到对方的 MySQL（2026-10-28 部署时真遇到过）。
+# - 镜像只装运行时：jar 和后台 dist 先在本地构建，放进 deploy/runtime/ 再上传（服务器内存小，不在上面跑 maven / npm）。
+# - 机器只有 3.6G 内存，各容器都限了内存。
+# 用法：docker compose -f docker-compose.caddy.yml --env-file deploy/.env.prod up -d --build
+name: wolfbook
+
+services:
+  wolfbook-admin:
+    build:
+      context: ./deploy/runtime/admin
+    image: wolfbook-admin:caddy
+    container_name: wolfbook-admin
+    restart: unless-stopped
+    mem_limit: 64m
+    expose:
+      - "6110"
+    networks:
+      - edge
+
+  wolfbook-backend:
+    build:
+      context: ./deploy/runtime/backend
+    image: wolfbook-backend:caddy
+    container_name: wolfbook-backend
+    restart: unless-stopped
+    mem_limit: 700m
+    depends_on:
+      wolfbook-mysql:
+        condition: service_healthy
+      wolfbook-postgres:
+        condition: service_healthy
+    expose:
+      - "8110"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:mysql://wolfbook-mysql:3306/${MYSQL_DATABASE}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8
+      DB_USERNAME: ${MYSQL_USERNAME}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      ADMIN_INIT_PASSWORD: ${ADMIN_INIT_PASSWORD}
+      AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET}
+      AUTH_TOKEN_TTL_DAYS: ${AUTH_TOKEN_TTL_DAYS:-30}
+      CORS_ALLOWED_ORIGIN_PATTERNS: ${CORS_ALLOWED_ORIGIN_PATTERNS:-https://wolfbook.godlei8.top}
+      COS_SECRET_ID: ${COS_SECRET_ID}
+      COS_SECRET_KEY: ${COS_SECRET_KEY}
+      COS_BUCKET: ${COS_BUCKET}
+      COS_REGION: ${COS_REGION}
+      COS_PUBLIC_BASE_URL: ${COS_PUBLIC_BASE_URL}
+      COS_PREFIX: ${COS_PREFIX:-wolfbook}
+      WECHAT_MINI_APP_ID: ${WECHAT_MINI_APP_ID}
+      WECHAT_MINI_APP_SECRET: ${WECHAT_MINI_APP_SECRET}
+      WECHAT_CODE2SESSION_URL: ${WECHAT_CODE2SESSION_URL:-https://api.weixin.qq.com/sns/jscode2session}
+      ASSISTANT_ENABLED: ${ASSISTANT_ENABLED:-true}
+      ASSISTANT_HISTORY_WINDOW: ${ASSISTANT_HISTORY_WINDOW:-12}
+      ASSISTANT_MAX_SESSIONS: ${ASSISTANT_MAX_SESSIONS:-20}
+      ASSISTANT_MAX_SUGGESTIONS: ${ASSISTANT_MAX_SUGGESTIONS:-3}
+      ASSISTANT_SIMILARITY_THRESHOLD: ${ASSISTANT_SIMILARITY_THRESHOLD:-0.45}
+      ASSISTANT_TOP_K: ${ASSISTANT_TOP_K:-4}
+      ASSISTANT_TEMPERATURE: ${ASSISTANT_TEMPERATURE:-0.35}
+      ASSISTANT_WEB_SEARCH_ENABLED: ${ASSISTANT_WEB_SEARCH_ENABLED:-true}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-flash}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      VOLCENGINE_BASE_URL: ${VOLCENGINE_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
+      VOLCENGINE_EMBEDDING_MODEL: ${VOLCENGINE_EMBEDDING_MODEL:-doubao-embedding-large-text-250515}
+      VOLCENGINE_EMBEDDING_DIMENSIONS: ${VOLCENGINE_EMBEDDING_DIMENSIONS:-2048}
+      VOLCENGINE_EMBEDDING_API_KEY: ${VOLCENGINE_EMBEDDING_API_KEY}
+      VOLCENGINE_SEARCH_MODEL: ${VOLCENGINE_SEARCH_MODEL:-doubao-seed-1-6-thinking-250715}
+      VOLCENGINE_SEARCH_API_KEY: ${VOLCENGINE_SEARCH_API_KEY}
+      ASSISTANT_PGVECTOR_ENABLED: ${ASSISTANT_PGVECTOR_ENABLED:-true}
+      ASSISTANT_PGVECTOR_URL: jdbc:postgresql://wolfbook-postgres:5432/${PGVECTOR_DATABASE}
+      ASSISTANT_PGVECTOR_USERNAME: ${PGVECTOR_USERNAME}
+      ASSISTANT_PGVECTOR_PASSWORD: ${PGVECTOR_PASSWORD}
+      ASSISTANT_PGVECTOR_TABLE: ${ASSISTANT_PGVECTOR_TABLE:-assistant_vector_store}
+      ASSISTANT_PGVECTOR_SCHEMA: ${ASSISTANT_PGVECTOR_SCHEMA:-public}
+      JAVA_OPTS: -Xms128m -Xmx384m -XX:MaxMetaspaceSize=200m -XX:+UseSerialGC -Xss512k
+    networks:
+      - wolfbook
+      - edge
+
+  wolfbook-mysql:
+    image: mysql:8.4
+    container_name: wolfbook-mysql
+    restart: unless-stopped
+    mem_limit: 450m
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=96M
+      - --performance-schema=OFF
+      - --max-connections=60
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USERNAME}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - wolfbook
+
+  wolfbook-postgres:
+    image: pgvector/pgvector:pg16
+    container_name: wolfbook-postgres
+    restart: unless-stopped
+    mem_limit: 200m
+    command: ["postgres", "-c", "shared_buffers=32MB", "-c", "max_connections=20"]
+    environment:
+      POSTGRES_DB: ${PGVECTOR_DATABASE}
+      POSTGRES_USER: ${PGVECTOR_USERNAME}
+      POSTGRES_PASSWORD: ${PGVECTOR_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deploy/postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - wolfbook
+
+networks:
+  wolfbook:
+    driver: bridge
+  edge:
+    external: true
+    name: ${CADDY_NETWORK:-online-safe_edge}
+
+volumes:
+  mysql_data:
+  postgres_data:
