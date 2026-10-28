@@ -5,6 +5,7 @@ import com.wolfbook.backend.common.ApiException;
 import com.wolfbook.backend.common.PageResponse;
 import com.wolfbook.backend.domain.Board;
 import com.wolfbook.backend.domain.BoardRoleRef;
+import com.wolfbook.backend.domain.RoleRelation;
 import com.wolfbook.backend.domain.BoardRuleDetail;
 import com.wolfbook.backend.domain.FaqItem;
 import com.wolfbook.backend.domain.Role;
@@ -139,6 +140,7 @@ public class BoardService {
                         role.getId(),
                         role.getName(),
                         role.getAlias(),
+                        role.getTitle(),
                         role.getFaction(),
                         role.getRoleType(),
                         role.getCamp(),
@@ -178,6 +180,7 @@ public class BoardService {
                 role.getId(),
                 role.getName(),
                 role.getAlias(),
+                role.getTitle(),
                 role.getFaction(),
                 role.getRoleType(),
                 role.getCamp(),
@@ -187,8 +190,39 @@ public class BoardService {
                 role.getPortrait(),
                 role.getFullIllustration(),
                 role.getThemeColor(),
+                roleRelationViews(converter.readRelations(role.getRelations())),
                 boards
         );
+    }
+
+    /**
+     * 把 [{roleId, label}] 展开成带名字、头像、阵营的视图，保持原顺序；已经删掉的角色跳过。
+     * 角色详情的人物关系和编年史事件的出场角色都用它（事件里 label 为 null）。
+     */
+    public List<WolfbookDtos.RoleRelationView> roleRelationViews(List<RoleRelation> relations) {
+        if (relations == null || relations.isEmpty()) {
+            return List.of();
+        }
+        Map<Integer, RoleEntity> rolesById = loadRolesById(
+                relations.stream().map(RoleRelation::roleId).filter(Objects::nonNull).collect(Collectors.toSet())
+        );
+        return relations.stream()
+                .filter(relation -> rolesById.containsKey(relation.roleId()))
+                .map(relation -> {
+                    RoleEntity other = rolesById.get(relation.roleId());
+                    return new WolfbookDtos.RoleRelationView(
+                            other.getId(),
+                            other.getName(),
+                            other.getAlias(),
+                            relation.label(),
+                            other.getFaction(),
+                            other.getRoleType(),
+                            other.getPortrait(),
+                            other.getFullIllustration(),
+                            other.getThemeColor()
+                    );
+                })
+                .toList();
     }
 
     public List<Board> listAllBoards() {

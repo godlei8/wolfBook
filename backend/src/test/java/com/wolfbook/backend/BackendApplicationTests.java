@@ -670,6 +670,215 @@ class BackendApplicationTests {
     }
 
     @Test
+    void roleRelationsShouldBeValidatedAndExpandedInRoleDetail() throws Exception {
+        String adminToken = loginAndGetAdminToken();
+        String created = mockMvc.perform(post("/admin/roles")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "关系测试角色", "alias": " 测试真名 ", "title": "试验品", "faction": "好人", "roleType": "神职",
+                                 "skill": "测试", "relations": [{"roleId": 2, "label": " 老朋友 "}, {"roleId": 6, "label": "宿敌"}]}
+                                """))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.alias").value("测试真名"))
+                .andExpect(jsonPath("$.data.relations.length()").value(2))
+                .andReturn().getResponse().getContentAsString();
+        int roleId = objectMapper.readTree(created).path("data").path("id").asInt();
+
+        try {
+            mockMvc.perform(get("/api/roles/{id}", roleId))
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.title").value("试验品"))
+                    .andExpect(jsonPath("$.data.relations[0].name").value("女巫"))
+                    .andExpect(jsonPath("$.data.relations[0].label").value("老朋友"))
+                    .andExpect(jsonPath("$.data.relations[1].roleId").value(6));
+
+            String self = """
+                    {"name": "关系测试角色", "faction": "好人", "roleType": "神职", "skill": "测试",
+                     "relations": [{"roleId": %d, "label": "自己"}]}
+                    """.formatted(roleId);
+            mockMvc.perform(put("/admin/roles/{id}", roleId)
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(self))
+                    .andExpect(jsonPath("$.code").value(4000));
+
+            mockMvc.perform(put("/admin/roles/{id}", roleId)
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"name": "关系测试角色", "faction": "好人", "roleType": "神职", "skill": "测试",
+                                     "relations": [{"roleId": 2, "label": "a"}, {"roleId": 2, "label": "b"}]}
+                                    """))
+                    .andExpect(jsonPath("$.code").value(4000));
+
+            // 清空关系和称号
+            mockMvc.perform(put("/admin/roles/{id}", roleId)
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"name": "关系测试角色", "faction": "好人", "roleType": "神职", "skill": "测试", "relations": []}
+                                    """))
+                    .andExpect(jsonPath("$.code").value(0));
+            mockMvc.perform(get("/api/roles/{id}", roleId))
+                    .andExpect(jsonPath("$.data.title").doesNotExist())
+                    .andExpect(jsonPath("$.data.relations.length()").value(0));
+        } finally {
+            mockMvc.perform(delete("/admin/roles/{id}", roleId).header("Authorization", "Bearer " + adminToken))
+                    .andExpect(jsonPath("$.code").value(0));
+        }
+    }
+
+    @Test
+    void assistantModelsShouldBeManagedAndSwitchedFromAdmin() throws Exception {
+        String adminToken = loginAndGetAdminToken();
+        mockMvc.perform(get("/admin/ai/models"))
+                .andExpect(jsonPath("$.code").value(4001));
+        // 第一次打开时把原来的 DeepSeek 配置搬进来
+        mockMvc.perform(get("/admin/ai/models").header("Authorization", "Bearer " + adminToken))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data[0].name").value("DeepSeek 官方"));
+
+        mockMvc.perform(post("/admin/ai/models")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "坏地址", "baseUrl": "ftp://example.com", "model": "m"}
+                                """))
+                .andExpect(jsonPath("$.code").value(4000));
+
+        String created = mockMvc.perform(post("/admin/ai/models")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "测试模型", "baseUrl": "http://127.0.0.1:1/v1/chat/completions", "model": "test-model", "apiKey": "sk-test-model-9876"}
+                                """))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.baseUrl").value("http://127.0.0.1:1/v1"))
+                .andExpect(jsonPath("$.data.apiKey").value("********9876"))
+                .andExpect(jsonPath("$.data.active").value(false))
+                .andReturn().getResponse().getContentAsString();
+        int modelId = objectMapper.readTree(created).path("data").path("id").asInt();
+
+        try {
+            // 打码值原样传回不会覆盖真实 Key
+            mockMvc.perform(put("/admin/ai/models/{id}", modelId)
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"name": "测试模型改名", "baseUrl": "http://127.0.0.1:1/v1", "model": "test-model", "apiKey": "********9876"}
+                                    """))
+                    .andExpect(jsonPath("$.data.name").value("测试模型改名"))
+                    .andExpect(jsonPath("$.data.apiKey").value("********9876"));
+            Assertions.assertEquals("sk-test-model-9876",
+                    jdbcTemplate.queryForObject("SELECT api_key FROM assistant_models WHERE id = ?", String.class, modelId));
+
+            mockMvc.perform(post("/admin/ai/models/{id}/activate", modelId).header("Authorization", "Bearer " + adminToken))
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.active").value(true));
+            Assertions.assertEquals(1, jdbcTemplate.queryForObject("SELECT COUNT(1) FROM assistant_models WHERE active = 1", Integer.class));
+
+            // 当前在用的不能停用、不能删
+            mockMvc.perform(put("/admin/ai/models/{id}", modelId)
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"name": "测试模型改名", "baseUrl": "http://127.0.0.1:1/v1", "model": "test-model", "enabled": false}
+                                    """))
+                    .andExpect(jsonPath("$.code").value(4000));
+            mockMvc.perform(delete("/admin/ai/models/{id}", modelId).header("Authorization", "Bearer " + adminToken))
+                    .andExpect(jsonPath("$.code").value(4000));
+
+            // 测试连接：地址不通时给出原因，不抛异常
+            mockMvc.perform(post("/admin/ai/models/test")
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"id\": " + modelId + "}"))
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.ok").value(false))
+                    .andExpect(jsonPath("$.data.error").isNotEmpty());
+
+            // 后台的 AI 配置里还是原来的 DeepSeek 那一份，不会被当前模型覆盖
+            mockMvc.perform(get("/admin/ai/config").header("Authorization", "Bearer " + adminToken))
+                    .andExpect(jsonPath("$.data.provider.baseUrl").value(org.hamcrest.Matchers.not(containsString("127.0.0.1:1"))));
+        } finally {
+            // 别让其他用例拿着这个不通的模型去调用
+            jdbcTemplate.update("DELETE FROM assistant_models WHERE id = ?", modelId);
+        }
+    }
+
+    @Test
+    void roleDraftShouldRequireAdminAndConfiguredDeepSeekKey() throws Exception {
+        String body = """
+                {"name": "钟楼信使", "faction": "好人", "roleType": "神职", "skill": "每晚可以送一封信"}
+                """;
+        mockMvc.perform(post("/admin/roles/draft").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(jsonPath("$.code").value(4001));
+
+        // test profile 没有配 DeepSeek Key：直接提示去配置，不去请求外部接口
+        String adminToken = loginAndGetAdminToken();
+        mockMvc.perform(post("/admin/roles/draft")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(jsonPath("$.code").value(4000))
+                .andExpect(jsonPath("$.msg").value(containsString("模型")));
+
+        mockMvc.perform(post("/admin/roles/draft")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\": \"  \"}"))
+                .andExpect(jsonPath("$.code").value(4000));
+    }
+
+    @Test
+    void worldLoreShouldSaveFromAdminAndExpandEventRoles() throws Exception {
+        String adminToken = loginAndGetAdminToken();
+        mockMvc.perform(get("/admin/world"))
+                .andExpect(jsonPath("$.code").value(4001));
+
+        String body = """
+                {"townName": " 灰铃镇 ", "tagline": "银钟响过，不出家门", "intro": "山谷小镇",
+                 "factions": [{"name": "守钟人", "camp": "good", "description": "镇民"}, {"name": "", "description": ""}],
+                 "events": [{"era": "三百年前", "title": "银钟之约", "content": "立约", "roleIds": [1, 2, 1]},
+                            {"era": "", "title": "", "content": ""}]}
+                """;
+        mockMvc.perform(put("/admin/world")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.townName").value("灰铃镇"))
+                .andExpect(jsonPath("$.data.factions.length()").value(1))
+                .andExpect(jsonPath("$.data.events.length()").value(1))
+                .andExpect(jsonPath("$.data.events[0].roleIds.length()").value(2));
+
+        mockMvc.perform(get("/api/world"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.tagline").value("银钟响过，不出家门"))
+                .andExpect(jsonPath("$.data.events[0].roles[0].name").value("预言家"))
+                .andExpect(jsonPath("$.data.events[0].roles[1].name").value("女巫"));
+
+        mockMvc.perform(put("/admin/world")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"factions": [{"name": "外星人", "camp": "alien"}]}
+                                """))
+                .andExpect(jsonPath("$.code").value(4000));
+        mockMvc.perform(put("/admin/world")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"events": [{"title": "幽灵", "roleIds": [99999]}]}
+                                """))
+                .andExpect(jsonPath("$.code").value(4000));
+        // 失败的保存不应覆盖已有内容
+        mockMvc.perform(get("/api/world"))
+                .andExpect(jsonPath("$.data.townName").value("灰铃镇"));
+    }
+
+    @Test
     void adminRoleSaveShouldValidateAndNormalizeThemeColor() throws Exception {
         String adminToken = loginAndGetAdminToken();
         String invalid = """

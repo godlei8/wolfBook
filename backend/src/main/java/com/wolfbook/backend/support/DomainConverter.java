@@ -14,6 +14,8 @@ public class DomainConverter {
 
     private static final TypeReference<List<String>> STRING_LIST = new TypeReference<>() {
     };
+    private static final TypeReference<List<RoleRelation>> RELATION_LIST = new TypeReference<>() {
+    };
     private static final TypeReference<List<FaqItem>> FAQ_LIST = new TypeReference<>() {
     };
 
@@ -37,6 +39,35 @@ public class DomainConverter {
 
     public List<FaqItem> readFaqList(String json) {
         return read(json, FAQ_LIST);
+    }
+
+    /** 没有人物关系存成 NULL。 */
+    public String writeRelations(List<RoleRelation> relations) {
+        return relations == null || relations.isEmpty() ? null : write(relations);
+    }
+
+    public List<RoleRelation> readRelations(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        List<RoleRelation> relations = read(json, RELATION_LIST);
+        return relations == null ? List.of() : relations;
+    }
+
+    public String writeWorldLore(WorldLore lore) {
+        return write(lore);
+    }
+
+    public WorldLore readWorldLore(String json) {
+        if (json == null || json.isBlank()) {
+            return WorldLore.empty();
+        }
+        try {
+            WorldLore lore = objectMapper.readValue(json, WorldLore.class);
+            return lore == null ? WorldLore.empty() : lore.normalized();
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed to read json column", exception);
+        }
     }
 
     /** 空规则存成 NULL，避免库里出现一堆空对象。 */

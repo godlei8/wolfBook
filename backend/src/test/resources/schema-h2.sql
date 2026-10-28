@@ -23,6 +23,8 @@ CREATE TABLE roles (
   id INT PRIMARY KEY AUTO_INCREMENT,
   name VARCHAR(50) NOT NULL UNIQUE,
   alias VARCHAR(50),
+  title VARCHAR(40),
+  relations CLOB,
   faction VARCHAR(30) NOT NULL,
   role_type VARCHAR(30) NOT NULL,
   camp VARCHAR(60) NOT NULL,
@@ -33,6 +35,12 @@ CREATE TABLE roles (
   full_illustration VARCHAR(500),
   theme_color VARCHAR(16),
   create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE world_lore (
+  id INT PRIMARY KEY,
+  content CLOB,
+  update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE board_roles (
@@ -146,6 +154,20 @@ CREATE TABLE assistant_config (
   search_config CLOB,
   safety_config CLOB,
   ui_config CLOB,
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE assistant_models (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(60) NOT NULL,
+  base_url VARCHAR(300) NOT NULL,
+  model VARCHAR(120) NOT NULL,
+  api_key VARCHAR(500),
+  enabled TINYINT DEFAULT 1,
+  active TINYINT DEFAULT 0,
+  disable_thinking TINYINT DEFAULT 0,
+  remark VARCHAR(200),
   create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

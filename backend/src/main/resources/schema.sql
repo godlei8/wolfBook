@@ -23,6 +23,8 @@ CREATE TABLE `roles` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `name` VARCHAR(50) NOT NULL UNIQUE,
   `alias` VARCHAR(50),
+  `title` VARCHAR(40),
+  `relations` JSON,
   `faction` VARCHAR(30) NOT NULL,
   `role_type` VARCHAR(30) NOT NULL,
   `camp` VARCHAR(60) NOT NULL,
@@ -33,6 +35,13 @@ CREATE TABLE `roles` (
   `full_illustration` VARCHAR(500),
   `theme_color` VARCHAR(16),
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 世界观（夜镇编年史）：只有一行，content 是整份 JSON
+CREATE TABLE `world_lore` (
+  `id` INT PRIMARY KEY,
+  `content` TEXT,
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE `board_roles` (
@@ -296,3 +305,18 @@ CREATE INDEX `idx_judge_rooms_status_update` ON `judge_rooms` (`room_status`, `u
 CREATE INDEX `idx_judge_room_players_room` ON `judge_room_players` (`room_id`, `seat_no`);
 CREATE INDEX `idx_judge_room_players_user` ON `judge_room_players` (`user_id`, `update_time`);
 CREATE INDEX `idx_judge_events_room_phase` ON `judge_action_events` (`room_id`, `day_no`, `phase`, `create_time`);
+
+-- AI 助手可切换的对话模型（OpenAI 兼容接口）；active = 1 的那一个是当前使用的
+CREATE TABLE `assistant_models` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `name` VARCHAR(60) NOT NULL,
+  `base_url` VARCHAR(300) NOT NULL,
+  `model` VARCHAR(120) NOT NULL,
+  `api_key` VARCHAR(500),
+  `enabled` TINYINT DEFAULT 1,
+  `active` TINYINT DEFAULT 0,
+  `disable_thinking` TINYINT DEFAULT 0,
+  `remark` VARCHAR(200),
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP
+);

@@ -4,8 +4,11 @@ import com.wolfbook.backend.common.ApiResponse;
 import com.wolfbook.backend.common.PageResponse;
 import com.wolfbook.backend.domain.Board;
 import com.wolfbook.backend.domain.Report;
+import com.wolfbook.backend.domain.WorldLore;
 import com.wolfbook.backend.dto.WolfbookDtos;
 import com.wolfbook.backend.service.AdminService;
+import com.wolfbook.backend.service.RoleDraftService;
+import com.wolfbook.backend.service.WorldService;
 import com.wolfbook.backend.support.ImageUploadValidator;
 import com.wolfbook.backend.support.UploadProvider;
 import jakarta.validation.Valid;
@@ -21,11 +24,21 @@ public class AdminController {
     private final AdminService adminService;
     private final UploadProvider uploadProvider;
     private final ImageUploadValidator imageUploadValidator;
+    private final WorldService worldService;
+    private final RoleDraftService roleDraftService;
 
-    public AdminController(AdminService adminService, UploadProvider uploadProvider, ImageUploadValidator imageUploadValidator) {
+    public AdminController(
+            AdminService adminService,
+            UploadProvider uploadProvider,
+            ImageUploadValidator imageUploadValidator,
+            WorldService worldService,
+            RoleDraftService roleDraftService
+    ) {
         this.adminService = adminService;
         this.uploadProvider = uploadProvider;
         this.imageUploadValidator = imageUploadValidator;
+        this.worldService = worldService;
+        this.roleDraftService = roleDraftService;
     }
 
     @PostMapping("/login")
@@ -68,6 +81,25 @@ public class AdminController {
         adminService.requireAdmin(authorization);
         adminService.deleteBoard(id);
         return ApiResponse.success();
+    }
+
+    @GetMapping("/world")
+    public ApiResponse<WorldLore> world(@RequestHeader("Authorization") String authorization) {
+        adminService.requireAdmin(authorization);
+        return ApiResponse.success(worldService.getLore());
+    }
+
+    @PutMapping("/world")
+    public ApiResponse<WorldLore> saveWorld(@RequestHeader("Authorization") String authorization, @RequestBody @Valid WolfbookDtos.WorldLoreRequest request) {
+        adminService.requireAdmin(authorization);
+        return ApiResponse.success(worldService.save(request));
+    }
+
+    /** 按世界观起草新角色的真名、称号、身世和关系，只返回草稿不落库。 */
+    @PostMapping("/roles/draft")
+    public ApiResponse<WolfbookDtos.RoleDraftView> draftRole(@RequestHeader("Authorization") String authorization, @RequestBody @Valid WolfbookDtos.RoleDraftRequest request) {
+        adminService.requireAdmin(authorization);
+        return ApiResponse.success(roleDraftService.draft(request));
     }
 
     @GetMapping("/roles")

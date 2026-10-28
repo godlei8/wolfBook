@@ -96,6 +96,10 @@ public class DeepSeekChatService {
             payload.put("temperature", temperature);
         }
         payload.put("stream", stream);
+        if (Boolean.TRUE.equals(provider.disableThinking())) {
+            // vLLM 部署的推理模型：关掉「先思考」，否则一次回答要先想几十秒到几分钟。两种写法各家模板认的不一样，都带上
+            payload.put("chat_template_kwargs", Map.of("thinking", false, "enable_thinking", false));
+        }
 
         return HttpRequest.newBuilder()
                 .uri(URI.create(resolveBaseUrl(provider) + "/chat/completions"))

@@ -7,12 +7,17 @@ import com.wolfbook.backend.config.AssistantProperties;
 import com.wolfbook.backend.domain.Board;
 import com.wolfbook.backend.domain.BoardRuleDetail;
 import com.wolfbook.backend.domain.FaqItem;
+import com.wolfbook.backend.domain.RoleRelation;
+import com.wolfbook.backend.domain.WorldLore;
 import com.wolfbook.backend.dto.AssistantDtos;
 import com.wolfbook.backend.entity.AssistantDocumentEntity;
 import com.wolfbook.backend.entity.RoleEntity;
+import com.wolfbook.backend.entity.WorldLoreEntity;
 import com.wolfbook.backend.mapper.AssistantDocumentMapper;
 import com.wolfbook.backend.mapper.RoleMapper;
+import com.wolfbook.backend.mapper.WorldLoreMapper;
 import com.wolfbook.backend.service.BoardService;
+import com.wolfbook.backend.support.DomainConverter;
 import com.wolfbook.backend.support.UploadProvider;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -51,6 +56,8 @@ public class AssistantKnowledgeService {
     private final AssistantPublishService assistantPublishService;
     private final BoardService boardService;
     private final RoleMapper roleMapper;
+    private final WorldLoreMapper worldLoreMapper;
+    private final DomainConverter converter;
     private final ObjectMapper objectMapper;
     private final AssistantProperties assistantProperties;
     private final UploadProvider uploadProvider;
@@ -68,6 +75,8 @@ public class AssistantKnowledgeService {
             AssistantPublishService assistantPublishService,
             BoardService boardService,
             RoleMapper roleMapper,
+            WorldLoreMapper worldLoreMapper,
+            DomainConverter converter,
             ObjectMapper objectMapper,
             AssistantProperties assistantProperties,
             UploadProvider uploadProvider,
@@ -77,6 +86,8 @@ public class AssistantKnowledgeService {
         this.assistantPublishService = assistantPublishService;
         this.boardService = boardService;
         this.roleMapper = roleMapper;
+        this.worldLoreMapper = worldLoreMapper;
+        this.converter = converter;
         this.objectMapper = objectMapper;
         this.assistantProperties = assistantProperties;
         this.uploadProvider = uploadProvider;
@@ -244,7 +255,22 @@ public class AssistantKnowledgeService {
                     sourceKey,
                     String.valueOf(role.getId()),
                     role.getName(),
-                    buildRoleStructuredText(role),
+                    buildRoleStructuredText(role, roleNames),
+                    publishVersionId,
+                    refreshIndex
+            );
+        }
+
+        WorldLoreEntity world = worldLoreMapper.selectById(1);
+        if (world != null && world.getContent() != null && !world.getContent().isBlank()) {
+            String sourceKey = "WORLD:1";
+            activeKeys.add(sourceKey);
+            upsertStructuredDocument(
+                    existing.get(sourceKey),
+                    sourceKey,
+                    "1",
+                    "夜镇编年史",
+                    buildWorldStructuredText(converter.readWorldLore(world.getContent()), roleNames),
                     publishVersionId,
                     refreshIndex
             );
@@ -305,18 +331,45 @@ public class AssistantKnowledgeService {
                 .toList();
     }
 
+    /**
+     * 没有向量检索时的关键词：按空格切出的词，加上中文里每两个相邻的字。
+     * 中文问题没有空格，只按空格切的话整句话就是一个词，永远匹配不上任何资料。
+     */
+    // 问句里几乎处处都有、对找资料没帮助的两字组合
+    private static final Set<String> FALLBACK_STOP_PAIRS = Set.of(
+            "什么", "是什", "么来", "怎么", "么样", "可以", "一个", "有什", "的是", "是谁", "谁的", "哪些", "为什", "能不", "不能", "吗？", "请问"
+    );
+
+    static Set<String> fallbackTokens(String normalizedQuery) {
+        Set<String> tokens = new java.util.LinkedHashSet<>();
+        for (String word : normalizedQuery.split("[\\s，。？！、,.?!：:；;「」“”\"'（）()]+")) {
+            if (word.isBlank()) continue;
+            if (word.codePoints().noneMatch(cp -> Character.UnicodeScript.of(cp) == Character.UnicodeScript.HAN)) {
+                if (word.length() > 1) tokens.add(word);
+                continue;
+            }
+            for (int index = 0; index + 2 <= word.length(); index++) {
+                String pair = word.substring(index, index + 2);
+                if (!FALLBACK_STOP_PAIRS.contains(pair)) tokens.add(pair);
+            }
+        }
+        return tokens;
+    }
+
     private KnowledgeHit scoreFallback(String query, AssistantDocumentEntity document) {
         String text = document.getContentText() == null ? "" : document.getContentText();
         String normalizedQuery = normalize(query);
         String normalizedText = normalize(text);
         int score = 0;
-        for (String token : normalizedQuery.split("\\s+")) {
-            if (!token.isBlank() && normalizedText.contains(token)) {
-                score += 3;
+        for (String token : fallbackTokens(normalizedQuery)) {
+            if (normalizedText.contains(token)) {
+                score += token.length() > 2 ? 3 : 1;
             }
         }
-        if (normalizedText.contains(normalize(document.getName()))) {
-            score += 2;
+        // 问题里点了这份资料的名字（板子名、角色名、「夜镇编年史」），它最相关
+        String name = normalize(document.getName());
+        if (!name.isBlank() && normalizedQuery.contains(name)) {
+            score += 5;
         }
         return new KnowledgeHit(
                 document,
@@ -511,7 +564,7 @@ public class AssistantKnowledgeService {
         }
     }
 
-    private String buildRoleStructuredText(RoleEntity role) {
+    private String buildRoleStructuredText(RoleEntity role, Map<Integer, String> roleNames) {
         StringBuilder builder = new StringBuilder();
         builder.append("角色名称：").append(role.getName()).append('\n');
         builder.append("别名：").append(role.getAlias() == null ? "" : role.getAlias()).append('\n');
@@ -521,6 +574,30 @@ public class AssistantKnowledgeService {
         builder.append("技能：").append(role.getSkill()).append('\n');
         if (role.getBackground() != null && !role.getBackground().isBlank()) {
             builder.append("背景：").append(role.getBackground()).append('\n');
+        }
+        return builder.toString();
+    }
+
+    /** 世界观：小镇、势力、编年史，回答「夜镇发生过什么」「狼人有哪几支」这类问题。 */
+    private String buildWorldStructuredText(WorldLore lore, Map<Integer, String> roleNames) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("世界观：").append(lore.townName() == null ? "夜镇" : lore.townName()).append('\n');
+        if (lore.tagline() != null) {
+            builder.append(lore.tagline()).append('\n');
+        }
+        if (lore.intro() != null) {
+            builder.append(lore.intro()).append('\n');
+        }
+        for (WorldLore.Faction faction : lore.factions()) {
+            builder.append("势力：").append(faction.name()).append("。").append(faction.description() == null ? "" : faction.description()).append('\n');
+        }
+        for (WorldLore.Event event : lore.events()) {
+            builder.append("编年史 ").append(event.era() == null ? "" : event.era()).append("「").append(event.title()).append("」：")
+                    .append(event.content() == null ? "" : event.content());
+            if (!event.roleIds().isEmpty()) {
+                builder.append("（出场：").append(event.roleIds().stream().map(id -> roleNames.getOrDefault(id, "未知角色")).collect(Collectors.joining("、"))).append("）");
+            }
+            builder.append('\n');
         }
         return builder.toString();
     }

@@ -112,15 +112,90 @@ public final class WolfbookDtos {
 
     public record AdminRoleRequest(
             @NotBlank(message = "角色名称不能为空") @Size(max = 50, message = "角色名称不能超过 50") String name,
-            String alias,
+            @Size(max = 50, message = "真名不能超过 50") String alias,
+            @Size(max = 40, message = "称号不能超过 40") String title,
             @NotBlank(message = "阵营不能为空") String faction,
             @NotBlank(message = "角色类型不能为空") String roleType,
             @NotBlank(message = "技能描述不能为空") String skill,
             String background,
             @Valid List<FaqInput> faqs,
+            @Valid List<RoleRelationInput> relations,
             String portrait,
             String fullIllustration,
             @Pattern(regexp = "^#[0-9A-Fa-f]{6}$", message = "主题色格式应为 #RRGGBB") String themeColor
+    ) {
+    }
+
+    /** 「按世界观起草」：roleId 是编辑中的已有角色（新建时为空，起草时把它从已有角色里排除）。 */
+    public record RoleDraftRequest(
+            Integer roleId,
+            @NotBlank(message = "先填角色名") @Size(max = 50, message = "角色名不能超过 50") String name,
+            String faction,
+            String roleType,
+            @Size(max = 1000, message = "技能不能超过 1000 字") String skill,
+            @Size(max = 300, message = "补充要求不能超过 300 字") String notes
+    ) {
+    }
+
+    public record RoleDraftView(String alias, String title, String background, List<RoleRelationInput> relations) {
+    }
+
+    public record RoleRelationInput(
+            @NotNull(message = "关系里的角色不能为空") Integer roleId,
+            @Size(max = 20, message = "关系说明不能超过 20 字") String label
+    ) {
+    }
+
+    /** 人物关系展开后的样子：对方的名字、真名、头像和阵营，小程序直接画头像。 */
+    public record RoleRelationView(
+            Integer roleId,
+            String name,
+            String alias,
+            String label,
+            String faction,
+            String roleType,
+            String portrait,
+            String fullIllustration,
+            String themeColor
+    ) {
+    }
+
+    public record WorldFactionInput(
+            @Size(max = 30, message = "势力名称不能超过 30") String name,
+            String camp,
+            @Size(max = 1000, message = "势力介绍不能超过 1000 字") String description
+    ) {
+    }
+
+    public record WorldEventInput(
+            @Size(max = 30, message = "事件时间不能超过 30") String era,
+            @Size(max = 40, message = "事件标题不能超过 40") String title,
+            @Size(max = 3000, message = "事件正文不能超过 3000 字") String content,
+            List<Integer> roleIds
+    ) {
+    }
+
+    public record WorldLoreRequest(
+            @Size(max = 30, message = "小镇名称不能超过 30") String townName,
+            @Size(max = 60, message = "一句话简介不能超过 60") String tagline,
+            @Size(max = 3000, message = "小镇简介不能超过 3000 字") String intro,
+            String coverImage,
+            @Valid List<WorldFactionInput> factions,
+            @Valid List<WorldEventInput> events
+    ) {
+    }
+
+    /** 编年史事件展开后的样子：roles 是出场角色的头像信息。 */
+    public record WorldEventView(String era, String title, String content, List<RoleRelationView> roles) {
+    }
+
+    public record WorldLoreView(
+            String townName,
+            String tagline,
+            String intro,
+            String coverImage,
+            List<com.wolfbook.backend.domain.WorldLore.Faction> factions,
+            List<WorldEventView> events
     ) {
     }
 
@@ -247,6 +322,7 @@ public final class WolfbookDtos {
             Integer id,
             String name,
             String alias,
+            String title,
             String faction,
             String roleType,
             String camp,
@@ -260,12 +336,14 @@ public final class WolfbookDtos {
             Integer id,
             String name,
             String alias,
+            String title,
             String faction,
             String roleType,
             String camp,
             String skill,
             String background,
             List<FaqInput> faqs,
+            List<RoleRelationInput> relations,
             String portrait,
             String fullIllustration,
             String themeColor
@@ -280,6 +358,7 @@ public final class WolfbookDtos {
             Integer id,
             String name,
             String alias,
+            String title,
             String faction,
             String roleType,
             String camp,
@@ -289,6 +368,7 @@ public final class WolfbookDtos {
             String portrait,
             String fullIllustration,
             String themeColor,
+            List<RoleRelationView> relations,
             List<RelatedBoardView> boards
     ) {
     }

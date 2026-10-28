@@ -106,6 +106,40 @@ public final class AssistantDtos {
     ) {
     }
 
+    /** 模型管理列表里的一项，apiKey 已打码。 */
+    public record AdminModelView(
+            Integer id,
+            String name,
+            String baseUrl,
+            String model,
+            String apiKey,
+            boolean enabled,
+            boolean active,
+            boolean disableThinking,
+            String remark,
+            LocalDateTime updateTime
+    ) {
+    }
+
+    /** 新建 / 修改模型。apiKey 原样传回打码值或留空表示不改（新建时留空就是没有 Key）。 */
+    public record AdminModelRequest(
+            @NotBlank(message = "模型名称不能为空") @Size(max = 60, message = "模型名称不能超过 60") String name,
+            @NotBlank(message = "接口地址不能为空") @Size(max = 300, message = "接口地址不能超过 300") String baseUrl,
+            @NotBlank(message = "模型编码不能为空") @Size(max = 120, message = "模型编码不能超过 120") String model,
+            @Size(max = 500, message = "Key 太长了") String apiKey,
+            Boolean enabled,
+            Boolean disableThinking,
+            @Size(max = 200, message = "备注不能超过 200") String remark
+    ) {
+    }
+
+    /** 测试连接：id 有值时，没改的 Key 用库里存的。 */
+    public record ModelTestRequest(Integer id, String baseUrl, String model, String apiKey, Boolean disableThinking) {
+    }
+
+    public record ModelTestResult(boolean ok, long latencyMs, String reply, String error) {
+    }
+
     public record AdminAiConfig(
             BaseSection base,
             ProviderSection provider,
@@ -133,8 +167,13 @@ public final class AssistantDtos {
             String platform,
             String model,
             String baseUrl,
-            String apiKey
+            String apiKey,
+            // 推理模型（比如学校的 DeepSeek V4）不先长篇思考再回答，见 DeepSeekChatService.buildRequest
+            Boolean disableThinking
     ) {
+        public ProviderSection(String platform, String model, String baseUrl, String apiKey) {
+            this(platform, model, baseUrl, apiKey, false);
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

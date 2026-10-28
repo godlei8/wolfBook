@@ -7,6 +7,7 @@ import com.wolfbook.backend.domain.Board;
 import com.wolfbook.backend.domain.BoardRuleDetail;
 import com.wolfbook.backend.domain.FaqItem;
 import com.wolfbook.backend.domain.Report;
+import com.wolfbook.backend.domain.RoleRelation;
 import com.wolfbook.backend.dto.WolfbookDtos;
 import com.wolfbook.backend.entity.*;
 import com.wolfbook.backend.mapper.*;
@@ -222,8 +223,11 @@ public class AdminService {
 
     public WolfbookDtos.AdminRoleView saveRole(Integer id, WolfbookDtos.AdminRoleRequest request) {
         RoleEntity entity = id == null ? new RoleEntity() : getRoleEntity(id);
+        List<RoleRelation> relations = normalizeRelations(id, request.relations());
         entity.setName(request.name());
-        entity.setAlias(request.alias());
+        entity.setAlias(normalizeText(request.alias()));
+        entity.setTitle(normalizeText(request.title()));
+        entity.setRelations(converter.writeRelations(relations));
         entity.setFaction(request.faction());
         entity.setRoleType(request.roleType());
         entity.setCamp(boardService.buildCampLabel(request.faction(), request.roleType()));
@@ -375,12 +379,16 @@ public class AdminService {
                 role.getId(),
                 role.getName(),
                 role.getAlias(),
+                role.getTitle(),
                 role.getFaction(),
                 role.getRoleType(),
                 role.getCamp(),
                 role.getSkill(),
                 role.getBackground(),
                 converter.readFaqList(role.getFaqs()).stream().map(faq -> new WolfbookDtos.FaqInput(faq.question(), faq.answer())).toList(),
+                converter.readRelations(role.getRelations()).stream()
+                        .map(relation -> new WolfbookDtos.RoleRelationInput(relation.roleId(), relation.label()))
+                        .toList(),
                 role.getPortrait(),
                 role.getFullIllustration(),
                 role.getThemeColor()
@@ -388,6 +396,36 @@ public class AdminService {
     }
 
     private static final int MAX_RULE_ITEM_LENGTH = 300;
+    private static final int MAX_RELATIONS = 8;
+
+    /**
+     * 人物关系：对方角色必须存在、不能是自己、同一个人只写一条，关系说明不能空，最多 8 条。
+     */
+    private List<RoleRelation> normalizeRelations(Integer selfId, List<WolfbookDtos.RoleRelationInput> input) {
+        if (input == null || input.isEmpty()) {
+            return List.of();
+        }
+        List<RoleRelation> relations = new ArrayList<>();
+        Set<Integer> seen = new HashSet<>();
+        for (WolfbookDtos.RoleRelationInput item : input) {
+            String label = normalizeText(item.label());
+            if (item.roleId() == null || label == null) {
+                throw new ApiException(4000, "人物关系要选角色并写一句关系");
+            }
+            if (item.roleId().equals(selfId)) {
+                throw new ApiException(4000, "人物关系不能选自己");
+            }
+            if (!seen.add(item.roleId())) {
+                throw new ApiException(4000, "同一个角色的关系只能写一条");
+            }
+            boardService.getRole(item.roleId());
+            relations.add(new RoleRelation(item.roleId(), label));
+        }
+        if (relations.size() > MAX_RELATIONS) {
+            throw new ApiException(4000, "人物关系最多 " + MAX_RELATIONS + " 条");
+        }
+        return relations;
+    }
     private static final int RECENT_BOARD_LIMIT = 5;
 
     /**
