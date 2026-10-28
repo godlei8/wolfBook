@@ -6,6 +6,7 @@ import { resolveMediaUrl } from '../../utils/media'
 
 // 图片字段：有图时铺预览 + 更换 / 清空；没图时是上传框，可拖拽；也可以直接贴图片链接
 const model = defineModel<string>({ default: '' })
+const emit = defineEmits<{ uploaded: [file: File, url: string] }>()
 const props = withDefaults(
   defineProps<{
     label: string
@@ -42,6 +43,7 @@ async function upload(file?: File | null) {
     const result = await api.upload(file)
     model.value = result.url
     ElMessage.success(`${props.label}已上传`)
+    emit('uploaded', file, result.url)
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : `${props.label}上传失败`)
   } finally {
