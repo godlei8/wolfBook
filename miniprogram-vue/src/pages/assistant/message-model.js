@@ -29,51 +29,18 @@ function resolveRenderMode(role, contentFormat) {
   return contentFormat === 'MARKDOWN' ? 'markdown' : 'plain'
 }
 
-// 只有进页面时一次性铺开的历史消息才分段延后渲染；刚回答完的消息直接渲染，避免答完又闪回原始文本
-function shouldDeferMarkdownRender(renderMode, content, options = {}) {
-  return renderMode === 'markdown' && !!options.deferMarkdown && !!content
-}
-
 export function normalizeChatMessage(message, renderers) {
-  const options = arguments[2] || {}
   const citations = Array.isArray(message?.citations) ? message.citations : []
   const recommendedBoards = Array.isArray(message?.recommendedBoards) ? message.recommendedBoards : []
   const contentFormat = resolveContentFormat(message)
   const renderMode = resolveRenderMode(message?.role, contentFormat)
   const content = message?.content || ''
 
-  if (options.preserveRenderedContent) {
-    return {
-      ...message,
-      contentFormat,
-      renderMode: message?.renderMode || renderMode,
-      isRenderPending: !!message?.isRenderPending,
-      visibleCitations: filterVisibleCitations(citations, recommendedBoards),
-      renderedContent: message?.renderedContent || content,
-    }
-  }
-
-  if (shouldDeferMarkdownRender(renderMode, content, options)) {
-    return {
-      ...message,
-      contentFormat,
-      renderMode: 'plain',
-      isRenderPending: true,
-      visibleCitations: filterVisibleCitations(citations, recommendedBoards),
-      renderedContent: content,
-    }
-  }
-
-  const renderedContent = renderMode === 'markdown'
-    ? renderers.markdownRenderer(content)
-    : content
-
   return {
     ...message,
     contentFormat,
     renderMode,
-    isRenderPending: false,
     visibleCitations: filterVisibleCitations(citations, recommendedBoards),
-    renderedContent,
+    renderedContent: renderMode === 'markdown' ? renderers.markdownRenderer(content) : content,
   }
 }

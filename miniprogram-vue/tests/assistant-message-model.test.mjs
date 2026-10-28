@@ -49,57 +49,33 @@ test('completed assistant markdown message renders markdown once', () => {
   assert.equal(normalized.renderedContent, 'markdown:## 结论\n\n守卫和女巫通常会冲突。')
 })
 
-test('long answer that just finished renders markdown right away instead of flashing raw text', () => {
-  const normalized = normalizeChatMessage(
-    {
-      id: 'm2-long',
-      role: 'ASSISTANT',
-      content: '## 结论\n\n' + '这是一个很长的回答。'.repeat(80),
-      contentFormat: 'MARKDOWN',
-      citations: [],
-      recommendedBoards: [],
-      isStreaming: false,
-    },
-    {
-      markdownRenderer: (content) => `markdown:${content}`,
-      plainRenderer: () => {
-        throw new Error('long completed message should not use plain renderer helper')
-      },
-    },
-  )
-
-  assert.equal(normalized.renderMode, 'markdown')
-  assert.equal(normalized.isRenderPending, false)
-  assert.ok(normalized.renderedContent.startsWith('markdown:## 结论'))
-})
-
-test('deferred markdown mode keeps initial page entry cheap for historical assistant messages', () => {
+test('history assistant messages render markdown right away', () => {
   const normalized = normalizeChatMessage(
     {
       id: 'm4',
       role: 'ASSISTANT',
-      content: '## 很长的历史回答\n\n' + '证据 '.repeat(200),
+      content: '**守卫**不能连续两晚守同一个人。',
       contentFormat: 'MARKDOWN',
-      citations: [],
-      recommendedBoards: [],
-      isStreaming: false,
     },
+    { markdownRenderer: (content) => `markdown:${content}` },
+  )
+
+  assert.equal(normalized.renderMode, 'markdown')
+  assert.equal(normalized.renderedContent, 'markdown:**守卫**不能连续两晚守同一个人。')
+})
+
+test('user messages stay plain text', () => {
+  const normalized = normalizeChatMessage(
+    { id: 'u1', role: 'USER', content: '<b>女巫</b>能自救吗' },
     {
       markdownRenderer: () => {
-        throw new Error('deferred historical message should not render markdown immediately')
+        throw new Error('user message should not be rendered as markdown')
       },
-      plainRenderer: () => {
-        throw new Error('deferred historical message should not render plain rich text immediately')
-      },
-    },
-    {
-      deferMarkdown: true,
     },
   )
 
   assert.equal(normalized.renderMode, 'plain')
-  assert.equal(normalized.isRenderPending, true)
-  assert.ok(normalized.renderedContent.startsWith('## 很长的历史回答'))
+  assert.equal(normalized.renderedContent, '<b>女巫</b>能自救吗')
 })
 
 test('structured citations that duplicate recommended boards are hidden and only web citations remain visible', () => {

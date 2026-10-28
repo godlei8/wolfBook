@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { onLoad, onUnload } from '@dcloudio/uni-app'
 import assistant from '../../services/assistant'
-import { markdownToRichText, markdownToRichTextSegments } from '../../services/markdown'
+import { markdownToRichText } from '../../services/markdown'
 import { formatDateTime, fromNow } from '../../utils/format'
 import { normalizeChatMessage } from './message-model'
 import { createAssistantStreamBuffer, shouldAutoScrollOnMessageAppend } from './stream-buffer'
@@ -15,8 +15,6 @@ const sessions = ref([])
 const messages = ref([])
 const loading = ref(false)
 const loadingHistory = ref(false)
-const hydratingHistory = ref(false)
-const pendingHistoryCount = ref(0)
 const sending = ref(false)
 const activeSessionId = ref('')
 const scene = ref('general')
@@ -33,12 +31,9 @@ const roleIndex = ref([])
 let pendingQuestion = ''
 
 const streamRenderDelayMs = 120
-const historyHydrationDelayMs = 28
-const completedMessageRenderDelayMs = 16
-const historyMessageSegmentCharLimit = 380
-const completedMessageSegmentCharLimit = 520
-let hydrationToken = 0
-const pendingRenderTimers = new Map()
+// 还没出字时的等待卡片：后端报的进度（「正在查站内资料」）和已经等了几秒
+const waitSeconds = ref(0)
+let waitTimer = null
 
 const draftCount = computed(() => (draft.value || '').length)
 const assistantEnabled = computed(() => bootstrap.value?.enabled !== false)
@@ -53,7 +48,7 @@ const answerRoles = computed(() => {
       return
     }
     if (item.isStreaming) return
-    map[item.id] = findRole(lastQuestion) || findRole(item.content || '')
+    map[item.id] = pickSourceRole(lastQuestion, item.content || '')
   })
   return map
 })
@@ -63,6 +58,12 @@ function findRole(text) {
   if (!text) return null
   // 长名字优先，避免「狼人」抢掉「白狼王」
   return roleIndex.value.find((role) => text.includes(role.name)) || null
+}
+
+// 问题里点到的角色可能不止一个（「狼美人骑士里骑士怎么决斗」里板子名带着狼美人），优先选回答里也讲到的那个
+function pickSourceRole(question, answer) {
+  const asked = question ? roleIndex.value.filter((role) => question.includes(role.name)) : []
+  return asked.find((role) => answer.includes(role.name)) || asked[0] || findRole(answer)
 }
 
 async function loadRoleIndex() {
@@ -134,151 +135,30 @@ function decorateSession(session) {
   }
 }
 
-function normalizeMessage(message, options = {}) {
-  return normalizeChatMessage(
-    message,
-    {
-      markdownRenderer: (content) => markdownToRichText(content, { streaming: !!message?.isStreaming }),
-    },
-    options,
-  )
-}
-
-function clearPendingRenderTimer(messageId) {
-  const timerId = pendingRenderTimers.get(String(messageId))
-  if (timerId) {
-    clearTimeout(timerId)
-    pendingRenderTimers.delete(String(messageId))
-  }
-}
-
-function clearAllPendingRenderTimers() {
-  pendingRenderTimers.forEach((timerId) => clearTimeout(timerId))
-  pendingRenderTimers.clear()
-}
-
-function cancelPendingHydration() {
-  hydrationToken += 1
-  hydratingHistory.value = false
-  pendingHistoryCount.value = 0
-  clearAllPendingRenderTimers()
-}
-
-function patchMessage(messageId, patcher, normalizeOptions = {}) {
-  clearPendingRenderTimer(messageId)
-  messages.value = messages.value.map((item) => {
-    if (String(item.id) !== String(messageId)) {
-      return item
-    }
-    return normalizeMessage(
-      {
-        ...patcher(item),
-      },
-      normalizeOptions,
-    )
+function normalizeMessage(message) {
+  return normalizeChatMessage(message, {
+    markdownRenderer: (content) => markdownToRichText(content, { streaming: !!message?.isStreaming }),
   })
 }
 
-function scheduleMessageHydration(messageId, options = {}) {
-  clearPendingRenderTimer(messageId)
-
-  const targetMessage = messages.value.find((item) => String(item.id) === String(messageId))
-  if (!targetMessage?.content) {
-    options.onComplete?.()
-    return
-  }
-
-  const delayMs = options.delayMs ?? completedMessageRenderDelayMs
-  const segments = markdownToRichTextSegments(targetMessage.content, {
-    segmentCharLimit: options.segmentCharLimit ?? completedMessageSegmentCharLimit,
-  })
-
-  if (!segments.length) {
-    patchMessage(messageId, (current) => ({
-      ...current,
-      isRenderPending: false,
-      isStreaming: false,
-    }))
-    if (options.scrollOnProgress) {
-      scrollChatToBottom()
-    }
-    options.onComplete?.()
-    return
-  }
-
-  let index = 0
-  const pump = () => {
-    pendingRenderTimers.delete(String(messageId))
-    index += 1
-
-    patchMessage(
-      messageId,
-      (current) => ({
-        ...current,
-        renderMode: 'markdown',
-        renderedContent: segments.slice(0, index).join(''),
-        isRenderPending: index < segments.length,
-        isStreaming: false,
-      }),
-      { preserveRenderedContent: true },
-    )
-
-    if (options.scrollOnProgress) {
-      scrollChatToBottom()
-    }
-
-    if (index >= segments.length) {
-      options.onComplete?.()
-      return
-    }
-
-    const nextTimerId = setTimeout(pump, delayMs)
-    pendingRenderTimers.set(String(messageId), nextTimerId)
-  }
-
-  const timerId = setTimeout(pump, delayMs)
-  pendingRenderTimers.set(String(messageId), timerId)
+function patchMessage(messageId, patcher) {
+  messages.value = messages.value.map((item) => (String(item.id) === String(messageId) ? normalizeMessage(patcher(item)) : item))
 }
 
-function hydratePendingMessages() {
-  const pendingIds = messages.value
-    .filter((item) => item.role === 'ASSISTANT' && item.isRenderPending)
-    .map((item) => item.id)
+function startWaitClock() {
+  stopWaitClock()
+  waitSeconds.value = 0
+  const startedAt = Date.now()
+  waitTimer = setInterval(() => {
+    waitSeconds.value = Math.floor((Date.now() - startedAt) / 1000)
+  }, 1000)
+}
 
-  pendingHistoryCount.value = pendingIds.length
-  hydratingHistory.value = pendingIds.length > 0
-
-  if (!pendingIds.length) {
-    return
+function stopWaitClock() {
+  if (waitTimer) {
+    clearInterval(waitTimer)
+    waitTimer = null
   }
-
-  const currentToken = ++hydrationToken
-
-  const pump = (index = 0) => {
-    if (currentToken !== hydrationToken) {
-      return
-    }
-    if (index >= pendingIds.length) {
-      hydratingHistory.value = false
-      pendingHistoryCount.value = 0
-      return
-    }
-
-    const nextId = pendingIds[index]
-    scheduleMessageHydration(nextId, {
-      delayMs: historyHydrationDelayMs,
-      segmentCharLimit: historyMessageSegmentCharLimit,
-      onComplete() {
-        if (currentToken !== hydrationToken) {
-          return
-        }
-        pendingHistoryCount.value = Math.max(0, pendingIds.length - index - 1)
-        setTimeout(() => pump(index + 1), historyHydrationDelayMs)
-      },
-    })
-  }
-
-  setTimeout(() => pump(0), 0)
 }
 
 function appendOptimisticUserMessage(message) {
@@ -301,6 +181,7 @@ function addStreamingAssistantMessage() {
     contentFormat: 'MARKDOWN',
     answerType: 'STREAMING',
     isStreaming: true,
+    stageLabel: '正在理解问题',
   })
   messages.value = [...messages.value, streamingMessage]
   return messageId
@@ -317,28 +198,14 @@ function replaceStreamingMessage(messageId, response) {
     isStreaming: false,
   })
 
-  clearPendingRenderTimer(messageId)
-  messages.value = messages.value.map((item) => {
-    if (String(item.id) !== String(messageId)) {
-      return item
-    }
-    return nextMessage
-  })
+  messages.value = messages.value.map((item) => (String(item.id) === String(messageId) ? nextMessage : item))
   scrollChatToBottom()
-
-  if (nextMessage.isRenderPending) {
-    scheduleMessageHydration(nextMessage.id, {
-      delayMs: completedMessageRenderDelayMs,
-      segmentCharLimit: completedMessageSegmentCharLimit,
-      scrollOnProgress: true,
-    })
-  }
 }
 
 function markStreamingFailed(messageId, errorMessage) {
   patchMessage(messageId, () => ({
     role: 'ASSISTANT',
-    content: `## 发送失败\n\n${errorMessage || '当前消息发送失败，请稍后再试。'}`,
+    content: `**没答上来**：${errorMessage || '请稍后再试一次。'}`,
     contentFormat: 'MARKDOWN',
     answerType: 'REFUSAL',
     isStreaming: false,
@@ -356,7 +223,6 @@ async function loadSessionList() {
 
 async function loadMessages(sessionId = activeSessionId.value) {
   if (!sessionId) {
-    cancelPendingHydration()
     messages.value = []
     activeSessionId.value = ''
     return
@@ -368,9 +234,8 @@ async function loadMessages(sessionId = activeSessionId.value) {
 
   try {
     const rawMessages = await assistant.getMessages(sessionId)
-    cancelPendingHydration()
-    messages.value = rawMessages.map((message) => normalizeMessage(message, { deferMarkdown: true }))
-    hydratePendingMessages()
+    messages.value = rawMessages.map((message) => normalizeMessage(message))
+    scrollChatToBottom()
   } catch (error) {
     loadError.value = error instanceof Error && error.message ? error.message : '历史会话加载失败'
     throw error
@@ -434,6 +299,7 @@ async function sendQuestion(question) {
   sending.value = true
   appendOptimisticUserMessage(message)
   const streamingMessageId = addStreamingAssistantMessage()
+  startWaitClock()
   const streamBuffer = createAssistantStreamBuffer(
     (delta) => {
       patchMessage(streamingMessageId, (current) => ({
@@ -460,9 +326,14 @@ async function sendQuestion(question) {
             activeSessionId.value = event.sessionId
           }
         },
+        onStage(event) {
+          if (!event?.label) return
+          patchMessage(streamingMessageId, (current) => ({ ...current, stageLabel: event.label }))
+        },
         onDelta(event) {
           const delta = event?.delta || ''
           if (!delta) return
+          stopWaitClock()
           streamBuffer.push(delta)
         },
         onDone(event) {
@@ -487,6 +358,7 @@ async function sendQuestion(question) {
   } finally {
     activeStream = null
     streamBuffer.dispose()
+    stopWaitClock()
     sending.value = false
   }
 }
@@ -511,7 +383,6 @@ async function openSession(sessionId) {
 }
 
 function startNewSession() {
-  cancelPendingHydration()
   loadError.value = ''
   activeSessionId.value = ''
   messages.value = []
@@ -577,7 +448,7 @@ onLoad((options) => {
 })
 
 onUnload(() => {
-  cancelPendingHydration()
+  stopWaitClock()
   if (activeStream) {
     activeStream.abort()
     activeStream = null
@@ -644,10 +515,6 @@ onUnload(() => {
           {{ loading ? '正在连接规则速查…' : '正在载入历史对话…' }}
         </view>
 
-        <view v-if="hydratingHistory && hasMessages" class="chat-hydrate">
-          正在整理 {{ pendingHistoryCount }} 条历史回答，不影响继续提问。
-        </view>
-
         <view v-for="item in messages" :key="item.id" :id="`message-${item.id}`">
           <view v-if="item.role === 'USER'" class="chat-self">
             <text class="chat-self__bubble">{{ item.content }}</text>
@@ -655,7 +522,21 @@ onUnload(() => {
           <view v-else class="chat-answer">
             <view class="chat-avatar">☾</view>
             <view class="chat-answer__body">
-              <view class="chat-bubble">
+              <view v-if="item.isStreaming && !item.content" class="chat-bubble chat-wait">
+                <view class="chat-wait__moon" />
+                <view class="chat-wait__body">
+                  <view class="chat-wait__row">
+                    <text class="chat-wait__label">{{ item.stageLabel || '正在理解问题' }}</text>
+                    <view class="chat-wait__dots">
+                      <view class="chat-wait__dot" />
+                      <view class="chat-wait__dot chat-wait__dot--2" />
+                      <view class="chat-wait__dot chat-wait__dot--3" />
+                    </view>
+                  </view>
+                  <text v-if="waitSeconds >= 8" class="chat-wait__hint">已等 {{ waitSeconds }} 秒，模型在组织语言，马上就好</text>
+                </view>
+              </view>
+              <view v-else class="chat-bubble">
                 <rich-text v-if="item.renderMode === 'markdown'" class="chat-markdown" :nodes="item.renderedContent" />
                 <text v-else class="chat-plain">{{ item.content }}</text>
               </view>
@@ -891,10 +772,90 @@ onUnload(() => {
   word-break: break-word;
 }
 
-.chat-hydrate {
+.chat-wait {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  min-width: 360rpx;
+}
+
+.chat-wait__moon {
+  flex-shrink: 0;
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  background: var(--moon);
+  box-shadow: 0 0 0 0 rgba(95, 227, 224, 0.5);
+  animation: chat-wait-pulse 1.6s ease-out infinite;
+}
+
+.chat-wait__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.chat-wait__row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.chat-wait__label {
+  color: var(--text);
+  font-size: 28rpx;
+}
+
+.chat-wait__dots {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.chat-wait__dot {
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  background: var(--gold);
+  opacity: 0.25;
+  animation: chat-wait-dot 1.2s ease-in-out infinite;
+}
+
+.chat-wait__dot--2 {
+  animation-delay: 0.2s;
+}
+
+.chat-wait__dot--3 {
+  animation-delay: 0.4s;
+}
+
+.chat-wait__hint {
   color: var(--text-3);
-  font-size: 24rpx;
-  text-align: center;
+  font-size: 22rpx;
+}
+
+@keyframes chat-wait-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(95, 227, 224, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 18rpx rgba(95, 227, 224, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(95, 227, 224, 0);
+  }
+}
+
+@keyframes chat-wait-dot {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-6rpx);
+  }
 }
 
 .chat-anchor {

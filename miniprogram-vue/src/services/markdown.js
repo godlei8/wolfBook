@@ -9,7 +9,6 @@ const INLINE_CODE_STYLE = 'display:inline-block;padding:2rpx 10rpx;border-radius
 const LINK_STYLE = 'color:#5fe3e0;text-decoration:underline;'
 const STRONG_STYLE = 'font-weight:700;color:#f2b33d;'
 const CURSOR_HTML = '<span style="display:inline-block;margin-left:8rpx;color:#5fe3e0;font-weight:700;">|</span>'
-const DEFAULT_SEGMENT_CHAR_LIMIT = 520
 // 无序列表项：「- 」「* 」，或「-」后面直接跟中文（有的模型输出「-经典高配」不带空格）
 const BULLET = /^[-*](?:\s+|(?=[一-龥]))/
 
@@ -166,31 +165,6 @@ function markdownToHtmlBlocks(markdown = '', options = {}) {
 export function plainTextToRichText(text = '') {
   const escaped = escapeHtml(text).replace(/\n/g, '<br/>')
   return `<p style="${BODY_STYLE}">${escaped || '&nbsp;'}</p>`
-}
-
-export function markdownToRichTextSegments(markdown = '', options = {}) {
-  const blocks = markdownToHtmlBlocks(markdown, options)
-  if (!blocks.length) {
-    return []
-  }
-
-  const segmentCharLimit = Number(options.segmentCharLimit || DEFAULT_SEGMENT_CHAR_LIMIT)
-  const segments = []
-  let currentSegment = ''
-
-  blocks.forEach((block) => {
-    if (currentSegment && currentSegment.length + block.length > segmentCharLimit) {
-      segments.push(currentSegment)
-      currentSegment = ''
-    }
-    currentSegment += block
-  })
-
-  if (currentSegment) {
-    segments.push(currentSegment)
-  }
-
-  return segments
 }
 
 export function markdownToRichText(markdown = '', options = {}) {

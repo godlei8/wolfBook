@@ -139,6 +139,12 @@ function streamAsk(payload, handlers = {}) {
           return
         }
 
+        // 还没出字时的进度：{ key, label }，label 如「正在查站内资料」
+        if (parsed.event === 'stage') {
+          handlers.onStage?.(parsed.data)
+          return
+        }
+
         if (parsed.event === 'delta') {
           receivedDelta = true
           handlers.onDelta?.(parsed.data)
