@@ -464,6 +464,18 @@ public class AssistantKnowledgeService {
             return;
         }
 
+        // 向量模型或向量库出错（Key 失效、接口没返回向量）只记在这份资料上，不让整次发布失败：
+        // 检索时没有向量命中会退回关键词检索
+        try {
+            vectorStore.add(buildChunkDocuments(entity, chunks));
+            entity.setLastError(null);
+        } catch (RuntimeException exception) {
+            log.warn("Vector indexing failed for {}: {}", entity.getSourceKey(), exception.toString());
+            entity.setLastError("向量索引失败（问答会用关键词检索）：" + exception.getClass().getSimpleName());
+        }
+    }
+
+    private List<Document> buildChunkDocuments(AssistantDocumentEntity entity, List<String> chunks) {
         List<Document> documents = new ArrayList<>();
         for (int index = 0; index < chunks.size(); index++) {
             documents.add(Document.builder()
@@ -479,7 +491,7 @@ public class AssistantKnowledgeService {
                     ))
                     .build());
         }
-        vectorStore.add(documents);
+        return documents;
     }
 
     private List<KnowledgeHit> searchViaVectorStore(String query, List<AssistantDocumentEntity> publishedDocuments) {
@@ -537,11 +549,19 @@ public class AssistantKnowledgeService {
         for (int index = 0; index < chunkCount; index++) {
             ids.add(buildChunkId(sourceKey, index));
         }
-        vectorStore.delete(ids);
+        try {
+            vectorStore.delete(ids);
+        } catch (RuntimeException exception) {
+            log.warn("Vector chunk cleanup failed for {}: {}", sourceKey, exception.toString());
+        }
     }
 
-    private String buildChunkId(String sourceKey, int chunkIndex) {
-        return sourceKey + "#chunk-" + chunkIndex;
+    /**
+     * 向量库里每一段的 id。pgvector 的 id 列是 UUID，不能直接用「BOARD:1#chunk-0」，
+     * 用它算出一个固定的 UUID：同一份资料的同一段每次都是同一个 id，重建时能按 id 删掉旧的。
+     */
+    static String buildChunkId(String sourceKey, int chunkIndex) {
+        return UUID.nameUUIDFromBytes((sourceKey + "#chunk-" + chunkIndex).getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
     }
 
     private String buildBoardStructuredText(Board board, Map<Integer, String> roleNames) {

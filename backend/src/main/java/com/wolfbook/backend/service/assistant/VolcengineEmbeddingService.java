@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wolfbook.backend.config.AssistantProperties;
 import com.wolfbook.backend.dto.AssistantDtos;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -21,6 +23,8 @@ import java.util.Map;
 
 @Service
 public class VolcengineEmbeddingService {
+
+    private static final Logger log = LoggerFactory.getLogger(VolcengineEmbeddingService.class);
 
     private final AssistantProperties assistantProperties;
     private final AssistantConfigService assistantConfigService;
@@ -75,6 +79,9 @@ public class VolcengineEmbeddingService {
             ensureSuccess(response.statusCode(), response.body());
             return parseEmbeddings(response.body());
         } catch (Exception exception) {
+            // 失败时返回空，上层会退回关键词检索；把原因记下来（状态码和返回内容，不含 Key），不然只看得到 NoSuchElementException
+            String reason = String.valueOf(exception.getMessage());
+            log.warn("Volcengine embedding failed: {} {}", exception.getClass().getSimpleName(), reason.length() > 300 ? reason.substring(0, 300) : reason);
             return List.of();
         }
     }

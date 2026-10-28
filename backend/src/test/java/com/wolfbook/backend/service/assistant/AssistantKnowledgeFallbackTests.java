@@ -22,4 +22,12 @@ class AssistantKnowledgeFallbackTests {
         assertTrue(tokens.contains("deepseek"));
         assertTrue(tokens.contains("板子"));
     }
+
+    @Test
+    void chunkIdsShouldBeStableUuidsForPgVector() {
+        String id = AssistantKnowledgeService.buildChunkId("BOARD:1", 0);
+        assertTrue(java.util.UUID.fromString(id).toString().equals(id), "pgvector 的 id 列是 UUID");
+        assertTrue(id.equals(AssistantKnowledgeService.buildChunkId("BOARD:1", 0)), "同一段每次算出同一个 id，重建时才能删掉旧的");
+        assertFalse(id.equals(AssistantKnowledgeService.buildChunkId("BOARD:1", 1)));
+    }
 }
