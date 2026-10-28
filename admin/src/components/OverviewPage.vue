@@ -2,9 +2,10 @@
 import { computed, onMounted, ref } from 'vue'
 import PageHeader from './ui/PageHeader.vue'
 import { api } from '../services/api'
-import type { Board, DashboardSummary, ReportItem, Role } from '../types'
+import type { Board, DashboardSummary, ReportItem, Role, WorldEvent } from '../types'
 import { featuredBoards, formatTime, pickLineupArt } from '../utils/board'
 import { resolveMediaUrl } from '../utils/media'
+import { checkRole, eventRoleIds } from '../utils/roleCompleteness'
 import tavernScene from '../assets/scenes/tavern.webp'
 
 const props = defineProps<{ summary: DashboardSummary | null }>()
@@ -13,6 +14,7 @@ const emit = defineEmits<{ refresh: [] }>()
 const boards = ref<Board[]>([])
 const roles = ref<Role[]>([])
 const reports = ref<ReportItem[]>([])
+const worldEvents = ref<WorldEvent[]>([])
 
 const rolesById = computed(() => new Map(roles.value.map((role) => [role.id, role])))
 const featured = computed(() =>
@@ -23,7 +25,20 @@ const featured = computed(() =>
   })),
 )
 const openReports = computed(() => reports.value.filter((report) => report.processStatus === 'OPEN'))
-const rolesWithoutArt = computed(() => roles.value.filter((role) => !role.fullIllustration))
+/** 设定不完整的角色（规则在 utils/roleCompleteness.ts），以及各项分别缺了几个。 */
+const roleGaps = computed(() => {
+  const byId = new Map(roles.value.map((role) => [role.id, role]))
+  const cast = eventRoleIds(worldEvents.value)
+  const counts = new Map<string, number>()
+  let incomplete = 0
+  roles.value.forEach((role) => {
+    const result = checkRole(role, byId, cast)
+    if (!result.complete) incomplete += 1
+    result.missing.forEach((item) => counts.set(item.label, (counts.get(item.label) || 0) + 1))
+  })
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
+  return { incomplete, detail: top.map(([label, count]) => `缺${label.replace(/ .*$/, '')} ${count} 个`).join('、') }
+})
 
 const greeting = computed(() => {
   const hour = new Date().getHours()
@@ -67,15 +82,14 @@ const todos = computed(() => {
       detail: '列表卡片会改用阵容立绘，首页推荐排在后面',
     })
   }
-  if (s.rolesWithoutIllustration) {
-    const names = rolesWithoutArt.value.slice(0, 4).map((role) => role.name).join('、')
+  if (roleGaps.value.incomplete) {
     list.push({
-      key: 'art',
+      key: 'roles',
       href: '#/roles',
       tone: 'var(--camp-third)',
       icon: 'M5 3h14v18H5zM9 8h6M9 12h6',
-      title: `${s.rolesWithoutIllustration} 个角色还没有立绘`,
-      detail: names ? `${names}${s.rolesWithoutIllustration > 4 ? ' 等' : ''}，图鉴里显示卡背` : '图鉴里显示卡背',
+      title: `${roleGaps.value.incomplete} 个角色设定不完整`,
+      detail: `${roleGaps.value.detail}，图鉴里点「只看设定不完整」逐个补`,
     })
   }
   if (s.assistantFailuresToday) {
@@ -93,10 +107,11 @@ const todos = computed(() => {
 
 async function load() {
   emit('refresh')
-  const [boardData, roleData, reportData] = await Promise.allSettled([api.getBoards(), api.getRoles(), api.getReports()])
+  const [boardData, roleData, reportData, worldData] = await Promise.allSettled([api.getBoards(), api.getRoles(), api.getReports(), api.getWorld()])
   if (boardData.status === 'fulfilled') boards.value = boardData.value
   if (roleData.status === 'fulfilled') roles.value = roleData.value
   if (reportData.status === 'fulfilled') reports.value = reportData.value.list
+  if (worldData.status === 'fulfilled') worldEvents.value = worldData.value.events || []
 }
 
 onMounted(load)

@@ -6,6 +6,7 @@ import OverviewPage from './components/OverviewPage.vue'
 import BoardList from './components/boards/BoardList.vue'
 import BoardEditor from './components/boards/BoardEditor.vue'
 import RoleManagement from './components/RoleManagement.vue'
+import WorldManagement from './components/WorldManagement.vue'
 import CommunityManagement from './components/CommunityManagement.vue'
 import AiAssistantManagement from './components/AiAssistantManagement.vue'
 import { UNAUTHORIZED_EVENT, api, clearStoredToken, getStoredToken, isUnauthorizedError } from './services/api'
@@ -22,6 +23,7 @@ const menus: { key: MenuKey; label: string; icon: string }[] = [
   { key: 'overview', label: '总览', icon: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z' },
   { key: 'boards', label: '板子', icon: 'M12 3 3 8l9 5 9-5-9-5zM3 13l9 5 9-5' },
   { key: 'roles', label: '角色图鉴', icon: 'M5 5h9v15H5zM14 7l5 1.4a1.6 1.6 0 0 1 1.1 2l-2.7 9.5' },
+  { key: 'world', label: '世界观', icon: 'M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2zM4 19V5M8 7h7M8 11h5' },
   { key: 'community', label: '社区治理', icon: 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z' },
   { key: 'ai', label: 'AI 助手', icon: 'M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6' },
 ]
@@ -123,6 +125,7 @@ onBeforeUnmount(() => {
         <BoardList v-else @changed="loadSummary" />
       </template>
       <RoleManagement v-else-if="route.menu === 'roles'" @changed="loadSummary" />
+      <WorldManagement v-else-if="route.menu === 'world'" />
       <CommunityManagement v-else-if="route.menu === 'community'" @changed="loadSummary" />
       <AiAssistantManagement v-else-if="route.menu === 'ai'" />
     </main>

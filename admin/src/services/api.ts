@@ -3,6 +3,9 @@ import type {
   AdminAiConfig,
   AdminAiDocument,
   AdminAiLog,
+  AdminAiModel,
+  AdminAiModelPayload,
+  ModelTestResult,
   AdminAiVersion,
   ApiResponse,
   Board,
@@ -13,12 +16,17 @@ import type {
   PostSummary,
   ReportItem,
   Role,
+  RoleDraft,
+  RoleDraftRequest,
+  WorldLore,
 } from '../types'
 
 const TOKEN_KEY = 'wolfbook_admin_token'
 const DEFAULT_TIMEOUT = 15000
 const AI_UPLOAD_TIMEOUT = 120000
 const AI_LONG_TASK_TIMEOUT = 300000
+// 「按世界观起草」要等大模型写完一段身世
+const ROLE_DRAFT_TIMEOUT = 60000
 
 const http = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? 'http://localhost:8088' : '/'),
@@ -111,6 +119,9 @@ export const api = {
   async getRoles() {
     return unwrap<Role[]>(http.get('/admin/roles'))
   },
+  async draftRole(payload: RoleDraftRequest) {
+    return unwrap<RoleDraft>(http.post('/admin/roles/draft', payload, { timeout: ROLE_DRAFT_TIMEOUT }))
+  },
   async createRole(payload: Partial<Role>) {
     return unwrap<Role>(http.post('/admin/roles', payload))
   },
@@ -119,6 +130,12 @@ export const api = {
   },
   async deleteRole(id: number) {
     return unwrap<void>(http.delete(`/admin/roles/${id}`))
+  },
+  async getWorld() {
+    return unwrap<WorldLore>(http.get('/admin/world'))
+  },
+  async saveWorld(payload: WorldLore) {
+    return unwrap<WorldLore>(http.put('/admin/world', payload))
   },
   async getPosts() {
     return unwrap<PageResponse<PostSummary>>(http.get('/admin/posts', { params: { page: 1, size: ADMIN_LIST_SIZE } }))
@@ -149,6 +166,28 @@ export const api = {
   },
   async saveAiConfig(payload: AdminAiConfig) {
     return unwrap<AdminAiConfig>(http.put('/admin/ai/config', payload))
+  },
+  async getAiModels() {
+    return unwrap<AdminAiModel[]>(http.get('/admin/ai/models'))
+  },
+  async createAiModel(payload: AdminAiModelPayload) {
+    return unwrap<AdminAiModel>(http.post('/admin/ai/models', payload))
+  },
+  async updateAiModel(id: number, payload: AdminAiModelPayload) {
+    return unwrap<AdminAiModel>(http.put(`/admin/ai/models/${id}`, payload))
+  },
+  async deleteAiModel(id: number) {
+    return unwrap<void>(http.delete(`/admin/ai/models/${id}`))
+  },
+  async activateAiModel(id: number) {
+    return unwrap<AdminAiModel>(http.post(`/admin/ai/models/${id}/activate`))
+  },
+  // 测试连接会真的请求一次模型，慢模型可能要十几秒
+  async testAiModel(payload: { id?: number; baseUrl?: string; model?: string; apiKey?: string; disableThinking?: boolean }) {
+    return unwrap<ModelTestResult>(http.post('/admin/ai/models/test', payload, { timeout: 90000 }))
+  },
+  async listRemoteAiModels(payload: { id?: number; baseUrl?: string; apiKey?: string }) {
+    return unwrap<string[]>(http.post('/admin/ai/models/remote', payload, { timeout: 30000 }))
   },
   async getAiDocuments() {
     return unwrap<AdminAiDocument[]>(http.get('/admin/ai/documents'))

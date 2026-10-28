@@ -50,26 +50,10 @@ const blockedKeywordsModel = computed({
     </el-card>
 
     <el-card class="sub-card">
-      <template #header>DeepSeek 配置</template>
-      <el-form label-position="top">
-        <el-form-item label="模型平台">
-          <el-input :model-value="config.provider.platform" disabled />
-        </el-form-item>
-        <el-form-item label="固定模型">
-          <el-input :model-value="config.provider.model" disabled />
-        </el-form-item>
-        <el-form-item label="API Base URL">
-          <el-input v-model="config.provider.baseUrl" placeholder="https://api.deepseek.com" />
-        </el-form-item>
-        <el-form-item label="API Key">
-          <el-input
-            v-model="config.provider.apiKey"
-            type="password"
-            show-password
-            placeholder="请输入 DeepSeek API Key"
-          />
-        </el-form-item>
-      </el-form>
+      <template #header>对话模型</template>
+      <div class="helper-text">
+        对话模型改到「模型管理」标签页里配了：可以登记多个模型（DeepSeek 官方、学校的模型服务……），测试连接后选一个设为当前，AI 助手问答和角色起草马上改用它。
+      </div>
     </el-card>
 
     <el-card class="sub-card">

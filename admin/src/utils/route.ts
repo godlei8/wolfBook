@@ -1,9 +1,9 @@
 import { computed, ref } from 'vue'
 
 // 后台只有几个页面，用 hash 记住当前位置（刷新不丢、能前进后退），不引入 vue-router
-export type MenuKey = 'overview' | 'boards' | 'roles' | 'community' | 'ai'
+export type MenuKey = 'overview' | 'boards' | 'roles' | 'world' | 'community' | 'ai'
 
-const MENUS: MenuKey[] = ['overview', 'boards', 'roles', 'community', 'ai']
+const MENUS: MenuKey[] = ['overview', 'boards', 'roles', 'world', 'community', 'ai']
 
 function readHash() {
   return window.location.hash.replace(/^#\/?/, '')

@@ -6,6 +6,7 @@ import type { UploadRequestOptions } from 'element-plus'
 import { api } from '../services/api'
 import type { AdminAiConfig, AdminAiDocument, AdminAiLog, AdminAiVersion } from '../types'
 import AiAssistantControlTab from './aiAssistant/AiAssistantControlTab.vue'
+import AiModelManager from './aiAssistant/AiModelManager.vue'
 import AiAssistantDocumentsTab from './aiAssistant/AiAssistantDocumentsTab.vue'
 import AiAssistantLogsTab from './aiAssistant/AiAssistantLogsTab.vue'
 import AiAssistantPublishTab from './aiAssistant/AiAssistantPublishTab.vue'
@@ -24,7 +25,7 @@ const publishing = ref(false)
 const clearingDocuments = ref(false)
 const clearingLogs = ref(false)
 
-const activeTab = ref<'control' | 'documents' | 'publish' | 'logs'>('control')
+const activeTab = ref<'control' | 'models' | 'documents' | 'publish' | 'logs'>('control')
 const documents = ref<AdminAiDocument[]>([])
 const versions = ref<AdminAiVersion[]>([])
 const logs = ref<AdminAiLog[]>([])
@@ -324,6 +325,10 @@ onMounted(loadAll)
           @update:blocked-keywords-text="blockedKeywordsText = $event"
           @save="saveConfig"
         />
+      </el-tab-pane>
+
+      <el-tab-pane label="模型管理" name="models">
+        <AiModelManager v-if="activeTab === 'models'" />
       </el-tab-pane>
 
       <el-tab-pane label="知识库" name="documents">
