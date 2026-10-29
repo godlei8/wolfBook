@@ -4,10 +4,8 @@ import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Random;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -38,17 +36,5 @@ class JudgeNightFlowTests {
     @Test
     void noDeadlineNeverCloses() {
         assertFalse(JudgeNightFlow.shouldClose(NightKind.GUARD, List.of(3), Set.of(3), null, NOW));
-    }
-
-    @Test
-    void deadRoleStepHasNoHoldersButStillWaits() {
-        NightPlan.NightStep guard = new NightPlan.NightStep(0, NightKind.GUARD, List.of(4), "守卫", false, "守卫请睁眼", 30);
-        Random random = new Random(3);
-        for (int i = 0; i < 50; i++) {
-            int seconds = JudgeNightFlow.stepSeconds(guard, List.of(false), random);
-            assertTrue(seconds >= 15 && seconds <= 25, "假步骤 15–25 秒，实际 " + seconds);
-        }
-        assertEquals(30, JudgeNightFlow.stepSeconds(guard, List.of(true), random), "持有者活着用正常时长");
-        assertEquals(30, JudgeNightFlow.stepSeconds(guard, List.of(), random), "还没发身份（第一夜开局）用正常时长");
     }
 }

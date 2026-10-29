@@ -697,6 +697,38 @@ class JudgeFlowIntegrationTests {
     }
 
     @Test
+    void lateSubmitAfterTheDeadlineDoesNotRewindTheStep() throws Exception {
+        // 守卫那一步已经到点：这次提交先把步骤推到狼队，守卫再交就算晚了，也不能把房间写回守卫那一步
+        Game game = autoGame(false);
+        int guard = game.seatsByRole().get("守卫").get(0);
+        jdbcTemplate.update("UPDATE judge_rooms SET step_deadline = ? WHERE room_id = ?",
+                java.sql.Timestamp.valueOf("2000-01-01 00:00:00"), game.roomId);
+        JsonNode late = game.call(game.players.get(guard - 1), "/night-action", "{\"actionType\":\"guard\",\"targetSeatNo\":" + guard + "}");
+        Assertions.assertEquals(4003, late.path("code").asInt(), late.toString());
+        Integer step = jdbcTemplate.queryForObject("SELECT night_step FROM judge_rooms WHERE room_id = ?", Integer.class, game.roomId);
+        Assertions.assertEquals(1, step, "步骤停在狼队那一步");
+    }
+
+    @Test
+    void deadRoleStepLastsAsLongAsALiveOne() throws Exception {
+        // 活着的守卫一定等满 30 秒，死了的守卫那一步也得等满，否则从时长听得出他死了
+        Game game = autoGame(false);
+        int guard = game.seatsByRole().get("守卫").get(0);
+        game.advance(game.host, "{\"action\":\"resolve_night\",\"deadSeatNos\":[" + guard + "]}");
+        Assertions.assertEquals(0, game.call(game.host, "/skill", "{\"decision\":\"skip\"}").path("code").asInt());
+        game.advance(game.host, "{\"action\":\"start_speech\"}");
+        game.advance(game.host, "{\"action\":\"start_vote\"}");
+        game.advance(game.host, "{\"action\":\"resolve_vote\"}");
+        JsonNode night = game.advance(game.host, "{\"action\":\"continue\"}");
+        Assertions.assertEquals("night_action", night.path("data").path("currentPhase").asText(), night.toString());
+        Assertions.assertEquals("守卫", night.path("data").path("currentStep").path("roleName").asText());
+        java.time.LocalDateTime deadline = jdbcTemplate.queryForObject(
+                "SELECT step_deadline FROM judge_rooms WHERE room_id = ?", java.time.LocalDateTime.class, game.roomId);
+        long seconds = java.time.Duration.between(java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Shanghai")), deadline).getSeconds();
+        Assertions.assertTrue(seconds >= 28, "守卫那一步照样 30 秒，实际 " + seconds);
+    }
+
+    @Test
     void timedOutSkillPromptIsSkipped() throws Exception {
         Game game = autoGame(false);
         int dead = game.seatsByRole().get("平民").get(0);

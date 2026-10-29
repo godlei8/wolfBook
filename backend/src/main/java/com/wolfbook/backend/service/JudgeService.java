@@ -31,6 +31,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
@@ -443,7 +444,7 @@ public class JudgeService {
         return buildSnapshot(openid, roomId);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public WolfbookDtos.JudgeRoomSnapshotView submitNightAction(String authorization, String roomId, WolfbookDtos.JudgeNightActionRequest request) {
         roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
@@ -491,12 +492,11 @@ public class JudgeService {
                 VISIBILITY_JUDGE_ONLY,
                 now
         );
-        room.setUpdateTime(now);
-        judgeRoomMapper.updateById(room);
+        touchRoom(roomId, now);
         return buildSnapshot(openid, roomId);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public WolfbookDtos.JudgeRoomSnapshotView submitVote(String authorization, String roomId, WolfbookDtos.JudgeVoteRequest request) {
         roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
@@ -535,8 +535,7 @@ public class JudgeService {
                 VISIBILITY_JUDGE_ONLY,
                 now
         );
-        room.setUpdateTime(now);
-        judgeRoomMapper.updateById(room);
+        touchRoom(roomId, now);
         return buildSnapshot(openid, roomId);
     }
 
@@ -661,9 +660,10 @@ public class JudgeService {
 
     private void handleBroadcast(JudgeRoomEntity room, WolfbookDtos.JudgeRoomAdvanceRequest request, LocalDateTime now) {
         String announcement = requireAnnouncement(request.announcement());
-        room.setLatestAnnouncement(announcement);
-        room.setUpdateTime(now);
-        judgeRoomMapper.updateById(room);
+        judgeRoomMapper.update(null, new LambdaUpdateWrapper<JudgeRoomEntity>()
+                .eq(JudgeRoomEntity::getRoomId, room.getRoomId())
+                .set(JudgeRoomEntity::getLatestAnnouncement, announcement)
+                .set(JudgeRoomEntity::getUpdateTime, now));
         addEvent(
                 room.getRoomId(),
                 room.getCurrentDay(),
@@ -737,7 +737,7 @@ public class JudgeService {
             return;
         }
         room.setNightStep(current + 1);
-        room.setStepDeadline(now.plusSeconds(stepSeconds(steps.get(current + 1), players)));
+        room.setStepDeadline(now.plusSeconds(steps.get(current + 1).durationSeconds()));
         room.setUpdateTime(now);
         updateRoomGuarded(room, ROOM_STATUS_PLAYING, PHASE_NIGHT_ACTION, current);
     }
@@ -971,7 +971,7 @@ public class JudgeService {
     private void openNight(JudgeRoomEntity room, int dayNo, LocalDateTime now) {
         List<NightPlan.NightStep> steps = nightSteps(room, dayNo);
         room.setNightStep(steps.isEmpty() ? null : 0);
-        room.setStepDeadline(steps.isEmpty() ? null : now.plusSeconds(stepSeconds(steps.get(0), loadPlayers(room.getRoomId()))));
+        room.setStepDeadline(steps.isEmpty() ? null : now.plusSeconds(steps.get(0).durationSeconds()));
         room.setPhaseData(writeJson(Map.of()));
     }
 
@@ -1195,7 +1195,7 @@ public class JudgeService {
 
     // ---------- 新阶段机：上警、公布死讯、发言、票型公布、PK（只对 auto_judge_enabled 的房间）----------
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public WolfbookDtos.JudgeRoomSnapshotView submitSheriff(String authorization, String roomId, WolfbookDtos.JudgeSheriffRequest request) {
         roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
@@ -1255,11 +1255,13 @@ public class JudgeService {
             Map<String, Object> phaseData = new LinkedHashMap<>(readMap(room.getPhaseData()));
             phaseData.put("sheriffOrder", choice);
             room.setPhaseData(writeJson(phaseData));
+            room.setUpdateTime(now);
+            updateRoomGuarded(room, ROOM_STATUS_PLAYING, PHASE_DAY_ANNOUNCE);
+            return buildSnapshot(openid, roomId);
         } else {
             throw new ApiException(4000, "请求格式错误");
         }
-        room.setUpdateTime(now);
-        judgeRoomMapper.updateById(room);
+        touchRoom(roomId, now);
         return buildSnapshot(openid, roomId);
     }
 
@@ -1566,7 +1568,7 @@ public class JudgeService {
         room.setStepDeadline(parseDeadline(pending.get(0)));
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public WolfbookDtos.JudgeRoomSnapshotView submitSkill(String authorization, String roomId, WolfbookDtos.JudgeSkillRequest request) {
         roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
@@ -1811,14 +1813,6 @@ public class JudgeService {
         }
     }
 
-    /** 这一步的时长：持有者都出局就是 15–25 秒的假步骤。 */
-    private int stepSeconds(NightPlan.NightStep step, List<JudgeRoomPlayerEntity> players) {
-        List<Boolean> holdersAlive = players.stream()
-                .filter(player -> Boolean.TRUE.equals(player.getPlaying()) && player.getRoleId() != null && step.roleIds().contains(player.getRoleId()))
-                .map(player -> Boolean.TRUE.equals(player.getAlive()))
-                .toList();
-        return JudgeNightFlow.stepSeconds(step, holdersAlive, random);
-    }
 
     private JudgeRoomEntity requireJudgeRoom(String roomId, String openid) {
         JudgeRoomEntity room = getRoom(roomId);
@@ -1885,6 +1879,13 @@ public class JudgeService {
         if (judgeRoomMapper.update(room, wrapper) != 1) {
             throw new ApiException(4002, "房间状态刚刚发生变化，请刷新后重试");
         }
+    }
+
+    /** 只更新 update_time：玩家提交不改房间状态，别把这次请求读到的整行写回去（惰性推进可能刚推进过）。 */
+    private void touchRoom(String roomId, LocalDateTime now) {
+        judgeRoomMapper.update(null, new LambdaUpdateWrapper<JudgeRoomEntity>()
+                .eq(JudgeRoomEntity::getRoomId, roomId)
+                .set(JudgeRoomEntity::getUpdateTime, now));
     }
 
     private JudgeRoomPlayerEntity requireAliveSeatPlayer(List<JudgeRoomPlayerEntity> players, Integer seatNo) {

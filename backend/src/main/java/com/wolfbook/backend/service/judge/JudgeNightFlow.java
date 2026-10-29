@@ -2,16 +2,13 @@ package com.wolfbook.backend.service.judge;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Random;
 import java.util.Set;
 
 /**
  * 夜间步骤什么时候关（惰性推进，没有定时器：任何一次轮询或提交进来时判断）。纯逻辑，读写库在 JudgeService。
+ * 持有者都已出局的步骤（假步骤）照样播报、照样等满这一步的时长：活人的单人步骤也一定等满，时长一样才听不出谁死了。
  */
 public final class JudgeNightFlow {
-
-    private static final int DECOY_MIN_SECONDS = 15;
-    private static final int DECOY_MAX_SECONDS = 25;
 
     private JudgeNightFlow() {
     }
@@ -29,16 +26,5 @@ public final class JudgeNightFlow {
             return true;
         }
         return kind == NightKind.WOLF && !aliveHolderSeats.isEmpty() && submittedSeats.containsAll(aliveHolderSeats);
-    }
-
-    /**
-     * 这一步给多长时间。持有者都已出局时是假步骤：照样播报，随机等 15–25 秒，别人听不出他死了。
-     * holdersAlive 为空表示这个角色还没发到谁手上（第一夜开局前），按正常时长。
-     */
-    public static int stepSeconds(NightPlan.NightStep step, List<Boolean> holdersAlive, Random random) {
-        if (!holdersAlive.isEmpty() && holdersAlive.stream().noneMatch(Boolean.TRUE::equals)) {
-            return DECOY_MIN_SECONDS + random.nextInt(DECOY_MAX_SECONDS - DECOY_MIN_SECONDS + 1);
-        }
-        return step.durationSeconds();
     }
 }
