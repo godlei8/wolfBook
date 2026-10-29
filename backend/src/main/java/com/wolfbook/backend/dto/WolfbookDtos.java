@@ -470,7 +470,8 @@ public final class WolfbookDtos {
             Integer stepIndex,
             List<Integer> sheriffCandidates,
             Integer speechStartSeat,
-            String speechDirection
+            String speechDirection,
+            Integer forceOutSeatNo
     ) {
     }
 
@@ -611,8 +612,17 @@ public final class WolfbookDtos {
             List<Integer> sheriffCandidates,
             JudgeSpeechView speech,
             List<Integer> pkSeats,
-            List<JudgeRoundView> rounds
+            List<JudgeRoundView> rounds,
+            JudgePendingView pending
     ) {
+    }
+
+    /** 出局待办（只发给当事人和法官）：skill_ask 技能询问 / hunter_shot 开枪选人 / badge 移交警徽；options 是 use / skip。 */
+    public record JudgePendingView(String kind, int seatNo, List<String> options, LocalDateTime deadline) {
+    }
+
+    /** decision：use 发动 / skip 不发动；开枪和移交警徽要带 targetSeatNo。 */
+    public record JudgeSkillRequest(String decision, Integer targetSeatNo) {
     }
 
     /** 夜里当前这一步。line 只给这一步的持有者和法官，其他人是空串（零场外：别人的屏幕上不出现「轮到你」的差别）。 */
