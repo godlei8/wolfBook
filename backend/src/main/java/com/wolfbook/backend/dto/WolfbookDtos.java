@@ -1,6 +1,7 @@
 package com.wolfbook.backend.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.wolfbook.backend.domain.JudgeRules;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -88,7 +89,8 @@ public final class WolfbookDtos {
             @Size(max = 2000, message = "玩法概述不能超过 2000 字") String overview,
             @Valid @Size(max = 30, message = "夜间行动最多 30 步") List<NightStepInput> nightOrder,
             @Valid @Size(max = 30, message = "角色细则最多 30 组") List<RoleRuleInput> roleRules,
-            @Valid @Size(max = 20, message = "规则章节最多 20 个") List<RuleSectionInput> sections
+            @Valid @Size(max = 20, message = "规则章节最多 20 个") List<RuleSectionInput> sections,
+            JudgeRules judgeRules
     ) {
     }
 

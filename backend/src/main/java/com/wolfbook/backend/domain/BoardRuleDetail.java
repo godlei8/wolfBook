@@ -10,7 +10,8 @@ public record BoardRuleDetail(
         String overview,
         List<NightStep> nightOrder,
         List<RoleRuleNote> roleRules,
-        List<RuleSection> sections
+        List<RuleSection> sections,
+        JudgeRules judgeRules
 ) {
 
     public BoardRuleDetail {
@@ -19,12 +20,18 @@ public record BoardRuleDetail(
         sections = sections == null ? List.of() : List.copyOf(sections);
     }
 
+    /** 没有法官规则的旧写法：电子法官用默认规则。 */
+    public BoardRuleDetail(String overview, List<NightStep> nightOrder, List<RoleRuleNote> roleRules, List<RuleSection> sections) {
+        this(overview, nightOrder, roleRules, sections, null);
+    }
+
     public static BoardRuleDetail empty() {
-        return new BoardRuleDetail(null, List.of(), List.of(), List.of());
+        return new BoardRuleDetail(null, List.of(), List.of(), List.of(), null);
     }
 
     public boolean isEmpty() {
-        return (overview == null || overview.isBlank()) && nightOrder.isEmpty() && roleRules.isEmpty() && sections.isEmpty();
+        return (overview == null || overview.isBlank()) && nightOrder.isEmpty() && roleRules.isEmpty() && sections.isEmpty()
+                && judgeRules == null;
     }
 
     /** 夜间行动顺序里的一步：哪个角色、做什么。 */

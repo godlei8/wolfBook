@@ -6,6 +6,7 @@ import com.wolfbook.backend.common.PageResponse;
 import com.wolfbook.backend.domain.Board;
 import com.wolfbook.backend.domain.BoardRuleDetail;
 import com.wolfbook.backend.domain.FaqItem;
+import com.wolfbook.backend.domain.JudgeRules;
 import com.wolfbook.backend.domain.Report;
 import com.wolfbook.backend.domain.RoleRelation;
 import com.wolfbook.backend.dto.WolfbookDtos;
@@ -461,13 +462,36 @@ public class AdminService {
             }
         }
 
-        BoardRuleDetail detail = new BoardRuleDetail(normalizeText(input.overview()), nightOrder, roleRules, sections);
+        BoardRuleDetail detail = new BoardRuleDetail(normalizeText(input.overview()), nightOrder, roleRules, sections,
+                normalizeJudgeRules(input.judgeRules()));
         for (Integer roleId : BoardService.referencedRoleIds(detail)) {
             if (!lineupRoleIds.contains(roleId)) {
                 throw new ApiException(4000, "规则里引用的角色不在本板子的阵容中");
             }
         }
         return detail;
+    }
+
+    /** 板子的法官规则：只校验填了的项，没填的留空（开局时用默认值）；胜负规则看板子的 win_condition，这里不存。 */
+    private JudgeRules normalizeJudgeRules(JudgeRules input) {
+        if (input == null) {
+            return null;
+        }
+        String selfSave = normalizeText(input.witchSelfSave());
+        if (selfSave != null && !JudgeRules.SELF_SAVE_FIRST_NIGHT.equals(selfSave) && !JudgeRules.SELF_SAVE_NEVER.equals(selfSave)) {
+            throw new ApiException(4000, "法官规则取值不合法");
+        }
+        for (Integer seconds : java.util.Arrays.asList(input.speechSeconds(), input.sheriffSpeechSeconds())) {
+            if (seconds != null && (seconds < 30 || seconds > 300)) {
+                throw new ApiException(4000, "法官规则取值不合法");
+            }
+        }
+        JudgeRules normalized = new JudgeRules(null, input.sheriffDefault(), selfSave, input.witchOnePotionPerNight(),
+                input.speechSeconds(), input.sheriffSpeechSeconds());
+        boolean empty = normalized.sheriffDefault() == null && normalized.witchSelfSave() == null
+                && normalized.witchOnePotionPerNight() == null && normalized.speechSeconds() == null
+                && normalized.sheriffSpeechSeconds() == null;
+        return empty ? null : normalized;
     }
 
     private List<String> cleanRuleItems(List<String> items) {
