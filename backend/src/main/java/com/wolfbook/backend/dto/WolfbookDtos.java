@@ -467,7 +467,10 @@ public final class WolfbookDtos {
             Integer eliminatedSeatNo,
             String winnerCamp,
             @Size(max = 500, message = "announcement is too long") String announcement,
-            Integer stepIndex
+            Integer stepIndex,
+            List<Integer> sheriffCandidates,
+            Integer speechStartSeat,
+            String speechDirection
     ) {
     }
 
@@ -479,7 +482,8 @@ public final class WolfbookDtos {
     ) {
     }
 
-    public record JudgeVoteRequest(@NotNull(message = "targetSeatNo is required") Integer targetSeatNo) {
+    /** targetSeatNo 为空表示弃票。 */
+    public record JudgeVoteRequest(Integer targetSeatNo) {
     }
 
     public record JudgeRoomSummaryView(
@@ -602,7 +606,12 @@ public final class WolfbookDtos {
             JudgeStepView currentStep,
             JudgeRules rules,
             boolean host,
-            JudgeVerdictView winVerdict
+            JudgeVerdictView winVerdict,
+            Integer sheriffSeatNo,
+            List<Integer> sheriffCandidates,
+            JudgeSpeechView speech,
+            List<Integer> pkSeats,
+            List<JudgeRoundView> rounds
     ) {
     }
 
@@ -612,5 +621,44 @@ public final class WolfbookDtos {
 
     /** 自动判定的胜负：阵营和依据（「神职全部出局，狼人阵营胜利」）。 */
     public record JudgeVerdictView(String camp, String reason) {
+    }
+
+    /** 白天发言顺序和当前发言人下标。 */
+    public record JudgeSpeechView(List<Integer> order, int index) {
+    }
+
+    /** 上警：candidate 报名 / 取消（报名阶段）；withdraw 退水（警上发言阶段）；targetSeatNo 警长投票；speechOrder 警长定发言顺序（left / right / dead_left / dead_right）。 */
+    public record JudgeSheriffRequest(Boolean candidate, Boolean withdraw, Integer targetSeatNo, String speechOrder) {
+    }
+
+    /** 对局记录里的一天：只有公开信息（夜间行动在 nightHistory，结束后才公开）。 */
+    public record JudgeRoundView(
+            int dayNo,
+            List<Integer> nightDeaths,
+            JudgeSheriffRoundView sheriff,
+            JudgeSpeechOrderView speechOrder,
+            List<JudgeExileRoundView> exile,
+            List<JudgeSkillRecordView> skills
+    ) {
+    }
+
+    public record JudgeSheriffRoundView(List<Integer> candidates, List<Integer> withdrew, List<JudgeTallyRecordView> tallies,
+                                        Integer electedSeatNo, boolean lost) {
+    }
+
+    public record JudgeSpeechOrderView(Integer startSeat, String direction, List<Integer> order) {
+    }
+
+    /** 一轮放逐投票（PK 是第二轮）：票型、弃票、出局者、这一轮之后的平票者。 */
+    public record JudgeExileRoundView(List<JudgeTallyRecordView> tallies, List<Integer> abstainSeatNos, Integer eliminatedSeatNo,
+                                      List<Integer> pkSeatNos) {
+    }
+
+    /** 投给同一个人的票：加权票数（警长 1.5）和投票人。 */
+    public record JudgeTallyRecordView(int targetSeatNo, double weight, List<Integer> voterSeatNos) {
+    }
+
+    /** 出局技能、翻牌、点杀这类公开记录。 */
+    public record JudgeSkillRecordView(String kind, Integer actorSeatNo, Integer targetSeatNo) {
     }
 }

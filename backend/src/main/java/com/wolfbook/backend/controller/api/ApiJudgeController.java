@@ -96,6 +96,15 @@ public class ApiJudgeController {
         return ApiResponse.success(judgeService.submitNightAction(authorization, roomId, request));
     }
 
+    @PostMapping("/rooms/{roomId}/sheriff")
+    public ApiResponse<WolfbookDtos.JudgeRoomSnapshotView> sheriff(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable String roomId,
+            @RequestBody WolfbookDtos.JudgeSheriffRequest request
+    ) {
+        return ApiResponse.success(judgeService.submitSheriff(authorization, roomId, request));
+    }
+
     @PostMapping("/rooms/{roomId}/vote")
     public ApiResponse<WolfbookDtos.JudgeRoomSnapshotView> submitVote(
             @RequestHeader("Authorization") String authorization,
