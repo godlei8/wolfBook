@@ -260,6 +260,11 @@ CREATE TABLE judge_rooms (
   can_rollback TINYINT DEFAULT 1,
   winner_camp VARCHAR(30),
   latest_announcement VARCHAR(500),
+  sheriff_enabled TINYINT DEFAULT 0,
+  night_step TINYINT,
+  step_deadline TIMESTAMP,
+  phase_data CLOB,
+  rules_json CLOB,
   create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -281,6 +286,11 @@ CREATE TABLE judge_room_players (
   faction VARCHAR(30),
   death_day TINYINT,
   death_phase VARCHAR(30),
+  is_sheriff TINYINT DEFAULT 0,
+  sheriff_candidate TINYINT DEFAULT 0,
+  sheriff_withdrew TINYINT DEFAULT 0,
+  can_vote TINYINT DEFAULT 1,
+  status_json CLOB,
   create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT uk_judge_room_user UNIQUE (room_id, user_id),

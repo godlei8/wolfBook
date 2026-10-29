@@ -1,6 +1,8 @@
 package com.wolfbook.backend.entity;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 
@@ -28,6 +30,15 @@ public class JudgeRoomEntity {
     private Boolean canRollback;
     private String winnerCamp;
     private String latestAnnouncement;
+    // 电子法官引擎：上警开关、当前夜间步骤与截止时间、本阶段临时数据（JSON）、开局时拷进来的本局规则（JSON）
+    private Boolean sheriffEnabled;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Integer nightStep;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private LocalDateTime stepDeadline;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String phaseData;
+    private String rulesJson;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 
@@ -181,5 +192,45 @@ public class JudgeRoomEntity {
 
     public void setUpdateTime(LocalDateTime updateTime) {
         this.updateTime = updateTime;
+    }
+
+    public Boolean getSheriffEnabled() {
+        return sheriffEnabled;
+    }
+
+    public void setSheriffEnabled(Boolean sheriffEnabled) {
+        this.sheriffEnabled = sheriffEnabled;
+    }
+
+    public Integer getNightStep() {
+        return nightStep;
+    }
+
+    public void setNightStep(Integer nightStep) {
+        this.nightStep = nightStep;
+    }
+
+    public LocalDateTime getStepDeadline() {
+        return stepDeadline;
+    }
+
+    public void setStepDeadline(LocalDateTime stepDeadline) {
+        this.stepDeadline = stepDeadline;
+    }
+
+    public String getPhaseData() {
+        return phaseData;
+    }
+
+    public void setPhaseData(String phaseData) {
+        this.phaseData = phaseData;
+    }
+
+    public String getRulesJson() {
+        return rulesJson;
+    }
+
+    public void setRulesJson(String rulesJson) {
+        this.rulesJson = rulesJson;
     }
 }

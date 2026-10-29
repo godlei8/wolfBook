@@ -56,6 +56,17 @@ public class ContentSchemaInitializer implements ApplicationRunner {
         addColumnIfMissing("posts", "board_name", "ALTER TABLE posts ADD COLUMN board_name VARCHAR(100) NULL");
         // 法官房的 4 位短房号（全新库里 judge_rooms 由 JudgeSchemaInitializer 建，建表语句已带这一列）
         addColumnIfMissing("judge_rooms", "room_code", "ALTER TABLE judge_rooms ADD COLUMN room_code VARCHAR(8) NULL");
+        // 电子法官结算引擎（2026-10-29）
+        addColumnIfMissing("judge_rooms", "sheriff_enabled", "ALTER TABLE judge_rooms ADD COLUMN sheriff_enabled TINYINT DEFAULT 0");
+        addColumnIfMissing("judge_rooms", "night_step", "ALTER TABLE judge_rooms ADD COLUMN night_step TINYINT NULL");
+        addColumnIfMissing("judge_rooms", "step_deadline", "ALTER TABLE judge_rooms ADD COLUMN step_deadline DATETIME NULL");
+        addColumnIfMissing("judge_rooms", "phase_data", "ALTER TABLE judge_rooms ADD COLUMN phase_data JSON NULL");
+        addColumnIfMissing("judge_rooms", "rules_json", "ALTER TABLE judge_rooms ADD COLUMN rules_json JSON NULL");
+        addColumnIfMissing("judge_room_players", "is_sheriff", "ALTER TABLE judge_room_players ADD COLUMN is_sheriff TINYINT DEFAULT 0");
+        addColumnIfMissing("judge_room_players", "sheriff_candidate", "ALTER TABLE judge_room_players ADD COLUMN sheriff_candidate TINYINT DEFAULT 0");
+        addColumnIfMissing("judge_room_players", "sheriff_withdrew", "ALTER TABLE judge_room_players ADD COLUMN sheriff_withdrew TINYINT DEFAULT 0");
+        addColumnIfMissing("judge_room_players", "can_vote", "ALTER TABLE judge_room_players ADD COLUMN can_vote TINYINT DEFAULT 1");
+        addColumnIfMissing("judge_room_players", "status_json", "ALTER TABLE judge_room_players ADD COLUMN status_json JSON NULL");
     }
 
     private void addColumnIfMissing(String table, String column, String ddl) {

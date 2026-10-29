@@ -1,5 +1,6 @@
 package com.wolfbook.backend.entity;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
@@ -30,6 +31,14 @@ public class JudgeRoomPlayerEntity {
     private String faction;
     private Integer deathDay;
     private String deathPhase;
+    // 警长 / 上警 / 退水、能否投票（白痴翻牌后不能）、角色状态 JSON（女巫剩余药、守卫上一夜、猎人能否开枪…）
+    @TableField("is_sheriff")
+    private Boolean sheriff;
+    private Boolean sheriffCandidate;
+    private Boolean sheriffWithdrew;
+    private Boolean canVote;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String statusJson;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 
@@ -175,5 +184,45 @@ public class JudgeRoomPlayerEntity {
 
     public void setUpdateTime(LocalDateTime updateTime) {
         this.updateTime = updateTime;
+    }
+
+    public Boolean getSheriff() {
+        return sheriff;
+    }
+
+    public void setSheriff(Boolean sheriff) {
+        this.sheriff = sheriff;
+    }
+
+    public Boolean getSheriffCandidate() {
+        return sheriffCandidate;
+    }
+
+    public void setSheriffCandidate(Boolean sheriffCandidate) {
+        this.sheriffCandidate = sheriffCandidate;
+    }
+
+    public Boolean getSheriffWithdrew() {
+        return sheriffWithdrew;
+    }
+
+    public void setSheriffWithdrew(Boolean sheriffWithdrew) {
+        this.sheriffWithdrew = sheriffWithdrew;
+    }
+
+    public Boolean getCanVote() {
+        return canVote;
+    }
+
+    public void setCanVote(Boolean canVote) {
+        this.canVote = canVote;
+    }
+
+    public String getStatusJson() {
+        return statusJson;
+    }
+
+    public void setStatusJson(String statusJson) {
+        this.statusJson = statusJson;
     }
 }
