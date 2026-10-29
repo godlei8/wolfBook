@@ -91,7 +91,7 @@ npm run build:mp-weixin   # 生产构建
 
 **对话模型可切换**：后台「AI 助手 → 模型管理」登记多个 OpenAI 兼容模型（`assistant_models` 表：接口地址、模型编码、Key、启用、`disable_thinking`、`active`），`AssistantConfigService.getRuntimeConfig()` 把 provider 换成 `active = 1` 的那一个，问答和「按世界观起草」都跟着切；一个都没设时退回 `assistant_config` 里原来的 DeepSeek 配置（第一次打开模型管理会把它搬进来当第一项）。`DeepSeekChatService` 实际是通用的 OpenAI 兼容客户端（`{baseUrl}/chat/completions`）；模型开了「关闭思考」会带 `chat_template_kwargs: {thinking: false, enable_thinking: false}`，给 vLLM 部署的推理模型（比如学校的 `deepseek-v4-flash-0731`）用，不开它每次先想几十秒到几分钟。Key 只存在后端，接口返回打码值（`********` + 后 4 位），原样传回表示不改。没开 pgvector 时知识检索走 `AssistantKnowledgeService` 的关键词兜底：中文按相邻两字切词（`fallbackTokens`），资料要在「发布中心」发布后才会被检索到。
 
-`AssistantAiConfiguration` 装配 pgvector 的 `VectorStore` 和 `JdbcTemplate`。**pgvector 相关 bean 带 `@ConditionalOnProperty(wolfbook.assistant.pg-vector.enabled=true)`**——本地默认关闭，生产开启。
+`AssistantAiConfiguration` 装配 pgvector 的 `VectorStore` 和 `JdbcTemplate`。**pgvector 相关 bean 带 `@ConditionalOnProperty(wolfbook.assistant.pg-vector.enabled=true)`**——本地默认关闭。生产原本开启，2026-10-29 起在服务器 `deploy/.env.prod` 里设了 `ASSISTANT_PGVECTOR_ENABLED=false`：火山方舟的豆包文本向量模型已下线（接口 404），新的 `doubao-embedding-vision-251215` 要在方舟控制台开通、走 `/embeddings/multimodal` 接口，接上之前线上只用关键词检索。
 
 ### 电子法官子系统（`JudgeService` + `ApiJudgeController`）
 线下面杀的"电子法官"：建房 → 玩家通过分享邀请或输入房号入座 → 准备 → 开局随机发身份 → 主持人逐阶段推进。逻辑全部集中在 `service/JudgeService.java`（约 1400 行），接口在 `/api/judge/rooms/**`（recent、创建、详情、join、ready、start、advance、night-action、vote）。
