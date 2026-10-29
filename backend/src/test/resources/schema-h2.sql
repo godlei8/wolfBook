@@ -5,11 +5,13 @@ CREATE TABLE boards (
   difficulty VARCHAR(20) NOT NULL,
   tags CLOB,
   cover_image VARCHAR(500),
+  background_image VARCHAR(500),
   card_description VARCHAR(255),
   brief_config VARCHAR(500) NOT NULL,
   special_rules CLOB,
   tips CLOB,
   faqs CLOB,
+  rule_detail CLOB,
   win_condition VARCHAR(100) DEFAULT '屠边',
   rule_type VARCHAR(50) DEFAULT '标准板',
   status TINYINT DEFAULT 1,
@@ -21,6 +23,8 @@ CREATE TABLE roles (
   id INT PRIMARY KEY AUTO_INCREMENT,
   name VARCHAR(50) NOT NULL UNIQUE,
   alias VARCHAR(50),
+  title VARCHAR(40),
+  relations CLOB,
   faction VARCHAR(30) NOT NULL,
   role_type VARCHAR(30) NOT NULL,
   camp VARCHAR(60) NOT NULL,
@@ -29,7 +33,14 @@ CREATE TABLE roles (
   faqs CLOB,
   portrait VARCHAR(500),
   full_illustration VARCHAR(500),
+  theme_color VARCHAR(16),
   create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE world_lore (
+  id INT PRIMARY KEY,
+  content CLOB,
+  update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE board_roles (
@@ -81,6 +92,10 @@ CREATE TABLE posts (
   id INT PRIMARY KEY AUTO_INCREMENT,
   openid VARCHAR(100) NOT NULL,
   content CLOB NOT NULL,
+  title VARCHAR(60),
+  category VARCHAR(16),
+  board_id INT,
+  board_name VARCHAR(100),
   images CLOB,
   like_count INT DEFAULT 0,
   comment_count INT DEFAULT 0,
@@ -95,7 +110,7 @@ CREATE TABLE comments (
   openid VARCHAR(100) NOT NULL,
   content VARCHAR(200) NOT NULL,
   like_count INT DEFAULT 0,
-  status TINYINT DEFAULT 1,
+  status VARCHAR(20) DEFAULT 'VISIBLE',
   create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -139,6 +154,20 @@ CREATE TABLE assistant_config (
   search_config CLOB,
   safety_config CLOB,
   ui_config CLOB,
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE assistant_models (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(60) NOT NULL,
+  base_url VARCHAR(300) NOT NULL,
+  model VARCHAR(120) NOT NULL,
+  api_key VARCHAR(500),
+  enabled TINYINT DEFAULT 1,
+  active TINYINT DEFAULT 0,
+  disable_thinking TINYINT DEFAULT 0,
+  remark VARCHAR(200),
   create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -210,5 +239,74 @@ CREATE TABLE assistant_query_logs (
   success TINYINT DEFAULT 1,
   failure_type VARCHAR(50),
   trace_id VARCHAR(64),
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE judge_rooms (
+  room_id VARCHAR(64) PRIMARY KEY,
+  room_code VARCHAR(8),
+  board_id INT NOT NULL,
+  board_name VARCHAR(100) NOT NULL,
+  player_count TINYINT NOT NULL,
+  judge_mode VARCHAR(20) DEFAULT 'observer',
+  judge_support_level VARCHAR(20) DEFAULT 'manual_only',
+  owner_user_id VARCHAR(100) NOT NULL,
+  owner_player_id VARCHAR(64),
+  owner_seat_no TINYINT,
+  room_status VARCHAR(20) DEFAULT 'lobby',
+  current_day TINYINT DEFAULT 1,
+  current_phase VARCHAR(30) DEFAULT 'lobby',
+  auto_judge_enabled TINYINT DEFAULT 0,
+  can_rollback TINYINT DEFAULT 1,
+  winner_camp VARCHAR(30),
+  latest_announcement VARCHAR(500),
+  sheriff_enabled TINYINT DEFAULT 0,
+  night_step TINYINT,
+  step_deadline TIMESTAMP,
+  phase_data CLOB,
+  rules_json CLOB,
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE judge_room_players (
+  player_id VARCHAR(64) PRIMARY KEY,
+  room_id VARCHAR(64) NOT NULL,
+  user_id VARCHAR(100) NOT NULL,
+  nickname VARCHAR(50) NOT NULL,
+  avatar VARCHAR(500),
+  seat_no TINYINT,
+  is_room_owner TINYINT DEFAULT 0,
+  is_judge_observer TINYINT DEFAULT 0,
+  is_playing TINYINT DEFAULT 1,
+  ready TINYINT DEFAULT 0,
+  alive TINYINT DEFAULT 1,
+  role_id INT,
+  role_name VARCHAR(50),
+  faction VARCHAR(30),
+  death_day TINYINT,
+  death_phase VARCHAR(30),
+  is_sheriff TINYINT DEFAULT 0,
+  sheriff_candidate TINYINT DEFAULT 0,
+  sheriff_withdrew TINYINT DEFAULT 0,
+  can_vote TINYINT DEFAULT 1,
+  status_json CLOB,
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uk_judge_room_user UNIQUE (room_id, user_id),
+  CONSTRAINT uk_judge_room_seat UNIQUE (room_id, seat_no)
+);
+
+CREATE TABLE judge_action_events (
+  event_id VARCHAR(64) PRIMARY KEY,
+  room_id VARCHAR(64) NOT NULL,
+  day_no TINYINT DEFAULT 1,
+  phase VARCHAR(30) NOT NULL,
+  actor_player_id VARCHAR(64),
+  target_player_ids_json CLOB,
+  action_type VARCHAR(50) NOT NULL,
+  payload_json CLOB,
+  result_payload_json CLOB,
+  visibility VARCHAR(20) DEFAULT 'public',
   create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

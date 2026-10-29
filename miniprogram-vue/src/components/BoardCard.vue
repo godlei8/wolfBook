@@ -1,36 +1,16 @@
 <script setup>
+// 板子卡片（原型 D1）：顶部 132px 横幅是板子自己的背景图，没有时摆三张阵容立绘；
+// 板子名压在左下角黑铭牌上，下面是「人数 · 难度 · 胜利条件」、阵容头像筹码和阵营比例条。
+// 头像和立绘直接写结构 + 全局类（App.vue 的 nt-*），不再嵌套子组件。
 const props = defineProps({
-  boardId: {
-    type: Number,
+  board: {
+    type: Object,
     required: true,
   },
-  coverImage: {
-    type: String,
-    default: '',
-  },
-  difficulty: {
-    type: String,
-    default: '',
-  },
-  metaText: {
-    type: String,
-    default: '',
-  },
-  name: {
-    type: String,
-    default: '',
-  },
-  playerCount: {
-    type: [Number, String],
-    default: '',
-  },
-  cardRoles: {
-    type: Array,
-    default: () => [],
-  },
-  description: {
-    type: String,
-    default: '',
+  // 收藏页才显示右上角的爱心
+  showFavorite: {
+    type: Boolean,
+    default: false,
   },
   favorite: {
     type: Boolean,
@@ -40,213 +20,181 @@ const props = defineProps({
 
 const emit = defineEmits(['select', 'favorite-toggle'])
 
+// 没有背景图时三张小立绘的位置（原型：62px 宽，左 / 中 / 右，-10° / 0 / 10°）
+const FALLBACK_SLOTS = {
+  l1: 'left: 330rpx; top: 60rpx; transform: rotate(-10deg);',
+  c: 'left: 430rpx; top: 32rpx; transform: rotate(0deg); z-index: 2;',
+  r1: 'left: 530rpx; top: 60rpx; transform: rotate(10deg);',
+}
+
+function meta(board) {
+  return [board.playerCount ? `${board.playerCount} 人` : '', board.difficulty, board.winCondition].filter(Boolean).join(' · ')
+}
+
 function handleSelect() {
-  emit('select', props.boardId)
+  emit('select', props.board.id)
 }
 
 function handleFavorite() {
-  emit('favorite-toggle', props.boardId)
-}
-
-function shouldShowCount(role) {
-  return role.count > 1 || role.faction === '狼人' || role.faction === '第三方' || role.roleType === '平民'
+  emit('favorite-toggle', props.board.id)
 }
 </script>
 
 <template>
-  <view class="glass-card board-card" @tap="handleSelect">
-    <view class="board-cover-wrap">
-      <image class="board-cover" :src="coverImage" mode="aspectFill" />
-      <view class="board-favorite" :class="{ active: favorite }" @tap.stop="handleFavorite">
-        {{ favorite ? '♥' : '♡' }}
-      </view>
-    </view>
-
-    <view class="board-overlay">
-      <view class="board-topline">
-        <view class="pill pill-gold">{{ difficulty }}</view>
-        <view v-if="metaText" class="section-meta">{{ metaText }}</view>
-      </view>
-
-      <view class="board-title-row">
-        <view class="board-name">{{ name }}</view>
-        <view class="board-player-badge">
-          <view class="board-player-inner">
-            <text class="board-player-number">{{ playerCount }}</text>
-            <text class="board-player-unit">人</text>
+  <view class="nt-ink bc" @tap="handleSelect">
+    <view class="bc-banner">
+      <image v-if="board.backgroundImage" class="bc-bg" :src="board.backgroundImage" mode="aspectFill" webp />
+      <block v-else>
+        <view
+          v-for="art in board.lineupArt || []"
+          :key="art.roleId"
+          class="nt-card bc-mini"
+          :style="FALLBACK_SLOTS[art.slot] || FALLBACK_SLOTS.c"
+        >
+          <view class="nt-card__frame" :style="{ backgroundColor: art.accent }">
+            <image class="nt-card__img" :src="art.image" mode="aspectFill" webp />
           </view>
         </view>
-      </view>
+      </block>
 
-      <view v-if="cardRoles && cardRoles.length" class="board-role-row">
+      <view v-if="board.tags && board.tags.length" class="bc-tags">
+        <text v-for="tag in board.tags.slice(0, 2)" :key="tag" class="nt-tag nt-tag--ink">{{ tag }}</text>
+      </view>
+      <view v-if="showFavorite" class="bc-fav" :class="{ 'bc-fav--on': favorite }" @tap.stop="handleFavorite">
+        {{ favorite ? '♥' : '♡' }}
+      </view>
+      <view class="bc-plate serif">{{ board.name }}</view>
+    </view>
+
+    <view class="bc-body">
+      <text class="nt-meta">{{ meta(board) }}</text>
+
+      <view v-if="board.cardRoles && board.cardRoles.length" class="bc-tokens">
         <view
-          v-for="role in cardRoles"
-          :key="`${boardId}-${role.roleId}-${role.name}`"
-          class="board-role-chip"
-          :class="`role-tone-${role.toneClass}`"
+          v-for="role in board.cardRoles"
+          :key="`${board.id}-${role.roleId}`"
+          class="nt-token bc-token"
         >
-          <image class="board-role-avatar" :src="role.portrait" mode="aspectFill" />
-          <text class="board-role-label">
-            {{ shouldShowCount(role) ? `${role.count}${role.name}` : role.name }}
-          </text>
+          <image v-if="role.portrait" class="nt-token__img" :src="role.portrait" mode="aspectFill" :style="{ borderColor: role.accent }" webp />
+          <view v-else class="nt-token__text bc-token__text" :style="{ borderColor: role.accent }">{{ (role.name || '?').slice(0, 1) }}</view>
+          <text v-if="role.count > 1" class="nt-token__count">×{{ role.count }}</text>
         </view>
       </view>
 
-      <view v-if="description" class="board-summary">
-        {{ description }}
+      <view v-if="board.campSegments && board.campSegments.length" class="nt-camp">
+        <view class="nt-camp__track">
+          <view
+            v-for="segment in board.campSegments"
+            :key="segment.key"
+            class="nt-camp__seg"
+            :style="{ flex: segment.count, backgroundColor: segment.fill }"
+          />
+        </view>
+        <view class="nt-camp__labels">
+          <view v-for="segment in board.campSegments" :key="segment.key" class="nt-camp__label">
+            <view class="nt-dot" :style="{ backgroundColor: segment.fill }" />
+            <text>{{ segment.label }} {{ segment.count }}</text>
+          </view>
+        </view>
       </view>
     </view>
   </view>
 </template>
 
 <style scoped lang="scss">
-.board-card {
-  margin-top: 24rpx;
+.bc {
   overflow: hidden;
-  background: linear-gradient(180deg, rgba(18, 18, 18, 0.98) 0%, rgba(7, 7, 7, 0.98) 100%);
 }
 
-.board-cover-wrap {
+.bc-banner {
   position: relative;
+  height: 264rpx;
+  background: #1b1724;
+  border-bottom: 4rpx solid var(--ink);
+  overflow: hidden;
 }
 
-.board-cover {
+.bc-bg {
   width: 100%;
-  height: 320rpx;
+  height: 100%;
   display: block;
 }
 
-.board-favorite {
+.bc-mini {
   position: absolute;
+  width: 124rpx;
+  border-radius: 16rpx;
+  box-shadow: 4rpx 4rpx 0 var(--ink);
+}
+
+.bc-tags {
+  position: absolute;
+  left: 20rpx;
   top: 20rpx;
-  right: 20rpx;
+  z-index: 3;
+  display: flex;
+  gap: 12rpx;
+}
+
+.bc-fav {
+  position: absolute;
+  right: 18rpx;
+  top: 18rpx;
+  z-index: 3;
   width: 64rpx;
   height: 64rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.52);
-  color: rgba(255, 255, 255, 0.88);
+  border-radius: 20rpx;
+  background: var(--ink);
+  color: var(--text);
   font-size: 32rpx;
-  line-height: 1;
-}
-
-.board-favorite.active {
-  color: #ffc000;
-  background: rgba(8, 8, 8, 0.72);
-}
-
-.board-overlay {
-  padding: 24rpx;
-  background: linear-gradient(180deg, rgba(16, 16, 16, 0.98) 0%, rgba(8, 8, 8, 0.98) 100%);
-}
-
-.board-topline {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16rpx;
-}
-
-.board-title-row {
-  margin-top: 16rpx;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 20rpx;
-}
-
-.board-name {
-  min-width: 0;
-  flex: 1;
-  font-size: 38rpx;
-  font-weight: 700;
-  color: #ffffff;
-  line-height: 1.2;
-}
-
-.board-player-badge {
-  position: relative;
-  flex-shrink: 0;
-  width: 94rpx;
-  height: 64rpx;
-  padding: 2rpx;
-  clip-path: polygon(14rpx 0, 100% 0, 100% calc(100% - 14rpx), calc(100% - 14rpx) 100%, 0 100%, 0 14rpx);
-  background: linear-gradient(135deg, rgba(255, 213, 77, 0.95), rgba(145, 115, 0, 0.95));
-  box-shadow:
-    0 8rpx 18rpx rgba(255, 192, 0, 0.14),
-    inset 0 0 0 1rpx rgba(255, 245, 214, 0.35);
-}
-
-.board-player-inner {
-  width: 100%;
-  height: 100%;
-  clip-path: polygon(12rpx 0, 100% 0, 100% calc(100% - 12rpx), calc(100% - 12rpx) 100%, 0 100%, 0 12rpx);
-  background: linear-gradient(180deg, rgba(26, 22, 8, 0.98), rgba(10, 9, 5, 0.98));
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 2rpx;
-  padding-left: 6rpx;
+}
+
+.bc-fav--on {
+  color: var(--gold);
+}
+
+.bc-plate {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  z-index: 3;
+  max-width: 76%;
+  padding: 16rpx 32rpx 14rpx;
+  border-top-right-radius: 28rpx;
+  background: var(--ink);
+  color: var(--text);
+  font-size: 44rpx;
+  font-weight: 900;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   box-sizing: border-box;
 }
 
-.board-player-number {
-  color: #ffc000;
-  font-size: 34rpx;
-  font-weight: 700;
-  line-height: 1;
+.bc-body {
+  padding: 24rpx 32rpx 32rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 28rpx;
 }
 
-.board-player-unit {
-  color: #f7e3b0;
-  font-size: 18rpx;
-  letter-spacing: 1rpx;
-  line-height: 1;
-}
-
-.board-role-row {
+.bc-tokens {
   display: flex;
   flex-wrap: wrap;
-  gap: 12rpx;
-  margin-top: 20rpx;
+  gap: 18rpx;
+  padding: 4rpx 0 4rpx 4rpx;
 }
 
-.board-role-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8rpx;
-  padding: 10rpx 16rpx 10rpx 10rpx;
-  border-radius: 999rpx;
+.bc-token {
+  width: 68rpx;
+  height: 68rpx;
 }
 
-.role-tone-good {
-  background: rgba(255, 192, 0, 0.12);
-}
-
-.role-tone-wolf {
-  background: rgba(255, 89, 59, 0.12);
-}
-
-.role-tone-third {
-  background: rgba(212, 170, 255, 0.12);
-}
-
-.board-role-avatar {
-  width: 40rpx;
-  height: 40rpx;
-  border-radius: 999rpx;
-}
-
-.board-role-label {
-  font-size: 22rpx;
-  color: #ffffff;
-}
-
-.board-summary {
-  margin-top: 18rpx;
-  color: #8f8f8f;
-  font-size: 24rpx;
-  line-height: 1.7;
+.bc-token__text {
+  font-size: 28rpx;
 }
 </style>

@@ -1,6 +1,8 @@
 package com.wolfbook.backend.entity;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 
@@ -24,6 +26,8 @@ public class AssistantDocumentEntity {
     private String processingStatus;
     private String reviewStatus;
     private Integer publishVersionId;
+    // 向量索引成功后要能清空上次的错误
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String lastError;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;

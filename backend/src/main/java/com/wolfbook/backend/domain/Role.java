@@ -11,6 +11,7 @@ public record Role(
         String background,
         List<FaqItem> faqs,
         String portrait,
-        String fullIllustration
+        String fullIllustration,
+        String themeColor
 ) {
 }

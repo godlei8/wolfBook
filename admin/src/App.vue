@@ -1,77 +1,52 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import AdminLogin from './components/AdminLogin.vue'
-import OverviewPanel from './components/OverviewPanel.vue'
-import BoardManagement from './components/BoardManagement.vue'
+import OverviewPage from './components/OverviewPage.vue'
+import BoardList from './components/boards/BoardList.vue'
+import BoardEditor from './components/boards/BoardEditor.vue'
 import RoleManagement from './components/RoleManagement.vue'
+import WorldManagement from './components/WorldManagement.vue'
 import CommunityManagement from './components/CommunityManagement.vue'
 import AiAssistantManagement from './components/AiAssistantManagement.vue'
-import { api, clearStoredToken, getStoredToken } from './services/api'
+import { UNAUTHORIZED_EVENT, api, clearStoredToken, getStoredToken, isUnauthorizedError } from './services/api'
 import type { DashboardSummary, LoginResponse } from './types'
+import { go, route, type MenuKey } from './utils/route'
 
-const activeMenu = ref<'overview' | 'boards' | 'roles' | 'community' | 'ai'>('overview')
+const ADMIN_NAME_KEY = 'wolfbook_admin_name'
+
 const authenticated = ref(Boolean(getStoredToken()))
+const adminName = ref(localStorage.getItem(ADMIN_NAME_KEY) || 'admin')
 const summary = ref<DashboardSummary | null>(null)
-const loadingSummary = ref(false)
-const mountedMenus = reactive({
-  overview: true,
-  boards: false,
-  roles: false,
-  community: false,
-  ai: false,
-})
 
-const pageMeta = computed(() => {
-  if (activeMenu.value === 'boards') {
-    return {
-      title: '板子管理',
-      description: '维护封面、阵容、规则、FAQ 与卡片摘要。',
-    }
-  }
-  if (activeMenu.value === 'roles') {
-    return {
-      title: '角色管理',
-      description: '统一维护角色技能、阵营、FAQ 与插画资源。',
-    }
-  }
-  if (activeMenu.value === 'community') {
-    return {
-      title: '社区治理',
-      description: '处理帖子、评论、举报与内容状态，维持社区秩序。',
-    }
-  }
-  if (activeMenu.value === 'ai') {
-    return {
-      title: 'AI 助手',
-      description: '管理知识库、发布版本、联网搜索与问答日志，给站内狼人杀 AI 助手提供运营控制台。',
-    }
-  }
-  return {
-    title: '运营总览',
-    description: '围绕板子、角色、社区与 AI 助手查看整体运行状态。',
-  }
-})
+const menus: { key: MenuKey; label: string; icon: string }[] = [
+  { key: 'overview', label: '总览', icon: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z' },
+  { key: 'boards', label: '板子', icon: 'M12 3 3 8l9 5 9-5-9-5zM3 13l9 5 9-5' },
+  { key: 'roles', label: '角色图鉴', icon: 'M5 5h9v15H5zM14 7l5 1.4a1.6 1.6 0 0 1 1.1 2l-2.7 9.5' },
+  { key: 'world', label: '世界观', icon: 'M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2zM4 19V5M8 7h7M8 11h5' },
+  { key: 'community', label: '社区治理', icon: 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z' },
+  { key: 'ai', label: 'AI 助手', icon: 'M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6' },
+]
 
 async function loadSummary() {
-  if (!authenticated.value) {
-    return
-  }
-  loadingSummary.value = true
+  if (!authenticated.value) return
   try {
     summary.value = await api.getSummary()
   } catch (error) {
-    clearStoredToken()
-    authenticated.value = false
-    summary.value = null
-    ElMessage.error(error instanceof Error ? error.message : '后台连接失败，请重新登录')
-  } finally {
-    loadingSummary.value = false
+    // 只有未认证才退出登录；网络抖动、后端 5xx 不该把管理员踢出去
+    if (isUnauthorizedError(error)) {
+      logout()
+      ElMessage.error('登录已失效，请重新登录')
+    } else {
+      ElMessage.error(error instanceof Error ? error.message : '后台连接失败，请稍后重试')
+    }
   }
 }
 
-function handleLoggedIn(_payload: LoginResponse) {
+function handleLoggedIn(payload: LoginResponse) {
   authenticated.value = true
+  adminName.value = payload.user?.openid || 'admin'
+  localStorage.setItem(ADMIN_NAME_KEY, adminName.value)
   void loadSummary()
 }
 
@@ -81,452 +56,273 @@ function logout() {
   summary.value = null
 }
 
-watch(
-  activeMenu,
-  (menu) => {
-    mountedMenus[menu] = true
-  },
-  { immediate: true },
-)
+function handleUnauthorized() {
+  if (!authenticated.value) return
+  logout()
+  ElMessage.warning('登录已失效，请重新登录')
+}
 
 onMounted(() => {
+  window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized)
   void loadSummary()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized)
 })
 </script>
 
 <template>
-  <AdminLogin v-if="!authenticated" @loggedIn="handleLoggedIn" />
+  <AdminLogin v-if="!authenticated" @logged-in="handleLoggedIn" />
 
-  <div v-else class="app-shell">
-    <aside class="side-nav">
-      <div class="nav-top">
-        <div class="brand-mark">WOLFBOOK</div>
-        <div class="brand-title">OPERATIONS CONSOLE</div>
-        <div class="brand-sub">狼人杀内容运营、知识库治理与 AI 助手控制台</div>
+  <div v-else class="shell">
+    <aside class="side">
+      <div class="brand">
+        <span class="brand__mark" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" /></svg>
+        </span>
+        <span class="brand__text">
+          <strong>WOLFBOOK</strong>
+          <small>夜镇控制台</small>
+        </span>
       </div>
 
-      <nav class="menu-stack">
-        <button class="menu-item" :class="{ active: activeMenu === 'overview' }" @click="activeMenu = 'overview'">
-          <span class="menu-label">总览</span>
-          <span class="menu-hint">Overview</span>
-        </button>
-        <button class="menu-item" :class="{ active: activeMenu === 'boards' }" @click="activeMenu = 'boards'">
-          <span class="menu-label">板子管理</span>
-          <span class="menu-hint">Boards</span>
-        </button>
-        <button class="menu-item" :class="{ active: activeMenu === 'roles' }" @click="activeMenu = 'roles'">
-          <span class="menu-label">角色管理</span>
-          <span class="menu-hint">Roles</span>
-        </button>
-        <button class="menu-item" :class="{ active: activeMenu === 'community' }" @click="activeMenu = 'community'">
-          <span class="menu-label">社区治理</span>
-          <span class="menu-hint">Community</span>
-        </button>
-        <button class="menu-item" :class="{ active: activeMenu === 'ai' }" @click="activeMenu = 'ai'">
-          <span class="menu-label">AI 助手</span>
-          <span class="menu-hint">Assistant</span>
-        </button>
+      <nav class="side__nav" aria-label="主菜单">
+        <a
+          v-for="menu in menus"
+          :key="menu.key"
+          class="nt-nav"
+          :class="{ on: route.menu === menu.key }"
+          :href="`#/${menu.key}`"
+          :aria-current="route.menu === menu.key ? 'page' : undefined"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="menu.icon" /></svg>
+          {{ menu.label }}
+          <span v-if="menu.key === 'community' && summary?.openReportCount" class="side__badge">{{ summary.openReportCount }}</span>
+        </a>
       </nav>
 
-      <div class="nav-bottom">
-        <button class="ghost-action" @click="loadSummary">刷新摘要</button>
-        <el-button class="logout-button" type="primary" @click="logout">退出登录</el-button>
+      <div class="side__me">
+        <span class="nt-token side__avatar" aria-hidden="true">{{ adminName.slice(0, 1).toUpperCase() }}</span>
+        <span class="side__who">
+          <strong>{{ adminName }}</strong>
+          <small>管理员</small>
+        </span>
+        <button class="nt-btn nt-btn--ghost nt-btn--small side__logout" type="button" @click="logout">退出</button>
       </div>
     </aside>
 
-    <main class="main-panel" :class="{ 'main-panel--ai': activeMenu === 'ai' }" v-loading="loadingSummary">
-      <header class="page-header" :class="{ 'page-header--static': activeMenu === 'ai' }">
-        <div class="eyebrow">BLACK GOLD CONTROL ROOM</div>
-        <h1>{{ pageMeta.title }}</h1>
-        <p>{{ pageMeta.description }}</p>
-      </header>
-
-      <section v-show="activeMenu === 'overview'" class="panel-view">
-        <OverviewPanel v-show="mountedMenus.overview" :summary="summary" />
-
-        <section class="content-stack">
-          <el-card class="welcome-card">
-            <div class="welcome-grid">
-              <div>
-                <div class="welcome-eyebrow">Deployment</div>
-                <h3>三端闭环已经成型</h3>
-                <p>
-                  当前后台已经接入真实后端接口，管理动作会直接回写数据库。建议联调顺序为：先启动
-                  <code>backend</code>，再启动 <code>admin</code>，最后在微信开发者工具中加载
-                  <code>miniprogram-vue/dist/build/mp-weixin</code>。
-                </p>
-              </div>
-              <div class="welcome-panel">
-                <div class="welcome-item">
-                  <span>管理员账号</span>
-                  <strong>已初始化，请使用独立密码登录</strong>
-                </div>
-                <div class="welcome-item">
-                  <span>主视觉</span>
-                  <strong>#000000 / #FFC000</strong>
-                </div>
-                <div class="welcome-item">
-                  <span>数据事实源</span>
-                  <strong>MySQL + MyBatis-Plus</strong>
-                </div>
-              </div>
-            </div>
-          </el-card>
-        </section>
-      </section>
-
-      <section v-show="activeMenu === 'boards'" class="content-stack content-stack--tight panel-view">
-        <BoardManagement v-if="mountedMenus.boards" @changed="loadSummary" />
-      </section>
-
-      <section v-show="activeMenu === 'roles'" class="content-stack content-stack--tight panel-view">
-        <RoleManagement v-if="mountedMenus.roles" @changed="loadSummary" />
-      </section>
-
-      <section v-show="activeMenu === 'community'" class="content-stack content-stack--tight panel-view">
-        <CommunityManagement v-if="mountedMenus.community" @changed="loadSummary" />
-      </section>
-
-      <section v-show="activeMenu === 'ai'" class="content-stack content-stack--tight panel-view">
-        <AiAssistantManagement v-if="mountedMenus.ai" />
-      </section>
+    <main class="main">
+      <OverviewPage v-if="route.menu === 'overview'" :summary="summary" @refresh="loadSummary" />
+      <template v-else-if="route.menu === 'boards'">
+        <BoardEditor
+          v-if="route.boardEdit"
+          :key="String(route.boardEdit)"
+          :board-id="typeof route.boardEdit === 'number' ? route.boardEdit : null"
+          @saved="loadSummary"
+          @close="go('boards')"
+        />
+        <BoardList v-else @changed="loadSummary" />
+      </template>
+      <RoleManagement v-else-if="route.menu === 'roles'" @changed="loadSummary" />
+      <WorldManagement v-else-if="route.menu === 'world'" />
+      <CommunityManagement v-else-if="route.menu === 'community'" @changed="loadSummary" />
+      <AiAssistantManagement v-else-if="route.menu === 'ai'" />
     </main>
   </div>
 </template>
 
 <style scoped>
-.app-shell {
-  height: 100vh;
-  display: grid;
-  grid-template-columns: 272px 1fr;
-  overflow: hidden;
+.shell {
+  min-height: 100vh;
+  display: flex;
+  flex-wrap: wrap;
+  background: var(--bg);
 }
 
-.side-nav {
-  height: 100vh;
-  padding: 20px 18px;
+.side {
+  flex: 1 0 232px;
+  max-width: 100%;
+  padding: 28px 18px;
+  background: var(--bar-bg);
+  border-right: 2px solid var(--ink);
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
-  background: linear-gradient(180deg, rgba(14, 14, 14, 0.98), rgba(4, 4, 4, 0.98));
-  overflow: hidden;
+  gap: 28px;
 }
 
-.nav-top {
-  display: grid;
-  gap: 8px;
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 6px;
 }
 
-.brand-mark {
-  display: inline-flex;
-  width: fit-content;
-  padding: 5px 10px;
-  background: rgba(255, 192, 0, 0.12);
-  color: #ffc000;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.18em;
+.brand__mark {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 12px;
+  background: var(--gold);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.brand-title {
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-}
-
-.brand-sub {
-  color: #8d8d8d;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.menu-stack {
-  display: grid;
-  gap: 10px;
-  margin: 24px 0 auto;
-}
-
-.menu-item {
-  padding: 12px 14px;
+.brand__text {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
-  text-align: left;
-  background: rgba(255, 255, 255, 0.02);
-  color: #ffffff;
-  cursor: pointer;
+  gap: 2px;
 }
 
-.menu-item.active {
-  border-color: rgba(255, 192, 0, 0.36);
-  background: linear-gradient(180deg, rgba(255, 192, 0, 0.12), rgba(255, 255, 255, 0.02));
+.brand__text strong {
+  font: 900 18px var(--serif);
+  letter-spacing: 0.08em;
 }
 
-.menu-label {
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.menu-hint {
-  color: #8d8d8d;
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.nav-bottom {
-  display: grid;
-  gap: 10px;
-}
-
-.ghost-action {
-  display: none;
-}
-
-.logout-button {
-  width: 100%;
-  font-weight: 700;
-}
-
-.main-panel {
-  --panel-sticky-offset: 108px;
-  min-width: 0;
-  height: 100vh;
-  padding: 0 24px 24px;
-  overflow-y: auto;
-  overflow-x: auto;
-  scrollbar-gutter: stable both-edges;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 192, 0, 0.4) rgba(255, 255, 255, 0.04);
-  -ms-overflow-style: auto;
-}
-
-.main-panel::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-.main-panel::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.main-panel::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  border: 2px solid rgba(10, 10, 10, 0.96);
-  background: linear-gradient(180deg, rgba(255, 211, 92, 0.72), rgba(182, 126, 12, 0.72));
-}
-
-.main-panel::-webkit-scrollbar-corner {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.page-header {
-  display: grid;
-  gap: 6px;
-  position: sticky;
-  top: 0;
-  z-index: 12;
-  margin: 0 -24px 0;
-  padding: 14px 24px 16px;
-  background:
-    linear-gradient(180deg, rgba(7, 7, 7, 0.98), rgba(7, 7, 7, 0.95) 68%, rgba(7, 7, 7, 0.8) 100%);
-  backdrop-filter: blur(14px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.eyebrow {
-  color: #ffc000;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-}
-
-.page-header h1 {
-  margin: 0;
-  font-size: 34px;
-  line-height: 1.02;
-}
-
-.page-header p {
-  margin: 0;
-  max-width: 680px;
-  color: #8d8d8d;
-  line-height: 1.55;
-}
-
-.content-stack {
-  margin-top: 12px;
-  display: grid;
-  gap: 16px;
-  min-width: 0;
-}
-
-.content-stack--tight {
-  margin-top: 12px;
-}
-
-.panel-view {
-  min-width: 0;
-}
-
-.welcome-card {
-  border-radius: 18px;
-}
-
-.welcome-grid {
-  display: grid;
-  grid-template-columns: 1.3fr 0.9fr;
-  gap: 18px;
-}
-
-.welcome-eyebrow {
-  color: #ffc000;
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
-.welcome-grid h3 {
-  margin: 10px 0 8px;
-  font-size: 24px;
-}
-
-.welcome-grid p {
-  margin: 0;
-  color: #b5b5b5;
-  line-height: 1.7;
-}
-
-.welcome-grid code {
-  padding: 1px 6px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.welcome-panel {
-  display: grid;
-  gap: 10px;
-}
-
-.welcome-item {
-  padding: 14px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
-  display: grid;
-  gap: 6px;
-}
-
-.welcome-item span {
-  color: #8d8d8d;
+.brand__text small {
   font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
+  color: var(--text-3);
+  letter-spacing: 0.1em;
 }
 
-.welcome-item strong {
-  font-size: 17px;
+.side__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.main-panel--ai {
-  --panel-sticky-offset: 0px;
+.nt-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 2px solid transparent;
+  color: var(--text-2);
+  font: 600 15px var(--sans);
+  text-decoration: none;
 }
 
-:deep(.el-tag) {
+.nt-nav:hover {
+  color: var(--text);
+  background: var(--panel);
+}
+
+.nt-nav.on {
+  background: var(--gold);
+  color: var(--ink);
+  border-color: var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+}
+
+.side__badge {
+  margin-left: auto;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: var(--camp-wolf);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.nt-nav.on .side__badge {
+  background: var(--ink);
+  color: var(--gold);
+}
+
+.side__me {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+}
+
+.side__avatar {
+  width: 36px;
+  height: 36px;
+  background: var(--moon);
+  color: var(--ink);
+}
+
+.side__who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.side__who strong {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.side__who small {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.side__logout {
+  margin-left: auto;
   height: 32px;
-  padding: 0 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 192, 0, 0.14);
-  background:
-    radial-gradient(circle at top left, rgba(255, 208, 96, 0.08), transparent 58%),
-    linear-gradient(180deg, rgba(39, 34, 22, 0.96), rgba(24, 20, 14, 0.98));
-  color: #e7d4a2;
+  padding: 0 10px;
   font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    0 10px 18px rgba(0, 0, 0, 0.14);
 }
 
-:deep(.el-tag .el-tag__content) {
-  line-height: 1;
+.main {
+  flex: 999 1 560px;
+  min-width: 0;
+  padding: 32px 40px 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
-:deep(.el-tag.el-tag--warning) {
-  border-color: rgba(255, 192, 0, 0.26);
-  background:
-    radial-gradient(circle at top left, rgba(255, 212, 90, 0.18), transparent 55%),
-    linear-gradient(180deg, rgba(70, 53, 14, 0.94), rgba(38, 29, 8, 0.98));
-  color: #f3cc71;
-}
-
-:deep(.el-tag.el-tag--danger) {
-  border-color: rgba(255, 98, 84, 0.26);
-  background:
-    radial-gradient(circle at top left, rgba(255, 130, 112, 0.14), transparent 54%),
-    linear-gradient(180deg, rgba(68, 20, 20, 0.94), rgba(39, 11, 11, 0.98));
-  color: #ff8f7e;
-}
-
-:deep(.el-tag.el-tag--info) {
-  border-color: rgba(134, 144, 166, 0.22);
-  background:
-    radial-gradient(circle at top left, rgba(149, 163, 193, 0.12), transparent 58%),
-    linear-gradient(180deg, rgba(33, 36, 43, 0.96), rgba(19, 21, 27, 0.98));
-  color: #c4cad6;
-}
-
-:deep(.el-tag.el-tag--success) {
-  border-color: rgba(84, 191, 130, 0.22);
-  background:
-    radial-gradient(circle at top left, rgba(120, 222, 158, 0.12), transparent 54%),
-    linear-gradient(180deg, rgba(21, 51, 36, 0.94), rgba(11, 29, 20, 0.98));
-  color: #9fe0b6;
-}
-
-@media (max-width: 1140px) {
-  .app-shell {
-    height: auto;
-    grid-template-columns: 1fr;
-    overflow: visible;
+@media (min-width: 900px) {
+  /* 宽屏时侧栏固定在左边，内容区单独滚动 */
+  .shell {
+    flex-wrap: nowrap;
+    height: 100vh;
+    overflow: hidden;
   }
 
-  .side-nav {
-    height: auto;
-    overflow: visible;
+  .side {
+    flex: 0 0 232px;
+    overflow-y: auto;
   }
 
-  .main-panel {
-    --panel-sticky-offset: 0px;
-    height: auto;
-    overflow: visible;
-  }
-
-  .welcome-grid {
-    grid-template-columns: 1fr;
-  }
-
-.page-header {
-    margin: 0;
-    padding: 0;
-    position: static;
-    background: transparent;
-    backdrop-filter: none;
-    border-bottom: none;
+  .main {
+    overflow-y: auto;
   }
 }
 
-.page-header--static {
-  position: static;
-  top: auto;
-  z-index: auto;
+@media (max-width: 720px) {
+  .side {
+    padding: 18px 16px;
+    gap: 16px;
+  }
+
+  .side__nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .main {
+    padding: 22px 16px 40px;
+  }
 }
 </style>

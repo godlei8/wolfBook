@@ -123,18 +123,29 @@ public class AssistantConversationService {
         assistantSessionMapper.deleteById(sessionId);
     }
 
-    public List<String> recentContextMessages(String openid, String sessionId) {
+    /** 一轮对话：role 是 USER / ASSISTANT。 */
+    public record Turn(String role, String content) {
+    }
+
+    /**
+     * 本会话最近几轮对话（按时间正序），去掉最后一条用户消息——那就是正在问的这个问题，提示词里单独放。
+     */
+    public List<Turn> recentTurns(String openid, String sessionId) {
         requireOwnedSession(openid, sessionId);
-        return assistantMessageMapper.selectList(
+        List<Turn> turns = new java.util.ArrayList<>(assistantMessageMapper.selectList(
                         new LambdaQueryWrapper<AssistantMessageEntity>()
                                 .eq(AssistantMessageEntity::getSessionId, sessionId)
                                 .orderByDesc(AssistantMessageEntity::getCreateTime)
                                 .orderByDesc(AssistantMessageEntity::getId)
-                                .last("LIMIT " + assistantProperties.getHistoryWindow())
+                                .last("LIMIT " + (assistantProperties.getHistoryWindow() + 1))
                 ).stream()
                 .sorted(Comparator.comparing(AssistantMessageEntity::getCreateTime).thenComparing(AssistantMessageEntity::getId))
-                .map(message -> message.getRole() + ": " + message.getContent())
-                .toList();
+                .map(message -> new Turn(message.getRole(), message.getContent()))
+                .toList());
+        if (!turns.isEmpty() && "USER".equals(turns.getLast().role())) {
+            turns.removeLast();
+        }
+        return turns;
     }
 
     private AssistantMessageEntity saveMessage(
@@ -210,10 +221,6 @@ public class AssistantConversationService {
                 entity.getContent(),
                 "ASSISTANT".equals(entity.getRole()) ? AssistantConstants.CONTENT_MARKDOWN : AssistantConstants.CONTENT_PLAIN,
                 entity.getAnswerType(),
-                readList(entity.getCitations(), CITATION_LIST),
-                readList(entity.getRecommendedBoards(), BOARD_LIST),
-                readList(entity.getSuggestedQuestions(), STRING_LIST),
-                entity.getUsedWebSearch() != null && entity.getUsedWebSearch() == 1,
                 entity.getTraceId(),
                 entity.getCreateTime()
         );

@@ -5,13 +5,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wolfbook.backend.common.ApiException;
 import com.wolfbook.backend.config.AssistantProperties;
 import com.wolfbook.backend.domain.Board;
+import com.wolfbook.backend.domain.BoardRuleDetail;
 import com.wolfbook.backend.domain.FaqItem;
+import com.wolfbook.backend.domain.RoleRelation;
+import com.wolfbook.backend.domain.WorldLore;
 import com.wolfbook.backend.dto.AssistantDtos;
 import com.wolfbook.backend.entity.AssistantDocumentEntity;
 import com.wolfbook.backend.entity.RoleEntity;
+import com.wolfbook.backend.entity.WorldLoreEntity;
 import com.wolfbook.backend.mapper.AssistantDocumentMapper;
 import com.wolfbook.backend.mapper.RoleMapper;
+import com.wolfbook.backend.mapper.WorldLoreMapper;
 import com.wolfbook.backend.service.BoardService;
+import com.wolfbook.backend.support.DomainConverter;
 import com.wolfbook.backend.support.UploadProvider;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -50,6 +56,8 @@ public class AssistantKnowledgeService {
     private final AssistantPublishService assistantPublishService;
     private final BoardService boardService;
     private final RoleMapper roleMapper;
+    private final WorldLoreMapper worldLoreMapper;
+    private final DomainConverter converter;
     private final ObjectMapper objectMapper;
     private final AssistantProperties assistantProperties;
     private final UploadProvider uploadProvider;
@@ -67,6 +75,8 @@ public class AssistantKnowledgeService {
             AssistantPublishService assistantPublishService,
             BoardService boardService,
             RoleMapper roleMapper,
+            WorldLoreMapper worldLoreMapper,
+            DomainConverter converter,
             ObjectMapper objectMapper,
             AssistantProperties assistantProperties,
             UploadProvider uploadProvider,
@@ -76,6 +86,8 @@ public class AssistantKnowledgeService {
         this.assistantPublishService = assistantPublishService;
         this.boardService = boardService;
         this.roleMapper = roleMapper;
+        this.worldLoreMapper = worldLoreMapper;
+        this.converter = converter;
         this.objectMapper = objectMapper;
         this.assistantProperties = assistantProperties;
         this.uploadProvider = uploadProvider;
@@ -218,6 +230,8 @@ public class AssistantKnowledgeService {
                 .collect(Collectors.toMap(AssistantDocumentEntity::getSourceKey, item -> item, (left, right) -> left, LinkedHashMap::new));
 
         Set<String> activeKeys = new java.util.LinkedHashSet<>();
+        Map<Integer, String> roleNames = roles.stream()
+                .collect(Collectors.toMap(RoleEntity::getId, RoleEntity::getName, (left, right) -> left));
 
         for (Board board : boards) {
             String sourceKey = "BOARD:" + board.id();
@@ -227,7 +241,7 @@ public class AssistantKnowledgeService {
                     sourceKey,
                     String.valueOf(board.id()),
                     board.name(),
-                    buildBoardStructuredText(board),
+                    buildBoardStructuredText(board, roleNames),
                     publishVersionId,
                     refreshIndex
             );
@@ -241,7 +255,22 @@ public class AssistantKnowledgeService {
                     sourceKey,
                     String.valueOf(role.getId()),
                     role.getName(),
-                    buildRoleStructuredText(role),
+                    buildRoleStructuredText(role, roleNames),
+                    publishVersionId,
+                    refreshIndex
+            );
+        }
+
+        WorldLoreEntity world = worldLoreMapper.selectById(1);
+        if (world != null && world.getContent() != null && !world.getContent().isBlank()) {
+            String sourceKey = "WORLD:1";
+            activeKeys.add(sourceKey);
+            upsertStructuredDocument(
+                    existing.get(sourceKey),
+                    sourceKey,
+                    "1",
+                    "夜镇编年史",
+                    buildWorldStructuredText(converter.readWorldLore(world.getContent()), roleNames),
                     publishVersionId,
                     refreshIndex
             );
@@ -272,8 +301,11 @@ public class AssistantKnowledgeService {
         }
     }
 
+    /**
+     * 检索已发布的知识。结构化资料（板子 / 角色 / 世界观）在数据有改动时由 requestStructuredKnowledgeRebuild 同步，
+     * 这里不再每问一次就把几十份资料全量重写。向量检索出错（比如向量接口没返回）时退回关键词检索，不让整条回答失败。
+     */
     public List<KnowledgeHit> searchPublishedKnowledge(String query) {
-        ensureStructuredDocuments();
         Integer currentVersionId = assistantPublishService.getCurrentVersionId();
         if (currentVersionId == null) {
             return List.of();
@@ -289,9 +321,13 @@ public class AssistantKnowledgeService {
             return List.of();
         }
 
-        List<KnowledgeHit> vectorHits = searchViaVectorStore(query, publishedDocuments);
-        if (!vectorHits.isEmpty()) {
-            return vectorHits;
+        try {
+            List<KnowledgeHit> vectorHits = searchViaVectorStore(query, publishedDocuments);
+            if (!vectorHits.isEmpty()) {
+                return vectorHits;
+            }
+        } catch (RuntimeException exception) {
+            log.warn("Vector search failed, falling back to keyword search: {}", exception.toString());
         }
 
         return publishedDocuments.stream()
@@ -302,18 +338,67 @@ public class AssistantKnowledgeService {
                 .toList();
     }
 
+    /** 某一份结构化资料的全文（"BOARD:1"、"ROLE:7"），给「当前页面」上下文用；没有返回 null。 */
+    public String structuredText(String sourceKey) {
+        AssistantDocumentEntity entity = assistantDocumentMapper.selectOne(new LambdaQueryWrapper<AssistantDocumentEntity>()
+                .eq(AssistantDocumentEntity::getSourceKey, sourceKey)
+                .last("LIMIT 1"));
+        return entity == null ? null : entity.getContentText();
+    }
+
+    /** 启动时库里还没有结构化资料（全新库）就同步一次；之后只在数据改动时同步。 */
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    public void ensureStructuredDocumentsOnStartup() {
+        try {
+            boolean empty = assistantDocumentMapper.selectCount(new LambdaQueryWrapper<AssistantDocumentEntity>()
+                    .eq(AssistantDocumentEntity::getSourceType, AssistantConstants.SOURCE_STRUCTURED)) == 0;
+            if (empty) {
+                requestStructuredKnowledgeRebuild();
+            }
+        } catch (RuntimeException exception) {
+            log.warn("Could not prepare structured assistant documents on startup: {}", exception.toString());
+        }
+    }
+
+    /**
+     * 没有向量检索时的关键词：按空格切出的词，加上中文里每两个相邻的字。
+     * 中文问题没有空格，只按空格切的话整句话就是一个词，永远匹配不上任何资料。
+     */
+    // 问句里几乎处处都有、对找资料没帮助的两字组合
+    private static final Set<String> FALLBACK_STOP_PAIRS = Set.of(
+            "什么", "是什", "么来", "怎么", "么样", "可以", "一个", "有什", "的是", "是谁", "谁的", "哪些", "为什", "能不", "不能", "吗？", "请问"
+    );
+
+    static Set<String> fallbackTokens(String normalizedQuery) {
+        Set<String> tokens = new java.util.LinkedHashSet<>();
+        for (String word : normalizedQuery.split("[\\s，。？！、,.?!：:；;「」“”\"'（）()]+")) {
+            if (word.isBlank()) continue;
+            if (word.codePoints().noneMatch(cp -> Character.UnicodeScript.of(cp) == Character.UnicodeScript.HAN)) {
+                if (word.length() > 1) tokens.add(word);
+                continue;
+            }
+            for (int index = 0; index + 2 <= word.length(); index++) {
+                String pair = word.substring(index, index + 2);
+                if (!FALLBACK_STOP_PAIRS.contains(pair)) tokens.add(pair);
+            }
+        }
+        return tokens;
+    }
+
     private KnowledgeHit scoreFallback(String query, AssistantDocumentEntity document) {
         String text = document.getContentText() == null ? "" : document.getContentText();
         String normalizedQuery = normalize(query);
         String normalizedText = normalize(text);
         int score = 0;
-        for (String token : normalizedQuery.split("\\s+")) {
-            if (!token.isBlank() && normalizedText.contains(token)) {
-                score += 3;
+        for (String token : fallbackTokens(normalizedQuery)) {
+            if (normalizedText.contains(token)) {
+                score += token.length() > 2 ? 3 : 1;
             }
         }
-        if (normalizedText.contains(normalize(document.getName()))) {
-            score += 2;
+        // 问题里点了这份资料的名字（板子名、角色名、「夜镇编年史」），它最相关
+        String name = normalize(document.getName());
+        if (!name.isBlank() && normalizedQuery.contains(name)) {
+            score += 5;
         }
         return new KnowledgeHit(
                 document,
@@ -321,7 +406,8 @@ public class AssistantKnowledgeService {
                 document.getSourceType(),
                 trimSnippet(text),
                 score,
-                document.getSourceId()
+                document.getSourceId(),
+                contextOf(document, text)
         );
     }
 
@@ -378,6 +464,18 @@ public class AssistantKnowledgeService {
             return;
         }
 
+        // 向量模型或向量库出错（Key 失效、接口没返回向量）只记在这份资料上，不让整次发布失败：
+        // 检索时没有向量命中会退回关键词检索
+        try {
+            vectorStore.add(buildChunkDocuments(entity, chunks));
+            entity.setLastError(null);
+        } catch (RuntimeException exception) {
+            log.warn("Vector indexing failed for {}: {}", entity.getSourceKey(), exception.toString());
+            entity.setLastError("向量索引失败（问答会用关键词检索）：" + exception.getClass().getSimpleName());
+        }
+    }
+
+    private List<Document> buildChunkDocuments(AssistantDocumentEntity entity, List<String> chunks) {
         List<Document> documents = new ArrayList<>();
         for (int index = 0; index < chunks.size(); index++) {
             documents.add(Document.builder()
@@ -393,7 +491,7 @@ public class AssistantKnowledgeService {
                     ))
                     .build());
         }
-        vectorStore.add(documents);
+        return documents;
     }
 
     private List<KnowledgeHit> searchViaVectorStore(String query, List<AssistantDocumentEntity> publishedDocuments) {
@@ -432,7 +530,8 @@ public class AssistantKnowledgeService {
                     entity.getSourceType(),
                     trimSnippet(match.getText()),
                     match.getScore() == null ? 0 : match.getScore(),
-                    entity.getSourceId()
+                    entity.getSourceId(),
+                    contextOf(entity, match.getText())
             ));
             if (hits.size() >= assistantProperties.getTopK()) {
                 break;
@@ -450,14 +549,22 @@ public class AssistantKnowledgeService {
         for (int index = 0; index < chunkCount; index++) {
             ids.add(buildChunkId(sourceKey, index));
         }
-        vectorStore.delete(ids);
+        try {
+            vectorStore.delete(ids);
+        } catch (RuntimeException exception) {
+            log.warn("Vector chunk cleanup failed for {}: {}", sourceKey, exception.toString());
+        }
     }
 
-    private String buildChunkId(String sourceKey, int chunkIndex) {
-        return sourceKey + "#chunk-" + chunkIndex;
+    /**
+     * 向量库里每一段的 id。pgvector 的 id 列是 UUID，不能直接用「BOARD:1#chunk-0」，
+     * 用它算出一个固定的 UUID：同一份资料的同一段每次都是同一个 id，重建时能按 id 删掉旧的。
+     */
+    static String buildChunkId(String sourceKey, int chunkIndex) {
+        return UUID.nameUUIDFromBytes((sourceKey + "#chunk-" + chunkIndex).getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
     }
 
-    private String buildBoardStructuredText(Board board) {
+    private String buildBoardStructuredText(Board board, Map<Integer, String> roleNames) {
         StringBuilder builder = new StringBuilder();
         builder.append("板子名称：").append(board.name()).append('\n');
         builder.append("人数：").append(board.playerCount()).append('\n');
@@ -466,9 +573,15 @@ public class AssistantKnowledgeService {
         builder.append("规则类型：").append(board.ruleType()).append('\n');
         builder.append("胜利条件：").append(board.winCondition()).append('\n');
         builder.append("简介：").append(board.cardDescription() == null ? board.briefConfig() : board.cardDescription()).append('\n');
+        if (board.roles() != null && !board.roles().isEmpty()) {
+            builder.append("阵容：").append(board.roles().stream()
+                    .map(ref -> roleNames.getOrDefault(ref.roleId(), "未知角色") + (ref.count() != null && ref.count() > 1 ? "×" + ref.count() : ""))
+                    .collect(Collectors.joining("、"))).append('\n');
+        }
         if (board.specialRules() != null && !board.specialRules().isEmpty()) {
             builder.append("规则：").append(String.join("；", board.specialRules())).append('\n');
         }
+        appendRuleDetail(builder, board.ruleDetail(), roleNames);
         if (board.tips() != null && !board.tips().isEmpty()) {
             builder.append("提示：").append(String.join("；", board.tips())).append('\n');
         }
@@ -481,16 +594,80 @@ public class AssistantKnowledgeService {
         return builder.toString();
     }
 
-    private String buildRoleStructuredText(RoleEntity role) {
+    private void appendRuleDetail(StringBuilder builder, BoardRuleDetail detail, Map<Integer, String> roleNames) {
+        if (detail == null || detail.isEmpty()) {
+            return;
+        }
+        if (detail.overview() != null && !detail.overview().isBlank()) {
+            builder.append("玩法概述：").append(detail.overview().trim()).append('\n');
+        }
+        if (!detail.nightOrder().isEmpty()) {
+            builder.append("夜间行动顺序：");
+            int order = 1;
+            for (BoardRuleDetail.NightStep step : detail.nightOrder()) {
+                builder.append(order++).append(". ")
+                        .append(roleNames.getOrDefault(step.roleId(), "未知角色"))
+                        .append("：").append(step.action()).append("；");
+            }
+            builder.append('\n');
+        }
+        for (BoardRuleDetail.RoleRuleNote note : detail.roleRules()) {
+            builder.append(roleNames.getOrDefault(note.roleId(), "未知角色")).append("细则：")
+                    .append(String.join("；", note.items())).append('\n');
+        }
+        for (BoardRuleDetail.RuleSection section : detail.sections()) {
+            builder.append(section.title()).append("：").append(String.join("；", section.items())).append('\n');
+        }
+    }
+
+    private String buildRoleStructuredText(RoleEntity role, Map<Integer, String> roleNames) {
         StringBuilder builder = new StringBuilder();
         builder.append("角色名称：").append(role.getName()).append('\n');
-        builder.append("别名：").append(role.getAlias() == null ? "" : role.getAlias()).append('\n');
+        if (role.getTitle() != null && !role.getTitle().isBlank()) {
+            builder.append("称号：").append(role.getTitle()).append('\n');
+        }
+        if (role.getAlias() != null && !role.getAlias().isBlank()) {
+            builder.append("真名：").append(role.getAlias()).append('\n');
+        }
         builder.append("阵营：").append(role.getFaction()).append('\n');
         builder.append("类型：").append(role.getRoleType()).append('\n');
         builder.append("定位：").append(role.getCamp()).append('\n');
         builder.append("技能：").append(role.getSkill()).append('\n');
         if (role.getBackground() != null && !role.getBackground().isBlank()) {
-            builder.append("背景：").append(role.getBackground()).append('\n');
+            builder.append("身世：").append(role.getBackground()).append('\n');
+        }
+        // 人物关系：「女巫（暗恋的人）」，回答「守卫喜欢谁」「黑狼王和猎人有什么仇」
+        List<RoleRelation> relations = converter.readRelations(role.getRelations());
+        String relationText = relations.stream()
+                .filter(relation -> roleNames.containsKey(relation.roleId()))
+                .map(relation -> roleNames.get(relation.roleId()) + "（" + relation.label() + "）")
+                .collect(Collectors.joining("；"));
+        if (!relationText.isEmpty()) {
+            builder.append("人物关系：").append(relationText).append('\n');
+        }
+        return builder.toString();
+    }
+
+    /** 世界观：小镇、势力、编年史，回答「夜镇发生过什么」「狼人有哪几支」这类问题。 */
+    private String buildWorldStructuredText(WorldLore lore, Map<Integer, String> roleNames) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("世界观：").append(lore.townName() == null ? "夜镇" : lore.townName()).append('\n');
+        if (lore.tagline() != null) {
+            builder.append(lore.tagline()).append('\n');
+        }
+        if (lore.intro() != null) {
+            builder.append(lore.intro()).append('\n');
+        }
+        for (WorldLore.Faction faction : lore.factions()) {
+            builder.append("势力：").append(faction.name()).append("。").append(faction.description() == null ? "" : faction.description()).append('\n');
+        }
+        for (WorldLore.Event event : lore.events()) {
+            builder.append("编年史 ").append(event.era() == null ? "" : event.era()).append("「").append(event.title()).append("」：")
+                    .append(event.content() == null ? "" : event.content());
+            if (!event.roleIds().isEmpty()) {
+                builder.append("（出场：").append(event.roleIds().stream().map(id -> roleNames.getOrDefault(id, "未知角色")).collect(Collectors.joining("、"))).append("）");
+            }
+            builder.append('\n');
         }
         return builder.toString();
     }
@@ -559,6 +736,20 @@ public class AssistantKnowledgeService {
         return normalized.substring(0, 120) + "...";
     }
 
+    private static final int CONTEXT_LIMIT = 1500;
+
+    /** 交给模型的正文：结构化资料一份就是一个板子 / 角色，给全文；上传文档给命中的那一段。 */
+    private String contextOf(AssistantDocumentEntity document, String matchedText) {
+        String text = AssistantConstants.SOURCE_STRUCTURED.equals(document.getSourceType()) && document.getContentText() != null
+                ? document.getContentText()
+                : matchedText;
+        if (text == null) {
+            return "";
+        }
+        String trimmed = text.strip();
+        return trimmed.length() <= CONTEXT_LIMIT ? trimmed : trimmed.substring(0, CONTEXT_LIMIT) + "…";
+    }
+
     private String trimSnippet(String content) {
         String normalized = content == null ? "" : content.replaceAll("\\s+", " ").trim();
         if (normalized.length() <= 180) {
@@ -594,13 +785,18 @@ public class AssistantKnowledgeService {
         structuredKnowledgeExecutor.shutdownNow();
     }
 
+    /**
+     * snippet 是给引用卡片看的短摘要；context 是交给模型的正文（结构化资料给全文，上传文档给命中的那一段），
+     * 以前只给模型 180 字的摘要，角色资料末尾的人物关系、身世后半段模型都看不到。
+     */
     record KnowledgeHit(
             AssistantDocumentEntity document,
             String title,
             String sourceType,
             String snippet,
             double score,
-            String sourceId
+            String sourceId,
+            String context
     ) {
         AssistantDtos.AssistantCitation toCitation() {
             return new AssistantDtos.AssistantCitation(sourceType, title, snippet, null, sourceId);

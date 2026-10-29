@@ -28,21 +28,51 @@ export interface Board {
   difficulty: string
   tags: string[]
   coverImage: string
+  backgroundImage: string | null
   cardDescription: string
   briefConfig: string
   specialRules: string[]
   tips: string[]
   faqs: FaqItem[]
+  ruleDetail: BoardRuleDetail
   winCondition: string
   ruleType: string
   status: number
   roles: BoardRoleItem[]
 }
 
+/** 角色的一条人物关系：对方 roleId + 一句话关系。 */
+export interface RoleRelation {
+  roleId: number
+  label: string
+}
+
+/** 「按世界观起草」的请求：roleId 是正在编辑的已有角色，新建时为空。 */
+export interface RoleDraftRequest {
+  roleId: number | null
+  name: string
+  faction: string
+  roleType: string
+  skill: string
+  notes: string
+}
+
+/** AI 起草的结果，只是草稿，填进表单后由管理员改完再保存。 */
+export interface RoleDraft {
+  alias: string
+  title: string
+  background: string
+  relations: RoleRelation[]
+}
+
 export interface Role {
   id: number
   name: string
+  /** 真名（世界观里的人名） */
   alias: string | null
+  /** 称号，比如「看星的人」 */
+  title: string | null
+  relations: RoleRelation[]
   faction: string
   roleType: string
   camp: string
@@ -51,6 +81,57 @@ export interface Role {
   faqs: FaqItem[]
   portrait: string
   fullIllustration: string
+  themeColor: string | null
+}
+
+/** 夜间行动顺序里的一步，roleId 必须在本板子的阵容里。 */
+export interface NightStep {
+  roleId: number
+  action: string
+}
+
+/** 某个角色在本板子里的细则。 */
+export interface RoleRuleNote {
+  roleId: number
+  items: string[]
+}
+
+/** 不绑定角色的规则章节，比如警长竞选、遗言、平票处理。 */
+export interface RuleSection {
+  title: string
+  items: string[]
+}
+
+export interface BoardRuleDetail {
+  overview: string | null
+  nightOrder: NightStep[]
+  roleRules: RoleRuleNote[]
+  sections: RuleSection[]
+}
+
+export type WorldCamp = 'good' | 'wolf' | 'third'
+
+export interface WorldFaction {
+  name: string
+  camp: WorldCamp
+  description: string | null
+}
+
+export interface WorldEvent {
+  era: string | null
+  title: string
+  content: string | null
+  roleIds: number[]
+}
+
+/** 世界观（夜镇编年史），后台整份编辑。 */
+export interface WorldLore {
+  townName: string | null
+  tagline: string | null
+  intro: string | null
+  coverImage: string | null
+  factions: WorldFaction[]
+  events: WorldEvent[]
 }
 
 export interface UserView {
@@ -66,12 +147,24 @@ export interface LoginResponse {
   user: UserView
 }
 
+export interface RecentBoard {
+  id: number
+  name: string
+  updateTime: string
+}
+
 export interface DashboardSummary {
   boardCount: number
+  onlineBoardCount: number
+  boardsWithoutBackground: number
   roleCount: number
+  rolesWithoutIllustration: number
   postCount: number
   commentCount: number
   openReportCount: number
+  assistantQuestionsToday: number
+  assistantFailuresToday: number
+  recentBoards: RecentBoard[]
 }
 
 export interface PostSummary {
@@ -80,6 +173,10 @@ export interface PostSummary {
   nickname: string
   avatar: string
   content: string
+  title: string | null
+  category: string | null
+  boardId: number | null
+  boardName: string | null
   images: string[]
   likeCount: number
   commentCount: number
@@ -97,7 +194,7 @@ export interface CommentView {
   content: string
   likeCount: number
   liked: boolean
-  status: number
+  status: string
   createTime: string
 }
 
@@ -131,6 +228,38 @@ export interface AssistantBootstrapResponse {
   latestSessionId: string | null
   appearance: AssistantAppearance
   featureFlags: AssistantFeatureFlags
+}
+
+/** AI 助手可切换的对话模型（OpenAI 兼容接口），apiKey 是打码后的 */
+export interface AdminAiModel {
+  id: number
+  name: string
+  baseUrl: string
+  model: string
+  apiKey: string
+  enabled: boolean
+  active: boolean
+  /** 推理模型不先长篇思考再回答（vLLM 的 chat_template_kwargs.thinking = false） */
+  disableThinking: boolean
+  remark: string | null
+  updateTime: string | null
+}
+
+export interface AdminAiModelPayload {
+  name: string
+  baseUrl: string
+  model: string
+  apiKey: string
+  enabled: boolean
+  disableThinking: boolean
+  remark: string
+}
+
+export interface ModelTestResult {
+  ok: boolean
+  latencyMs: number
+  reply: string | null
+  error: string | null
 }
 
 export interface AdminAiConfig {
@@ -218,4 +347,35 @@ export interface AdminAiLog {
   failureType: string | null
   traceId: string
   createTime: string
+  /** 这次的回答全文，找不到对应会话消息时为空 */
+  answer: string | null
+}
+
+export interface AdminPlaygroundRequest {
+  message: string
+  scene?: string
+  pageContext?: Record<string, unknown>
+}
+
+export interface AdminPlaygroundHit {
+  title: string
+  /** BOARD / ROLE / WORLD / DOCUMENT */
+  sourceType: string
+  score: number
+}
+
+export interface AdminPlaygroundResult {
+  answer: string
+  answerType: string
+  /** RECOMMEND / KNOWLEDGE / REFUSE */
+  intent: string | null
+  reason: string | null
+  hits: AdminPlaygroundHit[]
+  boards: { id: number; name: string; playerCount: number; difficulty: string; reason: string }[]
+  usedWebSearch: boolean
+  model: string | null
+  failureType: string | null
+  /** route 判断问题 / retrieve 查资料 / generate 模型生成，毫秒 */
+  timings: Record<string, number>
+  totalMs: number
 }

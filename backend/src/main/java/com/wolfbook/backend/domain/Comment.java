@@ -8,7 +8,7 @@ public record Comment(
         String openid,
         String content,
         Integer likeCount,
-        Integer status,
+        String status,
         LocalDateTime createTime
 ) {
 }

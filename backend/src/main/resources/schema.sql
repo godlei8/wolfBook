@@ -5,11 +5,13 @@ CREATE TABLE `boards` (
   `difficulty` VARCHAR(20) NOT NULL,
   `tags` JSON DEFAULT NULL,
   `cover_image` VARCHAR(500),
+  `background_image` VARCHAR(500),
   `card_description` VARCHAR(255),
   `brief_config` VARCHAR(500) NOT NULL,
   `special_rules` JSON,
   `tips` JSON,
   `faqs` JSON,
+  `rule_detail` JSON,
   `win_condition` VARCHAR(100) DEFAULT '屠边',
   `rule_type` VARCHAR(50) DEFAULT '标准板',
   `status` TINYINT DEFAULT 1,
@@ -21,6 +23,8 @@ CREATE TABLE `roles` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `name` VARCHAR(50) NOT NULL UNIQUE,
   `alias` VARCHAR(50),
+  `title` VARCHAR(40),
+  `relations` JSON,
   `faction` VARCHAR(30) NOT NULL,
   `role_type` VARCHAR(30) NOT NULL,
   `camp` VARCHAR(60) NOT NULL,
@@ -29,7 +33,15 @@ CREATE TABLE `roles` (
   `faqs` JSON,
   `portrait` VARCHAR(500),
   `full_illustration` VARCHAR(500),
+  `theme_color` VARCHAR(16),
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 世界观（夜镇编年史）：只有一行，content 是整份 JSON
+CREATE TABLE `world_lore` (
+  `id` INT PRIMARY KEY,
+  `content` TEXT,
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE `board_roles` (
@@ -81,6 +93,10 @@ CREATE TABLE `posts` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `openid` VARCHAR(100) NOT NULL,
   `content` TEXT NOT NULL,
+  `title` VARCHAR(60),
+  `category` VARCHAR(16),
+  `board_id` INT,
+  `board_name` VARCHAR(100),
   `images` JSON,
   `like_count` INT DEFAULT 0,
   `comment_count` INT DEFAULT 0,
@@ -95,7 +111,7 @@ CREATE TABLE `comments` (
   `openid` VARCHAR(100) NOT NULL,
   `content` VARCHAR(200) NOT NULL,
   `like_count` INT DEFAULT 0,
-  `status` TINYINT DEFAULT 1,
+  `status` VARCHAR(20) DEFAULT 'VISIBLE',
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -213,6 +229,75 @@ CREATE TABLE `assistant_query_logs` (
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE `judge_rooms` (
+  `room_id` VARCHAR(64) PRIMARY KEY,
+  `room_code` VARCHAR(8),
+  `board_id` INT NOT NULL,
+  `board_name` VARCHAR(100) NOT NULL,
+  `player_count` TINYINT NOT NULL,
+  `judge_mode` VARCHAR(20) NOT NULL DEFAULT 'observer',
+  `judge_support_level` VARCHAR(20) NOT NULL DEFAULT 'manual_only',
+  `owner_user_id` VARCHAR(100) NOT NULL,
+  `owner_player_id` VARCHAR(64),
+  `owner_seat_no` TINYINT,
+  `room_status` VARCHAR(20) NOT NULL DEFAULT 'lobby',
+  `current_day` TINYINT DEFAULT 1,
+  `current_phase` VARCHAR(30) DEFAULT 'lobby',
+  `auto_judge_enabled` TINYINT DEFAULT 0,
+  `can_rollback` TINYINT DEFAULT 1,
+  `winner_camp` VARCHAR(30),
+  `latest_announcement` VARCHAR(500),
+  `sheriff_enabled` TINYINT DEFAULT 0,
+  `night_step` TINYINT,
+  `step_deadline` DATETIME,
+  `phase_data` JSON,
+  `rules_json` JSON,
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE `judge_room_players` (
+  `player_id` VARCHAR(64) PRIMARY KEY,
+  `room_id` VARCHAR(64) NOT NULL,
+  `user_id` VARCHAR(100) NOT NULL,
+  `nickname` VARCHAR(50) NOT NULL,
+  `avatar` VARCHAR(500),
+  `seat_no` TINYINT,
+  `is_room_owner` TINYINT DEFAULT 0,
+  `is_judge_observer` TINYINT DEFAULT 0,
+  `is_playing` TINYINT DEFAULT 1,
+  `ready` TINYINT DEFAULT 0,
+  `alive` TINYINT DEFAULT 1,
+  `role_id` INT,
+  `role_name` VARCHAR(50),
+  `faction` VARCHAR(30),
+  `death_day` TINYINT,
+  `death_phase` VARCHAR(30),
+  `is_sheriff` TINYINT DEFAULT 0,
+  `sheriff_candidate` TINYINT DEFAULT 0,
+  `sheriff_withdrew` TINYINT DEFAULT 0,
+  `can_vote` TINYINT DEFAULT 1,
+  `status_json` JSON,
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_judge_room_user` (`room_id`, `user_id`),
+  UNIQUE KEY `uk_judge_room_seat` (`room_id`, `seat_no`)
+);
+
+CREATE TABLE `judge_action_events` (
+  `event_id` VARCHAR(64) PRIMARY KEY,
+  `room_id` VARCHAR(64) NOT NULL,
+  `day_no` TINYINT DEFAULT 1,
+  `phase` VARCHAR(30) NOT NULL,
+  `actor_player_id` VARCHAR(64),
+  `target_player_ids_json` JSON,
+  `action_type` VARCHAR(50) NOT NULL,
+  `payload_json` JSON,
+  `result_payload_json` JSON,
+  `visibility` VARCHAR(20) NOT NULL DEFAULT 'public',
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX `idx_boards_status` ON `boards` (`status`);
 CREATE INDEX `idx_roles_faction_type` ON `roles` (`faction`, `role_type`);
 CREATE INDEX `idx_user_favorite_openid` ON `user_favorite_boards` (`openid`, `create_time`);
@@ -225,3 +310,23 @@ CREATE INDEX `idx_assistant_documents_publish` ON `assistant_documents` (`publis
 CREATE INDEX `idx_assistant_sessions_openid` ON `assistant_sessions` (`openid`, `update_time`);
 CREATE INDEX `idx_assistant_messages_session` ON `assistant_messages` (`session_id`, `create_time`);
 CREATE INDEX `idx_assistant_logs_openid` ON `assistant_query_logs` (`openid`, `create_time`);
+CREATE INDEX `idx_judge_rooms_owner_update` ON `judge_rooms` (`owner_user_id`, `update_time`);
+CREATE INDEX `idx_judge_rooms_status_update` ON `judge_rooms` (`room_status`, `update_time`);
+CREATE INDEX `idx_judge_room_players_room` ON `judge_room_players` (`room_id`, `seat_no`);
+CREATE INDEX `idx_judge_room_players_user` ON `judge_room_players` (`user_id`, `update_time`);
+CREATE INDEX `idx_judge_events_room_phase` ON `judge_action_events` (`room_id`, `day_no`, `phase`, `create_time`);
+
+-- AI 助手可切换的对话模型（OpenAI 兼容接口）；active = 1 的那一个是当前使用的
+CREATE TABLE `assistant_models` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `name` VARCHAR(60) NOT NULL,
+  `base_url` VARCHAR(300) NOT NULL,
+  `model` VARCHAR(120) NOT NULL,
+  `api_key` VARCHAR(500),
+  `enabled` TINYINT DEFAULT 1,
+  `active` TINYINT DEFAULT 0,
+  `disable_thinking` TINYINT DEFAULT 0,
+  `remark` VARCHAR(200),
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP
+);

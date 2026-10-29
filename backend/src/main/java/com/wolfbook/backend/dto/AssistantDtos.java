@@ -16,12 +16,9 @@ public final class AssistantDtos {
 
     public record AssistantBootstrapResponse(
             boolean enabled,
-            String welcomeMessage,
             List<String> quickQuestions,
-            String latestSessionId,
-            Appearance appearance,
-            FeatureFlags featureFlags
-    ) {
+            String latestSessionId
+        ) {
     }
 
     public record Appearance(String mascot, String accentColor, String dockLabel) {
@@ -45,10 +42,6 @@ public final class AssistantDtos {
             String answer,
             String contentFormat,
             String answerType,
-            List<AssistantCitation> citations,
-            List<RecommendedBoardCard> recommendedBoards,
-            List<String> suggestedQuestions,
-            boolean usedWebSearch,
             String traceId
     ) {
     }
@@ -66,6 +59,7 @@ public final class AssistantDtos {
     }
 
     public record AssistantStreamError(
+            int code,
             String message,
             String traceId
     ) {
@@ -107,13 +101,43 @@ public final class AssistantDtos {
             String content,
             String contentFormat,
             String answerType,
-            List<AssistantCitation> citations,
-            List<RecommendedBoardCard> recommendedBoards,
-            List<String> suggestedQuestions,
-            boolean usedWebSearch,
             String traceId,
             LocalDateTime createTime
     ) {
+    }
+
+    /** 模型管理列表里的一项，apiKey 已打码。 */
+    public record AdminModelView(
+            Integer id,
+            String name,
+            String baseUrl,
+            String model,
+            String apiKey,
+            boolean enabled,
+            boolean active,
+            boolean disableThinking,
+            String remark,
+            LocalDateTime updateTime
+    ) {
+    }
+
+    /** 新建 / 修改模型。apiKey 原样传回打码值或留空表示不改（新建时留空就是没有 Key）。 */
+    public record AdminModelRequest(
+            @NotBlank(message = "模型名称不能为空") @Size(max = 60, message = "模型名称不能超过 60") String name,
+            @NotBlank(message = "接口地址不能为空") @Size(max = 300, message = "接口地址不能超过 300") String baseUrl,
+            @NotBlank(message = "模型编码不能为空") @Size(max = 120, message = "模型编码不能超过 120") String model,
+            @Size(max = 500, message = "Key 太长了") String apiKey,
+            Boolean enabled,
+            Boolean disableThinking,
+            @Size(max = 200, message = "备注不能超过 200") String remark
+    ) {
+    }
+
+    /** 测试连接：id 有值时，没改的 Key 用库里存的。 */
+    public record ModelTestRequest(Integer id, String baseUrl, String model, String apiKey, Boolean disableThinking) {
+    }
+
+    public record ModelTestResult(boolean ok, long latencyMs, String reply, String error) {
     }
 
     public record AdminAiConfig(
@@ -143,8 +167,13 @@ public final class AssistantDtos {
             String platform,
             String model,
             String baseUrl,
-            String apiKey
+            String apiKey,
+            // 推理模型（比如学校的 DeepSeek V4）不先长篇思考再回答，见 DeepSeekChatService.buildRequest
+            Boolean disableThinking
     ) {
+        public ProviderSection(String platform, String model, String baseUrl, String apiKey) {
+            this(platform, model, baseUrl, apiKey, false);
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -246,7 +275,47 @@ public final class AssistantDtos {
             boolean success,
             String failureType,
             String traceId,
-            LocalDateTime createTime
+            LocalDateTime createTime,
+            // 这次的回答全文（按 traceId 从会话消息里找），后台日志里点开看答成了什么
+            String answer
+    ) {
+    }
+
+    /** 流式回答进行到哪一步了：小程序在还没出字的时候显示「正在查站内资料」之类的提示。 */
+    public record AssistantStreamStage(
+            String key,
+            String label
+    ) {
+    }
+
+    /** 后台调试台：用当前配置答一题，不落库、不写日志，返回判断过程。 */
+    public record AdminPlaygroundRequest(
+            @NotBlank(message = "message is required") @Size(max = 500, message = "message is too long") String message,
+            String scene,
+            Map<String, Object> pageContext
+    ) {
+    }
+
+    public record AdminPlaygroundHit(
+            String title,
+            String sourceType,
+            double score
+    ) {
+    }
+
+    public record AdminPlaygroundResponse(
+            String answer,
+            String answerType,
+            String intent,
+            String reason,
+            List<AdminPlaygroundHit> hits,
+            List<RecommendedBoardCard> boards,
+            boolean usedWebSearch,
+            String model,
+            String failureType,
+            // 各步耗时（毫秒）：route 判断问题、retrieve 查资料、generate 模型生成
+            Map<String, Long> timings,
+            long totalMs
     ) {
     }
 }

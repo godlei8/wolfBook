@@ -19,6 +19,7 @@ public class WechatProperties {
         private String appId = "";
         private String appSecret = "";
         private String code2SessionUrl = "https://api.weixin.qq.com/sns/jscode2session";
+        private boolean mockLoginEnabled = false;
 
         public String getAppId() {
             return appId;
@@ -42,6 +43,14 @@ public class WechatProperties {
 
         public void setCode2SessionUrl(String code2SessionUrl) {
             this.code2SessionUrl = code2SessionUrl;
+        }
+
+        public boolean isMockLoginEnabled() {
+            return mockLoginEnabled;
+        }
+
+        public void setMockLoginEnabled(boolean mockLoginEnabled) {
+            this.mockLoginEnabled = mockLoginEnabled;
         }
     }
 }

@@ -1,13 +1,16 @@
 <script setup lang="ts">
+import PageHeader from './ui/PageHeader.vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadRequestOptions } from 'element-plus'
 import { api } from '../services/api'
 import type { AdminAiConfig, AdminAiDocument, AdminAiLog, AdminAiVersion } from '../types'
 import AiAssistantControlTab from './aiAssistant/AiAssistantControlTab.vue'
+import AiModelManager from './aiAssistant/AiModelManager.vue'
 import AiAssistantDocumentsTab from './aiAssistant/AiAssistantDocumentsTab.vue'
 import AiAssistantLogsTab from './aiAssistant/AiAssistantLogsTab.vue'
 import AiAssistantPublishTab from './aiAssistant/AiAssistantPublishTab.vue'
+import AiPlaygroundTab from './aiAssistant/AiPlaygroundTab.vue'
 import {
   formatHitSources,
   processingStatusLabel,
@@ -23,7 +26,7 @@ const publishing = ref(false)
 const clearingDocuments = ref(false)
 const clearingLogs = ref(false)
 
-const activeTab = ref<'control' | 'documents' | 'publish' | 'logs'>('control')
+const activeTab = ref<'control' | 'models' | 'playground' | 'documents' | 'publish' | 'logs'>('control')
 const documents = ref<AdminAiDocument[]>([])
 const versions = ref<AdminAiVersion[]>([])
 const logs = ref<AdminAiLog[]>([])
@@ -35,6 +38,7 @@ const versionPage = ref(1)
 const versionPageSize = ref(6)
 const logPage = ref(1)
 const logPageSize = ref(10)
+const logFilter = ref('all')
 
 const quickQuestionsText = ref('')
 const blockedKeywordsText = ref('')
@@ -98,7 +102,12 @@ const uploadedDocumentCount = computed(() =>
 
 const pagedDocuments = computed(() => paginate(documents.value, documentPage.value, documentPageSize.value))
 const pagedVersions = computed(() => paginate(versions.value, versionPage.value, versionPageSize.value))
-const pagedLogs = computed(() => paginate(logs.value, logPage.value, logPageSize.value))
+const filteredLogs = computed(() => {
+  if (logFilter.value === 'failed') return logs.value.filter((item) => !item.success)
+  if (logFilter.value === 'slow') return logs.value.filter((item) => item.latencyMs >= 10000)
+  return logs.value
+})
+const pagedLogs = computed(() => paginate(filteredLogs.value, logPage.value, logPageSize.value))
 
 watch(documentPageSize, () => {
   documentPage.value = 1
@@ -108,7 +117,7 @@ watch(versionPageSize, () => {
   versionPage.value = 1
 })
 
-watch(logPageSize, () => {
+watch([logPageSize, logFilter], () => {
   logPage.value = 1
 })
 
@@ -127,7 +136,7 @@ watch(
 )
 
 watch(
-  () => logs.value.length,
+  () => filteredLogs.value.length,
   (total) => {
     logPage.value = clampPage(logPage.value, logPageSize.value, total)
   },
@@ -300,16 +309,18 @@ onMounted(loadAll)
 </script>
 
 <template>
-  <el-card
-    class="panel-card"
-    v-loading="loading"
-    element-loading-text="正在同步 AI 助手控制台..."
-    element-loading-background="rgba(8, 8, 8, 0.74)"
-  >
-    <div class="panel-actions">
-      <el-button @click="loadAll">刷新数据</el-button>
-    </div>
+  <PageHeader eyebrow="ASSISTANT" title="AI 助手" description="配置人设和模型，在调试台试答，管理知识库、发布版本和问答日志。">
+    <template #actions>
+      <button class="nt-btn nt-btn--ghost" type="button" :disabled="loading" @click="loadAll">{{ loading ? '同步中…' : '刷新数据' }}</button>
+    </template>
+  </PageHeader>
 
+  <div
+    class="ai-panel"
+    v-loading="loading"
+    element-loading-text="正在同步 AI 助手控制台…"
+    element-loading-background="rgba(21, 18, 28, 0.74)"
+  >
     <el-tabs v-model="activeTab" class="ai-tabs">
       <el-tab-pane label="控制台" name="control">
         <AiAssistantControlTab
@@ -321,6 +332,14 @@ onMounted(loadAll)
           @update:blocked-keywords-text="blockedKeywordsText = $event"
           @save="saveConfig"
         />
+      </el-tab-pane>
+
+      <el-tab-pane label="模型管理" name="models">
+        <AiModelManager v-if="activeTab === 'models'" />
+      </el-tab-pane>
+
+      <el-tab-pane label="调试台" name="playground">
+        <AiPlaygroundTab v-if="activeTab === 'playground'" />
       </el-tab-pane>
 
       <el-tab-pane label="知识库" name="documents">
@@ -363,7 +382,9 @@ onMounted(loadAll)
 
       <el-tab-pane label="问答日志" name="logs">
         <AiAssistantLogsTab
-          :logs="logs"
+          :logs="filteredLogs"
+          :total-logs="logs.length"
+          :log-filter="logFilter"
           :paged-logs="pagedLogs"
           :log-page="logPage"
           :log-page-size="logPageSize"
@@ -371,90 +392,45 @@ onMounted(loadAll)
           :format-hit-sources="formatHitSources"
           @update:log-page="logPage = $event"
           @update:log-page-size="logPageSize = $event"
+          @update:log-filter="logFilter = $event"
           @clear="clearLogs"
         />
       </el-tab-pane>
     </el-tabs>
-  </el-card>
+  </div>
 </template>
 
 <style scoped>
-.panel-card {
+.ai-panel {
   position: relative;
-  border-radius: 18px;
   min-width: 0;
-}
-
-.panel-card :deep(.el-card__body) {
-  padding-top: 10px;
-}
-
-.panel-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 4px;
-  min-width: 0;
-}
-
-.panel-actions :deep(.el-button) {
-  min-width: 116px;
-  height: 36px;
-  padding: 0 18px;
-  border-radius: 12px;
-  border-color: rgba(255, 192, 0, 0.22);
-  background:
-    radial-gradient(circle at top left, rgba(255, 203, 75, 0.08), transparent 58%),
-    linear-gradient(180deg, rgba(39, 36, 28, 0.94), rgba(24, 22, 18, 0.98));
-  color: #f1cf72;
-  font-weight: 700;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  padding: 8px 24px 24px;
+  border-radius: 22px;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
 }
 
 .ai-tabs {
-  display: grid;
   min-width: 0;
 }
 
 .ai-tabs :deep(.el-tabs__header) {
-  position: sticky;
-  top: var(--panel-sticky-offset, 0px);
-  z-index: 15;
-  margin: 0 -12px 14px;
-  padding: 4px 12px 10px;
-  padding-right: 148px;
-  background:
-    linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(18, 18, 18, 0.94) 72%, rgba(18, 18, 18, 0.84));
-  backdrop-filter: blur(14px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 18px;
 }
 
-.ai-tabs :deep(.el-tabs__content) {
-  position: relative;
-  z-index: 1;
+.ai-tabs :deep(.el-tabs__item) {
+  height: 52px;
+  font-size: 16px;
 }
 
 .ai-tabs :deep(.el-tabs__nav-wrap::after) {
-  background-color: rgba(255, 255, 255, 0.06);
+  height: 1px;
+  background-color: var(--panel-line);
 }
 
-@media (max-width: 960px) {
-  .panel-actions {
-    position: static;
-    margin-bottom: 12px;
-    display: flex;
-    justify-content: flex-end;
-  }
-
-  .ai-tabs :deep(.el-tabs__header) {
-    position: static;
-    top: auto;
-    z-index: auto;
-    margin: 0 0 18px;
-    padding: 0;
-    padding-right: 0;
-    background: transparent;
-    backdrop-filter: none;
-    border-bottom: none;
+@media (max-width: 720px) {
+  .ai-panel {
+    padding: 4px 14px 16px;
   }
 }
 </style>

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
+import NavBar from '../../components/NavBar.vue'
 import api from '../../services/api'
 import userData from '../../services/user-data'
 
@@ -14,6 +15,7 @@ const selectedBoardId = ref(0)
 
 const customBoardName = ref('')
 const customPlayerCount = ref(12)
+const saving = ref(false)
 
 function makeId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
@@ -63,6 +65,10 @@ function chooseBoard(event) {
 
 function handleCustomBoardNameInput(event) {
   customBoardName.value = event.detail?.value || ''
+}
+
+function stepPlayerCount(delta) {
+  customPlayerCount.value = Math.min(20, Math.max(1, (customPlayerCount.value || 0) + delta))
 }
 
 function handleCustomPlayerCountInput(event) {
@@ -149,9 +155,12 @@ function buildSessionPayload() {
 }
 
 async function saveSession() {
+  if (saving.value) return
   const base = buildSessionPayload()
   if (!base) return
 
+  // 成功后 redirectTo 会卸载本页，saving 保持 true 避免连点生成两条笔记
+  saving.value = true
   try {
     const current = sessionId.value ? await userData.getSessionById(sessionId.value) : null
     const now = new Date().toISOString()
@@ -165,7 +174,31 @@ async function saveSession() {
     const saved = await userData.saveSession(session)
     uni.redirectTo({ url: `/pages/sessions/detail?id=${saved.sessionId}` })
   } catch (error) {
+    saving.value = false
     uni.showToast({ title: error?.message || '保存失败', icon: 'none' })
+  }
+}
+
+function preselectBoard(options) {
+  const boardId = Number(options?.boardId || 0)
+  let boardName = ''
+  try {
+    boardName = decodeURIComponent(options?.boardName || '')
+  } catch (error) {
+    boardName = options?.boardName || ''
+  }
+  if (boardId > 0) {
+    const index = boards.value.findIndex((item) => item.id === boardId)
+    if (index >= 0) {
+      sessionMode.value = 'library'
+      selectedBoardIndex.value = index
+      selectedBoardId.value = boardId
+      return
+    }
+  }
+  if (boardName) {
+    sessionMode.value = 'custom'
+    customBoardName.value = boardName
   }
 }
 
@@ -181,6 +214,9 @@ async function initialize(options) {
   await loadBoardOptions()
   if (editingSession) {
     hydrateSession(editingSession)
+  } else if (options?.boardId || options?.boardName) {
+    // 从法官房间"记笔记"进来时带上板子，直接预选
+    preselectBoard(options)
   }
 }
 
@@ -190,22 +226,16 @@ onLoad((options) => {
 </script>
 
 <template>
-  <view class="page-shell">
-    <view class="glass-card section-card">
-      <view class="section-title">对局基础信息</view>
-      <view class="section-desc">选择站内板子快速开局，或者创建一个自定义板子继续记录本局信息。</view>
+  <view class="nt-page nt-page--bar">
+    <NavBar back :title="sessionId ? '改对局信息' : '记一局'" />
 
-      <view class="mode-switch">
-        <view class="mode-chip" :class="{ active: sessionMode === 'library' }" @tap="setSessionMode('library')">
-          选择板子库
-        </view>
-        <view class="mode-chip" :class="{ active: sessionMode === 'custom' }" @tap="setSessionMode('custom')">
-          自定义板子
-        </view>
+    <view class="nt-gutter nt-stack se-body">
+      <view class="se-modes">
+        <text class="nt-chip" :class="{ 'nt-chip--on': sessionMode === 'library' }" @tap="setSessionMode('library')">从板子库选</text>
+        <text class="nt-chip" :class="{ 'nt-chip--on': sessionMode === 'custom' }" @tap="setSessionMode('custom')">自定义板子</text>
       </view>
 
-      <template v-if="sessionMode === 'library'">
-        <view class="section-meta section-space">板子选择</view>
+      <block v-if="sessionMode === 'library'">
         <picker
           mode="selector"
           :range="boards"
@@ -214,405 +244,217 @@ onLoad((options) => {
           :disabled="!boards.length"
           @change="chooseBoard"
         >
-          <view class="field-input picker-field" :class="{ disabled: !boards.length }">
-            <view class="picker-copy">
-              <view class="picker-kicker">BOARD LIBRARY</view>
-              <view class="picker-value">{{ selectedBoardLabel }}</view>
+          <view class="nt-row">
+            <view class="se-pick">
+              <text class="nt-label">板子</text>
+              <text class="se-pick__value" :class="{ 'c-moon': selectedBoard }">{{ selectedBoardLabel }}</text>
             </view>
-            <view class="picker-arrow">›</view>
+            <text class="nt-arrow">›</text>
           </view>
         </picker>
+        <text v-if="boardLoadError" class="se-error" @tap="loadBoardOptions">{{ boardLoadError }}，点这里重试</text>
 
-        <view v-if="boardLoadError" class="helper-text helper-warning" @tap="loadBoardOptions">
-          {{ boardLoadError }}，点击重试
-        </view>
-
-        <view v-if="selectedBoard" class="board-preview board-preview--library">
-          <image
-            v-if="selectedBoard.coverImage"
-            class="board-preview-cover"
-            :src="selectedBoard.coverImage"
-            mode="aspectFill"
-          />
-          <view class="board-preview-content">
-            <view class="board-preview-kicker">LIBRARY BOARD</view>
-            <view class="board-preview-head">
-              <view class="board-preview-name">{{ selectedBoard.name }}</view>
-              <view class="pill pill-gold">{{ selectedBoard.playerCount }} 人</view>
-            </view>
-            <view class="board-preview-meta">
-              {{ selectedBoard.difficulty || '标准难度' }} · {{ selectedBoard.lineupSummary || selectedBoard.briefConfig || '已配置阵容' }}
-            </view>
-            <view v-if="selectedBoard.tags?.length" class="board-preview-tags">
-              <view v-for="tag in selectedBoard.tags.slice(0, 4)" :key="tag" class="board-tag-chip">{{ tag }}</view>
-            </view>
-            <view class="board-stat-grid">
-              <view class="board-stat-card">
-                <view class="board-stat-label">玩家人数</view>
-                <view class="board-stat-value">{{ selectedBoard.playerCount }} 人</view>
-              </view>
-              <view class="board-stat-card">
-                <view class="board-stat-label">难度层级</view>
-                <view class="board-stat-value">{{ selectedBoard.difficulty || '标准' }}</view>
-              </view>
-              <view class="board-stat-card">
-                <view class="board-stat-label">阵容配置</view>
-                <view class="board-stat-value">{{ selectedBoard.roles?.length || 0 }} 个角色位</view>
+        <view v-if="selectedBoard" class="nt-ink se-preview">
+          <view class="se-preview__banner">
+            <image v-if="selectedBoard.backgroundImage" class="se-preview__bg" :src="selectedBoard.backgroundImage" mode="aspectFill" webp />
+            <view
+              v-for="art in selectedBoard.lineupArt || []"
+              :key="art.roleId"
+              class="nt-card se-preview__card"
+              :class="`se-preview__card--${art.slot}`"
+            >
+              <view class="nt-card__frame" :style="{ backgroundColor: art.accent }">
+                <image class="nt-card__img" :src="art.image" mode="aspectFill" webp />
               </view>
             </view>
-            <view v-if="selectedBoard.cardRoles?.length" class="board-role-strip">
-              <view
-                v-for="role in selectedBoard.cardRoles.slice(0, 6)"
-                :key="`${selectedBoard.id}_${role.roleId}`"
-                class="board-role-pill"
-                :class="`board-role-pill--${role.toneClass || 'good'}`"
-              >
-                {{ role.name }}
+            <text class="se-preview__plate serif">{{ selectedBoard.name }}</text>
+          </view>
+          <view class="se-preview__body">
+            <text class="nt-meta">{{ selectedBoard.playerCount }} 人 · {{ selectedBoard.difficulty || '标准' }}{{ selectedBoard.winCondition ? ` · ${selectedBoard.winCondition}` : '' }}</text>
+            <view class="se-tokens">
+              <view v-for="role in selectedBoard.cardRoles || []" :key="role.roleId" class="nt-token se-token">
+                <image v-if="role.portrait" class="nt-token__img" :src="role.portrait" mode="aspectFill" :style="{ borderColor: role.accent }" webp />
+                <view v-else class="nt-token__text se-token__text" :style="{ borderColor: role.accent }">{{ role.name.slice(0, 1) }}</view>
+                <text v-if="role.count > 1" class="nt-token__count">×{{ role.count }}</text>
               </view>
-            </view>
-            <view v-if="selectedBoard.cardDescription" class="board-preview-desc">
-              {{ selectedBoard.cardDescription }}
             </view>
           </view>
         </view>
-
-        <view v-else class="board-preview board-preview--ghost">
-          <view class="board-preview-kicker">BOARD LIBRARY</view>
-          <view class="board-preview-name">从站内板子库快速开局</view>
-          <view class="board-preview-meta">优先复用已经整理好的板子封面、人数、难度和阵容信息。</view>
-          <view class="board-preview-desc">选中板子后，这里会显示封面预览、阵容摘要和角色情报，方便你确认本局模板。</view>
+        <view v-else class="nt-panel">
+          <text class="nt-h2">从板子库快速开局</text>
+          <text class="nt-meta">选好板子后，人数和阵容直接带进笔记，局中只管记发言、票型和夜间信息。</text>
         </view>
-      </template>
+      </block>
 
-      <template v-else>
-        <view class="custom-preview">
-          <view class="custom-kicker">CUSTOM BOARD</view>
-          <view class="custom-name">{{ customBoardPreviewName }}</view>
-          <view class="custom-meta">{{ customPlayerLabel }} · 笔记记录专用</view>
-          <view class="custom-desc">适合临时组板、线下复盘或局中快速开一局，不依赖站内板库也能继续记笔记。</view>
-        </view>
-
-        <view class="section-meta section-space">板子名称</view>
-        <input
-          :value="customBoardName"
-          class="field-input board-name-input"
-          maxlength="20"
-          confirm-type="done"
-          placeholder="例如：预女猎白 / 机械狼通灵师"
-          @input="handleCustomBoardNameInput"
-        />
-
-        <view class="section-meta section-space">玩家人数</view>
-        <view class="player-input-wrap">
-          <input
-            :value="customPlayerCount > 0 ? String(customPlayerCount) : ''"
-            class="field-input player-count-input"
-            type="number"
-            maxlength="2"
-            confirm-type="done"
-            placeholder="手动输入人数"
-            @input="handleCustomPlayerCountInput"
-          />
-          <view class="player-count-unit">人</view>
-        </view>
-        <view class="helper-text player-helper">
-          建议填写 6-15 人，支持手动调整特殊人数板型。
-        </view>
-        <view class="player-quick-summary">
-          <view class="player-summary-card">
-            <view class="player-summary-label">当前人数</view>
-            <view class="player-summary-value">{{ customPlayerCount > 0 ? `${customPlayerCount} 人` : '未填写' }}</view>
+      <block v-else>
+        <view class="nt-panel">
+          <text class="nt-label">板子名称</text>
+          <view class="nt-field">
+            <input
+              :value="customBoardName"
+              class="nt-field__input"
+              maxlength="20"
+              confirm-type="done"
+              placeholder="例如：预女猎白 / 机械狼通灵师"
+              placeholder-class="nt-placeholder"
+              @input="handleCustomBoardNameInput"
+            />
           </view>
-          <view class="player-summary-card">
-            <view class="player-summary-label">记录模式</view>
-            <view class="player-summary-value">自定义板子</view>
+          <text class="nt-label">玩家人数</text>
+          <view class="se-count">
+            <view class="nt-iconbtn" @tap="stepPlayerCount(-1)">－</view>
+            <input
+              :value="customPlayerCount > 0 ? String(customPlayerCount) : ''"
+              class="se-count__input serif"
+              type="number"
+              maxlength="2"
+              placeholder="12"
+              placeholder-class="nt-placeholder"
+              @input="handleCustomPlayerCountInput"
+            />
+            <view class="nt-iconbtn" @tap="stepPlayerCount(1)">＋</view>
+            <text class="nt-meta">人</text>
           </view>
+          <text class="nt-meta">建议 6 ~ 15 人，特殊板型可以手动改。</text>
         </view>
-      </template>
+      </block>
     </view>
 
-    <button class="button-primary save-button" @tap="saveSession">保存并进入记录</button>
+    <view class="nt-bar">
+      <view class="nt-btn nt-btn--gold se-save" :class="{ 'nt-btn--disabled': saving }" @tap="saveSession">
+        {{ saving ? '保存中…' : '保存并开始记录' }}
+      </view>
+    </view>
   </view>
 </template>
 
 <style scoped lang="scss">
-.mode-switch {
+.se-body {
+  margin-top: 16rpx;
+}
+
+.se-modes {
   display: flex;
   gap: 16rpx;
-  margin-top: 24rpx;
 }
 
-.mode-chip {
-  flex: 1;
-  height: 78rpx;
-  border-radius: 18rpx;
-  background: rgba(255, 255, 255, 0.04);
-  color: #c7c7c7;
+.se-pick {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 26rpx;
-  font-weight: 700;
-}
-
-.mode-chip.active {
-  background: linear-gradient(180deg, rgba(255, 192, 0, 0.18), rgba(255, 192, 0, 0.1));
-  color: #ffc000;
-  box-shadow: inset 0 0 0 2rpx rgba(255, 192, 0, 0.08);
-}
-
-.section-space {
-  margin-top: 24rpx;
-}
-
-.picker-field {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 88rpx;
-}
-
-.picker-field.disabled {
-  color: #6f6f6f;
-}
-
-.picker-copy {
+  flex-direction: column;
+  gap: 4rpx;
   min-width: 0;
-  flex: 1;
 }
 
-.picker-kicker,
-.board-preview-kicker,
-.custom-kicker {
-  color: #ffc000;
-  font-size: 20rpx;
+.se-pick__value {
+  font-size: 30rpx;
   font-weight: 700;
-  letter-spacing: 4rpx;
 }
 
-.picker-value {
-  margin-top: 6rpx;
-  color: #ffffff;
-  font-size: 28rpx;
-  line-height: 1.4;
+.se-error {
+  color: var(--camp-wolf);
+  font-size: 26rpx;
 }
 
-.picker-arrow {
-  margin-left: 18rpx;
-  color: #ffc000;
-  font-size: 38rpx;
-  line-height: 1;
-}
-
-.helper-text {
-  margin-top: 12rpx;
-  font-size: 22rpx;
-  line-height: 1.6;
-}
-
-.helper-warning {
-  color: #f0b64f;
-}
-
-.board-preview,
-.custom-preview {
-  margin-top: 18rpx;
-  padding: 22rpx;
-  border-radius: 20rpx;
-  background:
-    radial-gradient(circle at top right, rgba(255, 192, 0, 0.1), transparent 40%),
-    rgba(255, 255, 255, 0.04);
-  border: 1rpx solid rgba(255, 192, 0, 0.08);
-}
-
-.board-preview--library {
-  padding: 0;
+.se-preview {
   overflow: hidden;
 }
 
-.board-preview--ghost {
-  background:
-    radial-gradient(circle at top right, rgba(255, 192, 0, 0.12), transparent 42%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.03));
-}
-
-.board-preview-cover {
-  width: 100%;
-  height: 240rpx;
-  display: block;
-}
-
-.board-preview-content {
-  padding: 22rpx;
-}
-
-.board-preview-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16rpx;
-}
-
-.board-preview-name,
-.custom-name {
-  font-size: 32rpx;
-  font-weight: 700;
-  color: #ffffff;
-}
-
-.board-preview-meta,
-.custom-meta {
-  margin-top: 10rpx;
-  color: #b5b5b5;
-  font-size: 24rpx;
-  line-height: 1.7;
-}
-
-.board-preview-desc,
-.custom-desc {
-  margin-top: 12rpx;
-  color: #8f8f8f;
-  font-size: 24rpx;
-  line-height: 1.7;
-}
-
-.board-preview-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12rpx;
-  margin-top: 16rpx;
-}
-
-.board-tag-chip,
-.board-role-pill {
-  padding: 10rpx 18rpx;
-  border-radius: 999rpx;
-  font-size: 22rpx;
-  line-height: 1;
-}
-
-.board-tag-chip {
-  background: rgba(255, 192, 0, 0.12);
-  color: #ffd45c;
-  border: 1rpx solid rgba(255, 192, 0, 0.18);
-}
-
-.board-stat-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12rpx;
-  margin-top: 18rpx;
-}
-
-.board-stat-card {
-  min-width: 0;
-  padding: 16rpx 14rpx;
-  border-radius: 16rpx;
-  background: rgba(255, 255, 255, 0.045);
-  border: 1rpx solid rgba(255, 255, 255, 0.05);
-}
-
-.board-stat-label {
-  color: #8f8f8f;
-  font-size: 20rpx;
-}
-
-.board-stat-value {
-  margin-top: 8rpx;
-  color: #ffffff;
-  font-size: 24rpx;
-  line-height: 1.35;
-  font-weight: 700;
-}
-
-.board-role-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12rpx;
-  margin-top: 18rpx;
-}
-
-.board-role-pill {
-  color: #f5f5f5;
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.board-role-pill--good {
-  background: rgba(255, 192, 0, 0.12);
-  color: #ffe082;
-}
-
-.board-role-pill--wolf {
-  background: rgba(183, 70, 58, 0.22);
-  color: #ff9d8d;
-}
-
-.board-role-pill--third {
-  background: rgba(115, 96, 166, 0.22);
-  color: #d2c2ff;
-}
-
-.board-name-input {
-  min-height: 84rpx;
-  font-size: 26rpx;
-}
-
-.player-input-wrap {
+.se-preview__banner {
   position: relative;
-  margin-top: 14rpx;
+  height: 264rpx;
+  background: #1b1724;
+  border-bottom: 4rpx solid var(--ink);
+  overflow: hidden;
 }
 
-.player-count-input {
-  min-height: 84rpx;
-  padding-right: 92rpx;
+.se-preview__bg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.se-preview__card {
+  position: absolute;
+  width: 124rpx;
+  border-radius: 16rpx;
+  box-shadow: 4rpx 4rpx 0 var(--ink);
+}
+
+.se-preview__card--l1 {
+  left: 330rpx;
+  top: 60rpx;
+  transform: rotate(-10deg);
+}
+
+.se-preview__card--c {
+  left: 430rpx;
+  top: 32rpx;
+  z-index: 2;
+}
+
+.se-preview__card--r1 {
+  left: 530rpx;
+  top: 60rpx;
+  transform: rotate(10deg);
+}
+
+.se-preview__plate {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  z-index: 3;
+  padding: 16rpx 32rpx 14rpx;
+  border-top-right-radius: 28rpx;
+  background: var(--ink);
+  font-size: 40rpx;
+  font-weight: 900;
+}
+
+.se-preview__body {
+  padding: 24rpx 32rpx 32rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+}
+
+.se-tokens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18rpx;
+  padding-left: 4rpx;
+}
+
+.se-token {
+  width: 68rpx;
+  height: 68rpx;
+}
+
+.se-token__text {
   font-size: 28rpx;
 }
 
-.player-count-unit {
-  position: absolute;
-  top: 50%;
-  right: 26rpx;
-  transform: translateY(-50%);
-  color: #ffc000;
-  font-size: 26rpx;
-  font-weight: 700;
+.se-count {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
 }
 
-.player-helper {
-  margin-top: 10rpx;
-  color: #8f8f8f;
-}
-
-.player-quick-summary {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14rpx;
-  margin-top: 16rpx;
-}
-
-.player-summary-card {
-  min-height: 88rpx;
-  padding: 18rpx 20rpx;
-  border-radius: 20rpx;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1rpx solid rgba(255, 255, 255, 0.05);
+.se-count__input {
+  width: 140rpx;
+  height: 96rpx;
+  border-radius: 28rpx;
+  background: var(--bg);
+  border: 4rpx solid var(--ink);
+  color: var(--gold);
+  font-size: 48rpx;
+  font-weight: 900;
+  text-align: center;
   box-sizing: border-box;
 }
 
-.player-summary-label {
-  color: #8f8f8f;
-  font-size: 22rpx;
-}
-
-.player-summary-value {
-  margin-top: 8rpx;
-  color: #ffffff;
-  font-size: 28rpx;
-  font-weight: 700;
-  line-height: 1.2;
-}
-
-.save-button {
-  margin-top: 28rpx;
+.se-save {
+  flex: 1;
 }
 </style>

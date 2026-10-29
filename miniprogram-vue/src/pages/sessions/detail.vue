@@ -1,6 +1,7 @@
 <script setup>
 import { computed, reactive, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
+import NavBar from '../../components/NavBar.vue'
 import userData from '../../services/user-data'
 import { formatDateTime } from '../../utils/format'
 
@@ -88,14 +89,17 @@ function resetForm(rawSession) {
   Object.assign(recordForm, makeDefaultForm(players.value, latestRound(rawSession)))
 }
 
-function syncSessionView(rawSession) {
+function syncSessionView(rawSession, options = {}) {
   if (!rawSession) return
   session.value = {
     ...rawSession,
     records: (rawSession.records || []).slice(),
   }
   players.value = buildPlayers(rawSession.playerCount)
-  resetForm(rawSession)
+  // 编辑弹层打开时（比如切到微信聊天再回来）不能重置表单，否则正在填的记录会丢
+  if (!options.keepForm) {
+    resetForm(rawSession)
+  }
 }
 
 const displayRecords = computed(() => {
@@ -116,7 +120,7 @@ const latestWolfPack = computed(() => {
   return latest?.content || '暂无狼坑记录'
 })
 
-async function refreshSession() {
+async function refreshSession(options = {}) {
   if (!sessionId.value) return
   try {
     const current = await userData.getSessionById(sessionId.value)
@@ -125,7 +129,7 @@ async function refreshSession() {
       uni.showToast({ title: '对局不存在', icon: 'none' })
       return
     }
-    syncSessionView(current)
+    syncSessionView(current, options)
   } catch (error) {
     uni.showToast({ title: error?.message || '笔记加载失败', icon: 'none' })
   }
@@ -303,419 +307,451 @@ onLoad((options) => {
 })
 
 onShow(() => {
-  refreshSession()
+  refreshSession({ keepForm: showEditor.value })
 })
 </script>
 
 <template>
-  <view v-if="session" class="page-shell">
-    <view class="glass-card section-card">
-      <view class="hero-title" style="font-size: 46rpx;">{{ session.boardName }}</view>
-      <view class="hero-subtitle">{{ session.playerCount }} 人局 · 最近更新 {{ formatDateTime(session.updateTime) }}</view>
-      <view class="hero-status-row">
-        <view class="pill pill-gold">共 {{ displayRecords.length }} 条记录</view>
-        <view class="pill pill-white">{{ latestWolfPack }}</view>
+  <view class="nt-page nt-page--bar">
+    <NavBar back title="对局笔记" />
+
+    <view v-if="session" class="nt-gutter nt-stack sd-body">
+      <view class="nt-ink sd-head">
+        <text class="sd-head__name serif">{{ session.boardName }}</text>
+        <text class="nt-meta">{{ session.playerCount }} 人局 · 最近更新 {{ formatDateTime(session.updateTime) }}</text>
+        <view class="sd-head__tags">
+          <text class="nt-tag c-gold">共 {{ displayRecords.length }} 条记录</text>
+          <text class="nt-tag">{{ latestWolfPack }}</text>
+        </view>
+      </view>
+
+      <view class="nt-panel">
+        <view class="nt-panel__head">
+          <text class="nt-h2">事件时间线</text>
+          <text class="nt-meta">按时间先后</text>
+        </view>
+        <view v-if="!displayRecords.length" class="nt-empty sd-empty">还没有记录，从下面的按钮记第一条。</view>
+        <view class="sd-timeline">
+          <view v-for="(item, index) in displayRecords" :key="item.id" class="sd-record">
+            <view v-if="index < displayRecords.length - 1" class="sd-record__line" />
+            <view class="sd-record__dot" :class="`sd-record__dot--${item.type}`" />
+            <view class="sd-record__body">
+              <view class="sd-record__top">
+                <view class="sd-record__tags">
+                  <text class="nt-tag" :class="`sd-type--${item.type}`">{{ item.typeLabel }}</text>
+                  <text class="nt-tag">{{ item.roundLabel }}</text>
+                </view>
+                <text class="sd-record__remove" @tap="removeRecord(item.id)">删除</text>
+              </view>
+              <text class="sd-record__content">{{ item.content }}</text>
+              <text class="nt-meta">{{ item.player || '未指定玩家' }} · {{ item.timestampLabel }}</text>
+            </view>
+          </view>
+        </view>
       </view>
     </view>
 
-    <view class="glass-card section-card">
-      <view class="section-title">事件时间线</view>
-      <view v-if="!displayRecords.length" class="section-desc">还没有记录，先从底部工具栏添加第一条。</view>
-      <view v-for="item in displayRecords" :key="item.id" class="record-item">
-        <view class="record-head">
-          <view class="record-badges">
-            <view class="pill pill-gold">{{ item.typeLabel }}</view>
-            <view class="pill pill-white">{{ item.roundLabel }}</view>
-          </view>
-          <view class="section-meta">{{ item.timestampLabel }}</view>
-        </view>
-        <view class="record-content">{{ item.content }}</view>
-        <view class="record-player">{{ item.player || '未指定玩家' }}</view>
-        <button class="record-remove" @tap="removeRecord(item.id)">删除</button>
-      </view>
+    <view class="nt-bar sd-tools">
+      <view class="nt-btn nt-btn--ghost sd-tool" @tap="openEditor('seer')">查验</view>
+      <view class="nt-btn nt-btn--gold sd-tool" @tap="openEditor('vote')">投票</view>
+      <view class="nt-btn nt-btn--ghost sd-tool" @tap="openEditor('speech')">发言</view>
+      <view class="nt-btn nt-btn--ghost sd-tool" @tap="openEditor('wolfPack')">狼坑</view>
     </view>
 
-    <view class="tool-grid glass-card">
-      <view class="tool-item" @tap="openEditor('seer')">查验</view>
-      <view class="tool-item" @tap="openEditor('vote')">投票</view>
-      <view class="tool-item" @tap="openEditor('speech')">发言</view>
-      <view class="tool-item" @tap="openEditor('wolfPack')">狼坑</view>
-    </view>
-
-    <view v-if="showEditor" class="editor-mask" @tap="closeEditor">
-      <view class="editor-panel glass-card" @tap.stop>
-        <view class="editor-header">
-          <view>
-            <view class="section-title">{{ editorTitleMap[editorType] }}</view>
-            <view class="section-desc editor-desc">把这一阶段的关键信息记下来，复盘会更清晰。</view>
-          </view>
-          <view class="editor-close" @tap="closeEditor">关闭</view>
+    <view v-if="showEditor" class="sd-mask" @tap="closeEditor">
+      <view class="sd-sheet" @tap.stop>
+        <view class="sd-sheet__handle" />
+        <view class="sd-sheet__head">
+          <text class="nt-h2">{{ editorTitleMap[editorType] }}</text>
+          <text class="sd-sheet__close" @tap="closeEditor">关闭</text>
         </view>
 
-        <view class="editor-block">
-          <view class="section-meta">第几天</view>
-          <view class="day-chip-row">
-            <view
-              v-for="day in dayOptions"
-              :key="day"
-              class="chip chip--day"
-              :class="{ active: recordForm.round === day }"
-              @tap="recordForm.round = day"
-            >
-              {{ formatDay(day) }}
+        <scroll-view scroll-y class="sd-sheet__scroll">
+          <view class="sd-block">
+            <text class="nt-label">第几天</text>
+            <view class="sd-chips">
+              <text
+                v-for="day in dayOptions"
+                :key="day"
+                class="nt-chip"
+                :class="{ 'nt-chip--on': recordForm.round === day }"
+                @tap="recordForm.round = day"
+              >{{ formatDay(day) }}</text>
             </view>
           </view>
-        </view>
 
-        <template v-if="editorType === 'seer' || editorType === 'speech'">
-          <view class="editor-block">
-            <view class="section-meta">玩家</view>
-            <scroll-view scroll-x class="chip-row compact-row">
-              <view
-                v-for="player in players"
-                :key="player"
-                class="chip"
-                :class="{ active: recordForm.player === player }"
-                @tap="recordForm.player = player"
-              >
-                {{ player }}
-              </view>
-            </scroll-view>
-          </view>
-
-          <view class="editor-block">
-            <view class="section-meta">内容</view>
-            <textarea
-              v-model="recordForm.content"
-              class="field-textarea tactical-textarea"
-              placeholder="输入这一天的记录内容"
-              auto-height
-            />
-          </view>
-        </template>
-
-        <template v-if="editorType === 'wolfPack'">
-          <view class="editor-block">
-            <view class="section-meta">狼坑候选</view>
-            <view class="player-grid">
-              <view
-                v-for="player in players"
-                :key="player"
-                class="chip"
-                :class="{ active: recordForm.wolfPack.includes(player) }"
-                @tap="toggleArray('wolfPack', player)"
-              >
-                {{ player }}
-              </view>
-            </view>
-          </view>
-        </template>
-
-        <template v-if="editorType === 'vote'">
-          <view class="editor-block">
-            <view class="section-meta">模板</view>
-            <scroll-view scroll-x class="chip-row compact-row">
-              <view
-                v-for="item in voteTemplateOptions"
-                :key="item.value"
-                class="chip"
-                :class="{ active: recordForm.voteTemplate === item.value }"
-                @tap="recordForm.voteTemplate = item.value"
-              >
-                {{ item.label }}
-              </view>
-            </scroll-view>
-          </view>
-
-          <template v-if="recordForm.voteTemplate === 'normal'">
-            <view class="editor-block">
-              <view class="section-meta">投票人</view>
-              <view class="player-grid">
-                <view
+          <block v-if="editorType === 'seer' || editorType === 'speech'">
+            <view class="sd-block">
+              <text class="nt-label">玩家</text>
+              <view class="sd-grid">
+                <text
                   v-for="player in players"
                   :key="player"
-                  class="chip"
-                  :class="{ active: recordForm.normalVoters.includes(player) }"
-                  @tap="toggleArray('normalVoters', player)"
-                >
-                  {{ player }}
-                </view>
+                  class="nt-chip sd-seat"
+                  :class="{ 'nt-chip--on': recordForm.player === player }"
+                  @tap="recordForm.player = player"
+                >{{ player }}</text>
               </view>
             </view>
-            <view class="editor-block">
-              <view class="section-meta">被投票人</view>
-              <scroll-view scroll-x class="chip-row compact-row">
-                <view
-                  v-for="player in players"
-                  :key="player"
-                  class="chip"
-                  :class="{ active: recordForm.normalTarget === player }"
-                  @tap="recordForm.normalTarget = player"
-                >
-                  {{ player }}
-                </view>
-              </scroll-view>
+            <view class="sd-block">
+              <text class="nt-label">内容</text>
+              <textarea v-model="recordForm.content" class="nt-textarea" placeholder="输入这一天的记录内容" placeholder-class="nt-placeholder" auto-height />
             </view>
-          </template>
+          </block>
 
-          <template v-if="recordForm.voteTemplate === 'tie'">
-            <view class="editor-block">
-              <view class="section-meta">平票对象</view>
-              <view class="player-grid">
-                <view
+          <block v-if="editorType === 'wolfPack'">
+            <view class="sd-block">
+              <text class="nt-label">狼坑候选</text>
+              <view class="sd-grid">
+                <text
                   v-for="player in players"
                   :key="player"
-                  class="chip"
-                  :class="{ active: recordForm.tieTargets.includes(player) }"
-                  @tap="toggleArray('tieTargets', player)"
-                >
-                  {{ player }}
-                </view>
+                  class="nt-chip sd-seat"
+                  :class="{ 'nt-chip--on': recordForm.wolfPack.includes(player) }"
+                  @tap="toggleArray('wolfPack', player)"
+                >{{ player }}</text>
               </view>
             </view>
-          </template>
+          </block>
 
-          <template v-if="recordForm.voteTemplate === 'abstain'">
-            <view class="editor-block">
-              <view class="section-meta">弃票玩家</view>
-              <view class="player-grid">
-                <view
-                  v-for="player in players"
-                  :key="player"
-                  class="chip"
-                  :class="{ active: recordForm.abstainPlayers.includes(player) }"
-                  @tap="toggleArray('abstainPlayers', player)"
-                >
-                  {{ player }}
-                </view>
+          <block v-if="editorType === 'vote'">
+            <view class="sd-block">
+              <text class="nt-label">模板</text>
+              <view class="sd-chips">
+                <text
+                  v-for="item in voteTemplateOptions"
+                  :key="item.value"
+                  class="nt-chip"
+                  :class="{ 'nt-chip--on': recordForm.voteTemplate === item.value }"
+                  @tap="recordForm.voteTemplate = item.value"
+                >{{ item.label }}</text>
               </view>
             </view>
-          </template>
 
-          <template v-if="recordForm.voteTemplate === 'sheriff'">
-            <view class="editor-block">
-              <view class="section-meta">警长</view>
-              <scroll-view scroll-x class="chip-row compact-row">
-                <view
-                  v-for="player in players"
-                  :key="player"
-                  class="chip"
-                  :class="{ active: recordForm.sheriffPlayer === player }"
-                  @tap="setSheriffPlayer(player)"
-                >
-                  {{ player }}
-                </view>
-              </scroll-view>
-            </view>
-            <view class="editor-block">
-              <view class="section-meta">归票目标</view>
-              <scroll-view scroll-x class="chip-row compact-row">
-                <view
-                  v-for="player in players"
-                  :key="player"
-                  class="chip"
-                  :class="{ active: recordForm.sheriffTarget === player }"
-                  @tap="recordForm.sheriffTarget = player"
-                >
-                  {{ player }}
-                </view>
-              </scroll-view>
-            </view>
-            <view class="editor-block">
-              <view class="section-meta">跟票玩家</view>
-              <view class="player-grid">
-                <view
-                  v-for="player in players"
-                  :key="player"
-                  class="chip"
-                  :class="{ active: recordForm.sheriffFollowers.includes(player) }"
-                  @tap="toggleArray('sheriffFollowers', player)"
-                >
-                  {{ player }}
+            <block v-if="recordForm.voteTemplate === 'normal'">
+              <view class="sd-block">
+                <text class="nt-label">投票人</text>
+                <view class="sd-grid">
+                  <text
+                    v-for="player in players"
+                    :key="player"
+                    class="nt-chip sd-seat"
+                    :class="{ 'nt-chip--on': recordForm.normalVoters.includes(player) }"
+                    @tap="toggleArray('normalVoters', player)"
+                  >{{ player }}</text>
                 </view>
               </view>
+              <view class="sd-block">
+                <text class="nt-label">被投票人</text>
+                <view class="sd-grid">
+                  <text
+                    v-for="player in players"
+                    :key="player"
+                    class="nt-chip sd-seat"
+                    :class="{ 'nt-chip--on': recordForm.normalTarget === player }"
+                    @tap="recordForm.normalTarget = player"
+                  >{{ player }}</text>
+                </view>
+              </view>
+            </block>
+
+            <block v-if="recordForm.voteTemplate === 'tie'">
+              <view class="sd-block">
+                <text class="nt-label">平票对象</text>
+                <view class="sd-grid">
+                  <text
+                    v-for="player in players"
+                    :key="player"
+                    class="nt-chip sd-seat"
+                    :class="{ 'nt-chip--on': recordForm.tieTargets.includes(player) }"
+                    @tap="toggleArray('tieTargets', player)"
+                  >{{ player }}</text>
+                </view>
+              </view>
+            </block>
+
+            <block v-if="recordForm.voteTemplate === 'abstain'">
+              <view class="sd-block">
+                <text class="nt-label">弃票玩家</text>
+                <view class="sd-grid">
+                  <text
+                    v-for="player in players"
+                    :key="player"
+                    class="nt-chip sd-seat"
+                    :class="{ 'nt-chip--on': recordForm.abstainPlayers.includes(player) }"
+                    @tap="toggleArray('abstainPlayers', player)"
+                  >{{ player }}</text>
+                </view>
+              </view>
+            </block>
+
+            <block v-if="recordForm.voteTemplate === 'sheriff'">
+              <view class="sd-block">
+                <text class="nt-label">警长</text>
+                <view class="sd-grid">
+                  <text
+                    v-for="player in players"
+                    :key="player"
+                    class="nt-chip sd-seat"
+                    :class="{ 'nt-chip--on': recordForm.sheriffPlayer === player }"
+                    @tap="setSheriffPlayer(player)"
+                  >{{ player }}</text>
+                </view>
+              </view>
+              <view class="sd-block">
+                <text class="nt-label">归票目标</text>
+                <view class="sd-grid">
+                  <text
+                    v-for="player in players"
+                    :key="player"
+                    class="nt-chip sd-seat"
+                    :class="{ 'nt-chip--on': recordForm.sheriffTarget === player }"
+                    @tap="recordForm.sheriffTarget = player"
+                  >{{ player }}</text>
+                </view>
+              </view>
+              <view class="sd-block">
+                <text class="nt-label">跟票玩家</text>
+                <view class="sd-grid">
+                  <text
+                    v-for="player in players"
+                    :key="player"
+                    class="nt-chip sd-seat"
+                    :class="{ 'nt-chip--on': recordForm.sheriffFollowers.includes(player) }"
+                    @tap="toggleArray('sheriffFollowers', player)"
+                  >{{ player }}</text>
+                </view>
+              </view>
+            </block>
+
+            <view class="sd-block">
+              <text class="nt-label">备注</text>
+              <textarea v-model="recordForm.voteRemark" class="nt-textarea sd-remark" placeholder="可选，记录归票理由或场上细节" placeholder-class="nt-placeholder" auto-height />
             </view>
-          </template>
+            <text class="sd-preview">{{ votePreview }}</text>
+          </block>
+        </scroll-view>
 
-          <view class="editor-block">
-            <view class="section-meta">备注</view>
-            <textarea
-              v-model="recordForm.voteRemark"
-              class="field-textarea tactical-textarea tactical-textarea--compact"
-              placeholder="可选，记录归票理由或场上细节"
-              auto-height
-            />
-          </view>
-          <view class="vote-preview">{{ votePreview }}</view>
-        </template>
-
-        <button class="button-primary submit-btn" @tap="saveRecord">保存记录</button>
+        <view class="nt-btn nt-btn--gold nt-btn--block" @tap="saveRecord">保存记录</view>
       </view>
     </view>
   </view>
 </template>
 
 <style scoped lang="scss">
-.hero-status-row {
-  margin-top: 18rpx;
+.sd-body {
+  margin-top: 16rpx;
+}
+
+.sd-head {
+  padding: 32rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 14rpx;
+}
+
+.sd-head__name {
+  font-size: 48rpx;
+  font-weight: 900;
+}
+
+.sd-head__tags {
   display: flex;
   flex-wrap: wrap;
   gap: 12rpx;
 }
 
-.record-item {
-  margin-top: 18rpx;
-  padding: 22rpx 22rpx 20rpx;
-  border-radius: 18rpx;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1rpx solid rgba(255, 255, 255, 0.04);
+.sd-empty {
+  padding: 40rpx 0;
 }
 
-.record-head {
+.sd-timeline {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16rpx;
+  flex-direction: column;
+  gap: 32rpx;
 }
 
-.record-badges {
+.sd-record {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
+  gap: 24rpx;
+}
+
+.sd-record__line {
+  position: absolute;
+  left: 13rpx;
+  top: 36rpx;
+  bottom: -36rpx;
+  width: 4rpx;
+  background: var(--line);
+}
+
+.sd-record__dot {
+  position: relative;
+  z-index: 1;
+  width: 30rpx;
+  height: 30rpx;
+  margin-top: 8rpx;
+  border-radius: 50%;
+  border: 4rpx solid var(--ink);
+  background: var(--gold);
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.sd-record__dot--vote {
+  background: var(--camp-wolf);
+}
+
+.sd-record__dot--speech {
+  background: var(--moon);
+}
+
+.sd-record__dot--wolfPack {
+  background: #7a1a22;
+}
+
+.sd-record__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
   gap: 10rpx;
 }
 
-.record-content {
-  margin-top: 14rpx;
-  font-size: 28rpx;
-  line-height: 1.8;
-}
-
-.record-player {
-  margin-top: 10rpx;
-  color: #a0a0a0;
-  font-size: 24rpx;
-}
-
-.record-remove {
-  margin: 16rpx 0 0;
-  width: 140rpx;
-  height: 64rpx;
-  line-height: 64rpx;
-  border-radius: 12rpx;
-  background: rgba(255, 255, 255, 0.06);
-  color: #ffffff;
-  font-size: 24rpx;
-}
-
-.record-remove::after {
-  border: none;
-}
-
-.tool-grid {
-  position: fixed;
-  left: 24rpx;
-  right: 24rpx;
-  bottom: calc(env(safe-area-inset-bottom) + 24rpx);
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12rpx;
-  padding: 18rpx;
-}
-
-.tool-item {
-  height: 80rpx;
-  border-radius: 14rpx;
-  background: rgba(255, 255, 255, 0.05);
+.sd-record__top {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 24rpx;
-  color: #ffffff;
-}
-
-.editor-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.62);
-  display: flex;
-  align-items: flex-end;
-  z-index: 30;
-}
-
-.editor-panel {
-  width: 100%;
-  max-height: 82vh;
-  padding: 28rpx 24rpx calc(env(safe-area-inset-bottom) + 26rpx);
-  border-radius: 28rpx 28rpx 0 0;
-  overflow-y: auto;
-}
-
-.editor-header {
-  display: flex;
-  align-items: flex-start;
   justify-content: space-between;
-  gap: 18rpx;
 }
 
-.editor-desc {
-  margin-top: 8rpx;
-}
-
-.editor-close {
-  flex: 0 0 auto;
-  padding: 10rpx 18rpx;
-  border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.06);
-  color: #d8d8d8;
-  font-size: 22rpx;
-}
-
-.editor-block {
-  margin-top: 18rpx;
-}
-
-.day-chip-row {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12rpx;
-  margin-top: 12rpx;
-}
-
-.chip--day {
-  justify-content: center;
-  min-height: 72rpx;
-}
-
-.compact-row {
-  margin-top: 12rpx;
-}
-
-.player-grid {
+.sd-record__tags {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12rpx;
-  margin-top: 12rpx;
+  gap: 10rpx;
 }
 
-.tactical-textarea {
-  min-height: 200rpx;
+.sd-type--seer {
+  color: var(--gold);
 }
 
-.tactical-textarea--compact {
-  min-height: 140rpx;
+.sd-type--vote {
+  color: var(--camp-wolf);
 }
 
-.vote-preview {
-  margin-top: 18rpx;
-  padding: 18rpx 20rpx;
-  border-radius: 16rpx;
-  background: rgba(255, 192, 0, 0.08);
-  color: #f3d27a;
+.sd-type--speech {
+  color: var(--moon);
+}
+
+.sd-record__remove {
+  color: var(--text-3);
   font-size: 24rpx;
+}
+
+.sd-record__content {
+  font-size: 30rpx;
   line-height: 1.7;
 }
 
-.submit-btn {
-  margin-top: 24rpx;
+.sd-tools {
+  gap: 14rpx;
+}
+
+.sd-tool {
+  flex: 1;
+  padding: 0;
+}
+
+.sd-mask {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  background: rgba(7, 6, 10, 0.7);
+  display: flex;
+  align-items: flex-end;
+}
+
+.sd-sheet {
+  width: 100%;
+  max-height: 86vh;
+  padding: 24rpx 40rpx calc(32rpx + env(safe-area-inset-bottom));
+  border-radius: 40rpx 40rpx 0 0;
+  background: var(--panel);
+  border-top: 4rpx solid var(--ink);
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+  box-sizing: border-box;
+}
+
+.sd-sheet__handle {
+  align-self: center;
+  width: 80rpx;
+  height: 8rpx;
+  border-radius: 4rpx;
+  background: var(--line);
+}
+
+.sd-sheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sd-sheet__close {
+  color: var(--text-3);
+  font-size: 28rpx;
+}
+
+.sd-sheet__scroll {
+  max-height: 60vh;
+}
+
+.sd-block {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  margin-bottom: 28rpx;
+}
+
+.sd-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14rpx;
+}
+
+.sd-chips .nt-chip {
+  height: 60rpx;
+  font-size: 26rpx;
+}
+
+.sd-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12rpx;
+}
+
+.sd-seat {
+  justify-content: center;
+  padding: 0;
+  height: 64rpx;
+  font-size: 26rpx;
+}
+
+.sd-remark {
+  min-height: 120rpx;
+}
+
+.sd-preview {
+  display: block;
+  padding: 22rpx 24rpx;
+  border-radius: 20rpx;
+  background: var(--panel-raised);
+  color: var(--gold);
+  font-size: 28rpx;
+  line-height: 1.6;
+  margin-bottom: 8rpx;
 }
 </style>

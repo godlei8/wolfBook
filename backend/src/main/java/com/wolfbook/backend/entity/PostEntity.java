@@ -13,12 +13,48 @@ public class PostEntity {
     private Integer id;
     private String openid;
     private String content;
+    private String title;
+    private String category;
+    private Integer boardId;
+    private String boardName;
     private String images;
     private Integer likeCount;
     private Integer commentCount;
     private Integer status;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
+
+    public String getTitle() {
+        return title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+
+    public void setCategory(String category) {
+        this.category = category;
+    }
+
+    public Integer getBoardId() {
+        return boardId;
+    }
+
+    public void setBoardId(Integer boardId) {
+        this.boardId = boardId;
+    }
+
+    public String getBoardName() {
+        return boardName;
+    }
+
+    public void setBoardName(String boardName) {
+        this.boardName = boardName;
+    }
 
     public Integer getId() {
         return id;

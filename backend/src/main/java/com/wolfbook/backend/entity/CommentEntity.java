@@ -9,13 +9,16 @@ import java.time.LocalDateTime;
 @TableName("comments")
 public class CommentEntity {
 
+    public static final String STATUS_VISIBLE = "VISIBLE";
+    public static final String STATUS_HIDDEN = "HIDDEN";
+
     @TableId(type = IdType.AUTO)
     private Integer id;
     private Integer postId;
     private String openid;
     private String content;
     private Integer likeCount;
-    private Integer status;
+    private String status;
     private LocalDateTime createTime;
 
     public Integer getId() {
@@ -58,11 +61,11 @@ public class CommentEntity {
         this.likeCount = likeCount;
     }
 
-    public Integer getStatus() {
+    public String getStatus() {
         return status;
     }
 
-    public void setStatus(Integer status) {
+    public void setStatus(String status) {
         this.status = status;
     }
 

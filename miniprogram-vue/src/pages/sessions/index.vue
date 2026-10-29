@@ -1,9 +1,10 @@
 <script setup>
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import AssistantDock from '../../components/assistant/AssistantDock.vue'
+import NavBar from '../../components/NavBar.vue'
 import userData from '../../services/user-data'
 import { formatDateTime } from '../../utils/format'
+import { syncTabBar } from '../../utils/tabbar'
 
 const sessions = ref([])
 
@@ -61,98 +62,117 @@ function removeSession(id) {
 }
 
 onShow(() => {
+  syncTabBar()
   refreshSessions()
 })
 </script>
 
 <template>
-  <view class="page-shell">
-    <view class="hero-title">我的笔记</view>
-    <view class="hero-subtitle">把发言、票型和夜间信息收进一条时间线，局后复盘会更清楚。</view>
+  <view class="nt-page nt-page--tab">
+    <NavBar wordmark="NOTES" />
 
-    <view v-if="!sessions.length" class="empty-state glass-card section-card">还没有对局笔记，点右下角加号先创建一局。</view>
-
-    <view v-for="item in sessions" :key="item.sessionId" class="glass-card section-card session-card" @tap="openSession(item.sessionId)">
-      <view class="session-top">
-        <view class="pill pill-gold">{{ item.playerCount }} 人局</view>
-        <view class="pill pill-white">{{ (item.records || []).length }} 条</view>
-      </view>
-      <view class="session-name">{{ item.boardName || '未命名对局' }}</view>
-      <view class="session-meta">最近更新 {{ item.updateLabel }}</view>
-      <view class="session-preview">
-        <view class="session-preview-label">{{ item.latestTypeLabel }}</view>
-        <view class="session-preview-text">{{ item.latestPreview }}</view>
-      </view>
-      <view class="session-footer">
-        <view class="section-meta">创建于 {{ item.createLabel }}</view>
-        <button class="session-remove" @tap.stop="removeSession(item.sessionId)">删除</button>
-      </view>
+    <view class="nt-gutter sx-head">
+      <text class="nt-title">对局笔记</text>
+      <view class="nt-btn nt-btn--gold sx-new" @tap="createSession">✎ 记一局</view>
     </view>
 
-    <view class="floating-plus" @tap="createSession">+</view>
-    <AssistantDock scene="sessions_index" :page-context="{ page: 'sessions/index', sessionCount: sessions.length }" />
+    <view class="nt-gutter nt-stack sx-body">
+      <text class="nt-meta">把发言、票型和夜间信息收进一条时间线，局后复盘更清楚。</text>
+
+      <view v-if="!sessions.length" class="nt-empty">还没有对局笔记。点右上方的「记一局」开始。</view>
+
+      <view v-for="item in sessions" :key="item.sessionId" class="nt-ink sx-card" @tap="openSession(item.sessionId)">
+        <view class="sx-card__top">
+          <view class="sx-card__tags">
+            <text class="nt-tag">{{ item.playerCount }} 人局</text>
+            <text class="nt-tag">{{ (item.records || []).length }} 条记录</text>
+          </view>
+          <text class="sx-card__remove" @tap.stop="removeSession(item.sessionId)">删除</text>
+        </view>
+        <text class="sx-card__name serif">{{ item.boardName || '未命名对局' }}</text>
+        <view class="sx-card__preview">
+          <text class="sx-card__label">{{ item.latestTypeLabel }}</text>
+          <text class="sx-card__text">{{ item.latestPreview }}</text>
+        </view>
+        <text class="nt-meta">最近更新 {{ item.updateLabel }}</text>
+      </view>
+    </view>
   </view>
 </template>
 
 <style scoped lang="scss">
-.session-card {
-  margin-top: 24rpx;
-}
-
-.session-top,
-.session-footer {
+.sx-head {
+  padding-top: 8rpx;
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
 }
 
-.session-name {
-  margin-top: 18rpx;
-  font-size: 38rpx;
-  font-weight: 700;
+.sx-body {
+  margin-top: 12rpx;
 }
 
-.session-meta {
-  margin-top: 10rpx;
-  color: #b3b3b3;
-  font-size: 24rpx;
+.sx-card {
+  padding: 32rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
 }
 
-.session-preview {
-  margin-top: 18rpx;
-  padding: 18rpx 20rpx;
-  border-radius: 16rpx;
-  background: rgba(255, 255, 255, 0.04);
+.sx-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.session-preview-label {
-  color: #ffc000;
-  font-size: 22rpx;
-  font-weight: 700;
+.sx-card__tags {
+  display: flex;
+  gap: 12rpx;
 }
 
-.session-preview-text {
-  margin-top: 10rpx;
+.sx-card__remove {
+  color: var(--text-3);
   font-size: 26rpx;
-  line-height: 1.7;
+  padding: 8rpx 0 8rpx 20rpx;
 }
 
-.session-footer {
-  margin-top: 20rpx;
+.sx-card__name {
+  font-size: 40rpx;
+  font-weight: 900;
 }
 
-.session-remove {
-  margin: 0;
-  height: 64rpx;
-  line-height: 64rpx;
-  padding: 0 24rpx;
-  border-radius: 12rpx;
-  background: rgba(255, 255, 255, 0.06);
-  color: #ffffff;
+.sx-card__preview {
+  padding: 22rpx 24rpx;
+  border-radius: 24rpx;
+  background: var(--panel-raised);
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.sx-card__label {
+  color: var(--gold);
   font-size: 24rpx;
+  font-weight: 700;
 }
 
-.session-remove::after {
-  border: none;
+.sx-card__text {
+  color: var(--text-soft);
+  font-size: 28rpx;
+  line-height: 1.7;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.sx-new {
+  height: 76rpx;
+  padding: 0 28rpx;
+  border-radius: 24rpx;
+  font-size: 28rpx;
+  box-shadow: 4rpx 4rpx 0 var(--ink);
+  flex-shrink: 0;
 }
 </style>

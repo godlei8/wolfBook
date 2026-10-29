@@ -1,0 +1,28 @@
+# 追加到共用的 Caddyfile 里（124.222.9.209 上是 /opt/online-safe/repo/deploy/Caddyfile），容器名见 docker-compose.caddy.yml。
+# 那个 Caddyfile 是单文件挂载进容器的：要原地写入（cat > 或 >>），别用会换 inode 的 sed -i，
+# 改完 `docker exec online-safe-caddy-1 caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile`。
+wolfbook.godlei8.top {
+	request_body {
+		max_size 20MB
+	}
+
+	redir / /console/ 302
+	redir /console /console/ 302
+
+	handle /console/* {
+		encode zstd gzip
+		reverse_proxy wolfbook-admin:6110
+	}
+
+	# 助手流式回答（SSE），不能缓冲
+	handle /api/assistant/ask/stream {
+		reverse_proxy wolfbook-backend:8110 {
+			flush_interval -1
+		}
+	}
+
+	# /api/**、/admin/**、/uploads/**
+	handle {
+		reverse_proxy wolfbook-backend:8110
+	}
+}

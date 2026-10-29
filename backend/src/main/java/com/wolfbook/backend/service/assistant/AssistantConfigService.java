@@ -7,8 +7,10 @@ import com.wolfbook.backend.common.ApiException;
 import com.wolfbook.backend.config.AssistantProperties;
 import com.wolfbook.backend.dto.AssistantDtos;
 import com.wolfbook.backend.entity.AssistantConfigEntity;
+import com.wolfbook.backend.entity.AssistantModelEntity;
 import com.wolfbook.backend.entity.AssistantSessionEntity;
 import com.wolfbook.backend.mapper.AssistantConfigMapper;
+import com.wolfbook.backend.mapper.AssistantModelMapper;
 import com.wolfbook.backend.mapper.AssistantSessionMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -26,26 +28,69 @@ public class AssistantConfigService {
 
     private final AssistantConfigMapper assistantConfigMapper;
     private final AssistantSessionMapper assistantSessionMapper;
+    private final AssistantModelMapper assistantModelMapper;
     private final AssistantProperties assistantProperties;
     private final ObjectMapper objectMapper;
 
     public AssistantConfigService(
             AssistantConfigMapper assistantConfigMapper,
             AssistantSessionMapper assistantSessionMapper,
+            AssistantModelMapper assistantModelMapper,
             AssistantProperties assistantProperties,
             ObjectMapper objectMapper
     ) {
         this.assistantConfigMapper = assistantConfigMapper;
         this.assistantSessionMapper = assistantSessionMapper;
+        this.assistantModelMapper = assistantModelMapper;
         this.assistantProperties = assistantProperties;
         this.objectMapper = objectMapper;
     }
 
     public AssistantDtos.AdminAiConfig getAdminConfig() {
-        return maskSecrets(getRuntimeConfig());
+        return maskSecrets(getStoredConfig());
     }
 
+    /**
+     * 实际调用时用的配置：provider 换成模型管理里「当前使用」的模型（启用且有 Key）；
+     * 一个都没设时退回库里原来的 DeepSeek 配置。AI 助手问答和「按世界观起草」都从这里拿模型。
+     */
     public AssistantDtos.AdminAiConfig getRuntimeConfig() {
+        AssistantDtos.AdminAiConfig stored = getStoredConfig();
+        AssistantModelEntity active = findActiveModel();
+        if (active == null || !StringUtils.hasText(active.getApiKey())) {
+            return stored;
+        }
+        return new AssistantDtos.AdminAiConfig(
+                stored.base(),
+                new AssistantDtos.ProviderSection("openai-compatible", active.getModel(), active.getBaseUrl(), active.getApiKey(),
+                        Integer.valueOf(1).equals(active.getDisableThinking())),
+                stored.volcengine(),
+                stored.prompt(),
+                stored.retrieval(),
+                stored.search(),
+                stored.safety(),
+                stored.ui()
+        );
+    }
+
+    /** 原来「DeepSeek 配置」那一份（含真实 Key），模型管理第一次初始化时搬过去。 */
+    public AssistantDtos.ProviderSection getLegacyProvider() {
+        return getStoredConfig().provider();
+    }
+
+    private AssistantModelEntity findActiveModel() {
+        try {
+            return assistantModelMapper.selectOne(new LambdaQueryWrapper<AssistantModelEntity>()
+                    .eq(AssistantModelEntity::getActive, 1)
+                    .eq(AssistantModelEntity::getEnabled, 1)
+                    .last("LIMIT 1"));
+        } catch (RuntimeException missingTable) {
+            // 表还没建（老库第一次启动前），先用原来的配置
+            return null;
+        }
+    }
+
+    private AssistantDtos.AdminAiConfig getStoredConfig() {
         AssistantConfigEntity entity = getOrCreateConfigEntity();
         AssistantDtos.AdminAiConfig defaults = AssistantDefaults.adminConfig(assistantProperties);
         return new AssistantDtos.AdminAiConfig(
@@ -70,7 +115,7 @@ public class AssistantConfigService {
         if (config == null) {
             throw new ApiException(4000, "AI config can not be empty");
         }
-        AssistantDtos.AdminAiConfig existing = getRuntimeConfig();
+        AssistantDtos.AdminAiConfig existing = getStoredConfig();
         AssistantDtos.AdminAiConfig normalizedConfig = new AssistantDtos.AdminAiConfig(
                 sanitizeBaseSection(config.base()),
                 sanitizeProviderSection(config.provider(), existing.provider()),
@@ -110,19 +155,8 @@ public class AssistantConfigService {
         );
         return new AssistantDtos.AssistantBootstrapResponse(
                 config.base().enabled(),
-                config.base().welcomeMessage(),
                 config.base().quickQuestions(),
-                latestSession == null ? null : latestSession.getSessionId(),
-                new AssistantDtos.Appearance(
-                        config.ui().mascot(),
-                        config.ui().accentColor(),
-                        config.ui().dockLabel()
-                ),
-                new AssistantDtos.FeatureFlags(
-                        config.search().webSearchEnabled() && assistantProperties.isWebSearchEnabled(),
-                        true,
-                        true
-                )
+                latestSession == null ? null : latestSession.getSessionId()
         );
     }
 

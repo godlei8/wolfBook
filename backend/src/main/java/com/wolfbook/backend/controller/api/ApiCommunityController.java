@@ -4,6 +4,8 @@ import com.wolfbook.backend.common.ApiResponse;
 import com.wolfbook.backend.common.PageResponse;
 import com.wolfbook.backend.dto.WolfbookDtos;
 import com.wolfbook.backend.service.CommunityService;
+import com.wolfbook.backend.support.ImageUploadValidator;
+import com.wolfbook.backend.support.TokenService;
 import com.wolfbook.backend.support.UploadProvider;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
@@ -18,19 +20,32 @@ public class ApiCommunityController {
 
     private final CommunityService communityService;
     private final UploadProvider uploadProvider;
+    private final ImageUploadValidator imageUploadValidator;
+    private final TokenService tokenService;
 
-    public ApiCommunityController(CommunityService communityService, UploadProvider uploadProvider) {
+    public ApiCommunityController(
+            CommunityService communityService,
+            UploadProvider uploadProvider,
+            ImageUploadValidator imageUploadValidator,
+            TokenService tokenService
+    ) {
         this.communityService = communityService;
         this.uploadProvider = uploadProvider;
+        this.imageUploadValidator = imageUploadValidator;
+        this.tokenService = tokenService;
     }
 
     @GetMapping("/posts")
     public ApiResponse<PageResponse<WolfbookDtos.PostSummaryView>> listPosts(
             @RequestHeader(name = "Authorization", required = false) String authorization,
             @RequestParam(defaultValue = "1") @Min(1) int page,
-            @RequestParam(defaultValue = "10") @Min(1) int size
+            @RequestParam(defaultValue = "10") @Min(1) int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) Integer boardId,
+            @RequestParam(defaultValue = "false") boolean mine
     ) {
-        return ApiResponse.success(communityService.listPosts(page, size, authorization));
+        return ApiResponse.success(communityService.listPosts(page, size, authorization, sort, category, boardId, mine));
     }
 
     @GetMapping("/posts/{id}")
@@ -84,6 +99,8 @@ public class ApiCommunityController {
 
     @PostMapping("/upload")
     public ApiResponse<WolfbookDtos.UploadResponse> upload(@RequestHeader("Authorization") String authorization, @RequestPart("file") MultipartFile file) {
+        tokenService.requireUser(authorization);
+        imageUploadValidator.validate(file);
         return ApiResponse.success(new WolfbookDtos.UploadResponse(uploadProvider.upload(file, "community/media")));
     }
 }

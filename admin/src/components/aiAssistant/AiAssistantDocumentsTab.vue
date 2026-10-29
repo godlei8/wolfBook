@@ -192,11 +192,11 @@ const documentPageSizeModel = computed({
 
 .knowledge-upload-card {
   padding: 20px;
-  border: 1px solid rgba(255, 192, 0, 0.12);
+  border: 1px solid rgba(242, 179, 61, 0.12);
   border-radius: 18px;
   background:
-    radial-gradient(circle at top right, rgba(255, 192, 0, 0.12), transparent 36%),
-    linear-gradient(180deg, rgba(28, 28, 28, 0.96), rgba(14, 14, 14, 0.96));
+    radial-gradient(circle at top right, rgba(242, 179, 61, 0.12), transparent 36%),
+    var(--panel-raised);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 18px;
@@ -209,7 +209,7 @@ const documentPageSizeModel = computed({
 }
 
 .knowledge-kicker {
-  color: #ffc000;
+  color: var(--gold);
   font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -226,7 +226,7 @@ const documentPageSizeModel = computed({
 .knowledge-upload-copy p,
 .knowledge-empty-copy p {
   margin: 0;
-  color: #9d9d9d;
+  color: var(--text-3);
   line-height: 1.6;
 }
 
@@ -238,7 +238,7 @@ const documentPageSizeModel = computed({
 }
 
 .knowledge-upload-tip {
-  color: #9d9d9d;
+  color: var(--text-3);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -253,8 +253,8 @@ const documentPageSizeModel = computed({
 .knowledge-stat-card {
   padding: 18px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 192, 0, 0.1);
-  background: linear-gradient(180deg, rgba(30, 30, 30, 0.94), rgba(18, 18, 18, 0.94));
+  border: 1px solid rgba(242, 179, 61, 0.1);
+  background: var(--panel-raised);
   display: grid;
   gap: 6px;
 }
@@ -262,7 +262,7 @@ const documentPageSizeModel = computed({
 .knowledge-stat-card strong {
   font-size: 28px;
   line-height: 1;
-  color: #ffc000;
+  color: var(--gold);
 }
 
 .knowledge-stat-label,
@@ -270,7 +270,7 @@ const documentPageSizeModel = computed({
 .knowledge-section-meta,
 .document-name-cell span,
 .document-summary {
-  color: #9d9d9d;
+  color: var(--text-3);
 }
 
 .knowledge-stat-label {
@@ -319,7 +319,7 @@ const documentPageSizeModel = computed({
 }
 
 .document-name-cell strong {
-  color: #f3f3f3;
+  color: var(--text);
   font-size: 14px;
 }
 
@@ -334,8 +334,8 @@ const documentPageSizeModel = computed({
   min-width: 34px;
   height: 34px;
   border-radius: 999px;
-  background: rgba(255, 192, 0, 0.12);
-  color: #ffc000;
+  background: rgba(242, 179, 61, 0.12);
+  color: var(--gold);
   font-weight: 700;
 }
 
@@ -357,7 +357,7 @@ const documentPageSizeModel = computed({
   overflow-y: hidden;
   padding-bottom: 8px;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 192, 0, 0.42) rgba(255, 255, 255, 0.05);
+  scrollbar-color: rgba(242, 179, 61, 0.42) rgba(255, 255, 255, 0.05);
 }
 
 .table-scroll-shell::-webkit-scrollbar {
@@ -371,7 +371,7 @@ const documentPageSizeModel = computed({
 
 .table-scroll-shell::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(255, 211, 92, 0.7), rgba(182, 126, 12, 0.72));
+  background: linear-gradient(90deg, rgba(242, 179, 61, 0.7), rgba(182, 126, 12, 0.72));
 }
 
 .table-scroll-shell :deep(.el-table) {
@@ -402,7 +402,7 @@ const documentPageSizeModel = computed({
 }
 
 .table-total {
-  color: #9d9d9d;
+  color: var(--text-3);
   font-size: 13px;
 }
 
@@ -416,9 +416,9 @@ const documentPageSizeModel = computed({
   place-items: center;
   gap: 16px;
   text-align: center;
-  border: 1px dashed rgba(255, 192, 0, 0.18);
+  border: 1px dashed rgba(242, 179, 61, 0.18);
   border-radius: 16px;
-  background: linear-gradient(180deg, rgba(24, 24, 24, 0.88), rgba(14, 14, 14, 0.96));
+  background: var(--bg);
 }
 
 .knowledge-empty-mark {
@@ -427,8 +427,8 @@ const documentPageSizeModel = computed({
   border-radius: 24px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, rgba(255, 192, 0, 0.2), rgba(255, 192, 0, 0.06));
-  color: #ffc000;
+  background: linear-gradient(135deg, rgba(242, 179, 61, 0.2), rgba(242, 179, 61, 0.06));
+  color: var(--gold);
   font-size: 32px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -450,7 +450,7 @@ const documentPageSizeModel = computed({
 }
 
 :deep(.knowledge-table .el-table__row:hover > td.el-table__cell) {
-  background: rgba(255, 192, 0, 0.05);
+  background: rgba(242, 179, 61, 0.05);
 }
 
 @media (max-width: 1200px) {

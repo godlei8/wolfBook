@@ -1,23 +1,114 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { onLoad, onUnload } from '@dcloudio/uni-app'
 import assistant from '../../services/assistant'
-import { markdownToRichText, plainTextToRichText } from '../../services/markdown'
+import { markdownToRichText } from '../../services/markdown'
+import { formatDateTime, fromNow } from '../../utils/format'
+import { normalizeChatMessage } from './message-model'
+import { createAssistantStreamBuffer, shouldAutoScrollOnMessageAppend } from './stream-buffer'
 import storage from '../../services/storage'
+import api from '../../services/api'
+import NavBar from '../../components/NavBar.vue'
 
 const bootstrap = ref(null)
+const sessions = ref([])
 const messages = ref([])
 const loading = ref(false)
+const loadingHistory = ref(false)
 const sending = ref(false)
 const activeSessionId = ref('')
 const scene = ref('general')
 const pageContext = ref({})
 const draft = ref('')
+let activeStream = null
 const chatScrollIntoView = ref('')
+const loadError = ref('')
+// 原型 D5：顶部的「正在看：某板子」上下文条、历史会话开关、从别的页面带过来的问题
+const contextAvatars = ref([])
+const showHistory = ref(false)
+// 回答下面的「出处」角色卡：问题或回答里提到的角色（原型 D5）
+const roleIndex = ref([])
+let pendingQuestion = ''
+
+const streamRenderDelayMs = 120
+// 还没出字时的等待卡片：后端报的进度（「正在查站内资料」）和已经等了几秒
+const waitSeconds = ref(0)
+let waitTimer = null
 
 const draftCount = computed(() => (draft.value || '').length)
-const canSend = computed(() => !!(draft.value || '').trim() && !sending.value)
-const composerHint = computed(() => '可以问规则、角色技能冲突，或者按人数推荐板子。')
+const assistantEnabled = computed(() => bootstrap.value?.enabled !== false)
+const canSend = computed(() => assistantEnabled.value && !!(draft.value || '').trim() && !sending.value)
+// 每条回答配一张角色卡：先看前一条提问里点到的角色，再看回答本身
+const answerRoles = computed(() => {
+  const map = {}
+  let lastQuestion = ''
+  messages.value.forEach((item) => {
+    if (item.role === 'USER') {
+      lastQuestion = item.content || ''
+      return
+    }
+    if (item.isStreaming) return
+    map[item.id] = pickSourceRole(lastQuestion, item.content || '')
+  })
+  return map
+})
+const sourceLabel = computed(() => (pageContext.value?.boardName ? `出处：${pageContext.value.boardName} · 角色细则` : '出处：角色图鉴'))
+
+function findRole(text) {
+  if (!text) return null
+  // 长名字优先，避免「狼人」抢掉「白狼王」
+  return roleIndex.value.find((role) => text.includes(role.name)) || null
+}
+
+// 问题里点到的角色可能不止一个（「狼美人骑士里骑士怎么决斗」里板子名带着狼美人），优先选回答里也讲到的那个
+function pickSourceRole(question, answer) {
+  const asked = question ? roleIndex.value.filter((role) => question.includes(role.name)) : []
+  return asked.find((role) => answer.includes(role.name)) || asked[0] || findRole(answer)
+}
+
+async function loadRoleIndex() {
+  try {
+    const roles = await api.getRoles()
+    roleIndex.value = roles.filter((role) => role.name && role.name !== '平民').sort((a, b) => b.name.length - a.name.length)
+  } catch (error) {
+    roleIndex.value = []
+  }
+}
+
+function openRole(id) {
+  uni.navigateTo({ url: `/pages/roles/detail?id=${id}` })
+}
+
+function openBoard(id) {
+  uni.navigateTo({ url: `/pages/boards/detail?id=${id}` })
+}
+
+function trySend() {
+  if (!canSend.value) return
+  sendQuestion()
+}
+
+function openTools() {
+  const items = [{ label: '新会话', run: startNewSession }]
+  if (sessions.value.length) items.push({ label: showHistory.value ? '收起历史会话' : `历史会话（${sessions.value.length}）`, run: () => (showHistory.value = !showHistory.value) })
+  if (latestSessionId.value && latestSessionId.value !== activeSessionId.value) items.push({ label: '恢复最近一次', run: resumeLatestSession })
+  if (activeSessionId.value) items.push({ label: '清空当前会话', run: resetCurrentSession })
+  uni.showActionSheet({
+    itemList: items.map((item) => item.label),
+    success: (res) => items[res.tapIndex]?.run(),
+  })
+}
+const quickQuestions = computed(() => bootstrap.value?.quickQuestions || [])
+const latestSessionId = computed(() => bootstrap.value?.latestSessionId || '')
+const hasMessages = computed(() => messages.value.length > 0)
+const showEmptyState = computed(() => !loading.value && !loadingHistory.value && !hasMessages.value)
+const contextLabel = computed(() => {
+  const ctx = pageContext.value || {}
+  if (ctx.boardName) return `正在看：${ctx.boardName}，回答会按这个板子的规则来`
+  if (ctx.roleName) return `正在看：${ctx.roleName}，回答会围绕这个角色`
+  if (ctx.phase) return `正在主持：${ctx.boardName || '当前对局'}`
+  return ''
+})
 
 function scrollChatToBottom() {
   chatScrollIntoView.value = ''
@@ -27,44 +118,46 @@ function scrollChatToBottom() {
 }
 
 watch(
-  messages,
-  () => {
-    scrollChatToBottom()
+  () => messages.value.length,
+  (nextCount, previousCount) => {
+    if (shouldAutoScrollOnMessageAppend(previousCount, nextCount)) {
+      scrollChatToBottom()
+    }
   },
-  { deep: true }
 )
 
-function renderContent(message) {
-  const content = message?.content || ''
-  if ((message?.contentFormat || 'PLAIN_TEXT') === 'MARKDOWN') {
-    return markdownToRichText(content, { streaming: !!message?.isStreaming })
+function decorateSession(session) {
+  return {
+    ...session,
+    title: session?.title || '未命名会话',
+    relativeUpdate: fromNow(session?.updateTime),
+    updateLabel: formatDateTime(session?.updateTime),
   }
-  return plainTextToRichText(content)
 }
 
 function normalizeMessage(message) {
-  const citations = Array.isArray(message?.citations) ? message.citations : []
-  const boards = Array.isArray(message?.recommendedBoards) ? message.recommendedBoards : []
-  const contentFormat = message?.contentFormat || (message?.role === 'ASSISTANT' ? 'MARKDOWN' : 'PLAIN_TEXT')
+  return normalizeChatMessage(message, {
+    markdownRenderer: (content) => markdownToRichText(content, { streaming: !!message?.isStreaming }),
+  })
+}
 
-  let visibleCitations = citations
-  if (citations.length && boards.length) {
-    const boardIds = new Set(boards.map((board) => String(board.id)))
-    visibleCitations = citations.filter((citation) => {
-      if (citation?.sourceType !== 'STRUCTURED') {
-        return true
-      }
-      return !boardIds.has(String(citation.sourceId))
-    })
-  }
+function patchMessage(messageId, patcher) {
+  messages.value = messages.value.map((item) => (String(item.id) === String(messageId) ? normalizeMessage(patcher(item)) : item))
+}
 
-  visibleCitations = visibleCitations.filter((citation) => citation?.sourceType === 'WEB')
+function startWaitClock() {
+  stopWaitClock()
+  waitSeconds.value = 0
+  const startedAt = Date.now()
+  waitTimer = setInterval(() => {
+    waitSeconds.value = Math.floor((Date.now() - startedAt) / 1000)
+  }, 1000)
+}
 
-  return {
-    ...message,
-    contentFormat,
-    visibleCitations,
-    renderedContent: renderContent({ ...message, contentFormat }),
+function stopWaitClock() {
+  if (waitTimer) {
+    clearInterval(waitTimer)
+    waitTimer = null
   }
 }
 
@@ -74,10 +167,7 @@ function appendOptimisticUserMessage(message) {
     role: 'USER',
     content: message,
     contentFormat: 'PLAIN_TEXT',
-    citations: [],
-    recommendedBoards: [],
-    suggestedQuestions: [],
-    usedWebSearch: false,
+    isStreaming: false,
   })
   messages.value = [...messages.value, tempMessage]
 }
@@ -90,100 +180,136 @@ function addStreamingAssistantMessage() {
     content: '',
     contentFormat: 'MARKDOWN',
     answerType: 'STREAMING',
-    citations: [],
-    recommendedBoards: [],
-    suggestedQuestions: [],
-    usedWebSearch: false,
     isStreaming: true,
+    stageLabel: '正在理解问题',
   })
   messages.value = [...messages.value, streamingMessage]
   return messageId
 }
 
-function patchMessage(messageId, patcher) {
-  messages.value = messages.value.map((item) => {
-    if (String(item.id) !== String(messageId)) {
-      return item
-    }
-    return normalizeMessage({
-      ...patcher(item),
-    })
-  })
-}
-
 function replaceStreamingMessage(messageId, response) {
-  patchMessage(messageId, () => ({
+  const nextMessage = normalizeMessage({
     id: response.messageId,
     role: 'ASSISTANT',
     content: response.answer,
     contentFormat: response.contentFormat || 'MARKDOWN',
     answerType: response.answerType,
-    citations: response.citations,
-    recommendedBoards: response.recommendedBoards,
-    suggestedQuestions: response.suggestedQuestions,
-    usedWebSearch: response.usedWebSearch,
     traceId: response.traceId,
     isStreaming: false,
-  }))
+  })
+
+  messages.value = messages.value.map((item) => (String(item.id) === String(messageId) ? nextMessage : item))
+  scrollChatToBottom()
 }
 
 function markStreamingFailed(messageId, errorMessage) {
   patchMessage(messageId, () => ({
     role: 'ASSISTANT',
-    content: `## 发送失败\n\n- ${errorMessage || '当前消息发送失败，请稍后再试。'}`,
+    content: `**没答上来**：${errorMessage || '请稍后再试一次。'}`,
     contentFormat: 'MARKDOWN',
     answerType: 'REFUSAL',
-    citations: [],
-    recommendedBoards: [],
-    suggestedQuestions: [],
-    usedWebSearch: false,
     isStreaming: false,
   }))
 }
 
 async function loadBootstrap() {
   bootstrap.value = await assistant.bootstrap()
-  if (!activeSessionId.value && bootstrap.value?.latestSessionId) {
-    activeSessionId.value = bootstrap.value.latestSessionId
-  }
 }
 
-async function loadMessages() {
-  if (!activeSessionId.value) {
+async function loadSessionList() {
+  const rawSessions = await assistant.getSessions()
+  sessions.value = rawSessions.map(decorateSession)
+}
+
+async function loadMessages(sessionId = activeSessionId.value) {
+  if (!sessionId) {
     messages.value = []
+    activeSessionId.value = ''
     return
   }
-  const rawMessages = await assistant.getMessages(activeSessionId.value)
-  messages.value = rawMessages.map(normalizeMessage)
+
+  loadingHistory.value = true
+  loadError.value = ''
+  activeSessionId.value = sessionId
+
+  try {
+    const rawMessages = await assistant.getMessages(sessionId)
+    messages.value = rawMessages.map((message) => normalizeMessage(message))
+    scrollChatToBottom()
+  } catch (error) {
+    loadError.value = error instanceof Error && error.message ? error.message : '历史会话加载失败'
+    throw error
+  } finally {
+    loadingHistory.value = false
+  }
 }
 
 async function loadAll() {
   if (!storage.getAuthToken()) {
+    loadError.value = '请先登录后再使用 AI 助手'
     uni.showToast({ title: '请先登录', icon: 'none' })
     return
   }
+
   loading.value = true
+  loadError.value = ''
+
   try {
-    await loadBootstrap()
-    await loadMessages()
+    await Promise.all([loadBootstrap(), loadSessionList()])
   } catch (error) {
+    loadError.value = error instanceof Error && error.message ? error.message : 'AI 助手加载失败'
     uni.showToast({ title: 'AI 助手加载失败', icon: 'none' })
   } finally {
     loading.value = false
   }
+  // 从板子 / 角色页的问题条进来：加载好就直接问
+  if (pendingQuestion && !loadError.value) {
+    const question = pendingQuestion
+    pendingQuestion = ''
+    sendQuestion(question)
+  }
 }
 
-async function sendQuestion(question = draft.value) {
-  if (sending.value) return
-  const message = (question || '').trim()
+async function loadContextAvatars() {
+  const boardId = Number(pageContext.value?.boardId || 0)
+  if (!boardId) return
+  try {
+    const board = await api.getBoardDetail(boardId)
+    contextAvatars.value = (board.cardRoles || []).filter((role) => role.portrait).slice(0, 4)
+  } catch (error) {
+    contextAvatars.value = []
+  }
+}
+
+async function sendQuestion(question) {
+  if (sending.value || !assistantEnabled.value) return
+
+  // 只有发送的是输入框草稿时才清空草稿；快捷提问不能把用户正在写的内容清掉
+  const usingDraft = question === undefined || question === null
+  const message = (usingDraft ? draft.value : question || '').trim()
   if (!message) {
     uni.showToast({ title: '请输入问题', icon: 'none' })
     return
   }
+  if (usingDraft) {
+    draft.value = ''
+  }
 
+  loadError.value = ''
   sending.value = true
   appendOptimisticUserMessage(message)
   const streamingMessageId = addStreamingAssistantMessage()
+  startWaitClock()
+  const streamBuffer = createAssistantStreamBuffer(
+    (delta) => {
+      patchMessage(streamingMessageId, (current) => ({
+        ...current,
+        content: `${current.content || ''}${delta}`,
+        isStreaming: true,
+      }))
+    },
+    { delayMs: streamRenderDelayMs },
+  )
 
   try {
     const response = await assistant.askStream(
@@ -200,85 +326,112 @@ async function sendQuestion(question = draft.value) {
             activeSessionId.value = event.sessionId
           }
         },
+        onStage(event) {
+          if (!event?.label) return
+          patchMessage(streamingMessageId, (current) => ({ ...current, stageLabel: event.label }))
+        },
         onDelta(event) {
           const delta = event?.delta || ''
           if (!delta) return
-          patchMessage(streamingMessageId, (current) => ({
-            ...current,
-            content: `${current.content || ''}${delta}`,
-            isStreaming: true,
-          }))
+          stopWaitClock()
+          streamBuffer.push(delta)
         },
         onDone(event) {
+          streamBuffer.flush()
           replaceStreamingMessage(streamingMessageId, event)
         },
-      }
+        onRequestTask(task) {
+          activeStream = task
+        },
+      },
     )
 
     activeSessionId.value = response.sessionId
-    draft.value = ''
+    loadSessionList().catch(() => {})
   } catch (error) {
     const messageText = error instanceof Error && error.message ? error.message : '发送失败，请稍后再试'
     markStreamingFailed(streamingMessageId, messageText)
     uni.showToast({ title: messageText.slice(0, 18), icon: 'none' })
+    if (usingDraft && !draft.value) {
+      draft.value = message
+    }
   } finally {
+    activeStream = null
+    streamBuffer.dispose()
+    stopWaitClock()
     sending.value = false
   }
 }
 
-function openBoard(boardId) {
-  uni.navigateTo({ url: `/pages/boards/detail?id=${boardId}` })
+function goLogin() {
+  uni.switchTab({ url: '/pages/user/index' })
 }
 
-function answerTypeLabel(answerType) {
-  if (answerType === 'STRUCTURED_RECOMMENDATION') return '站内推荐'
-  if (answerType === 'RAG_ANSWER') return '知识库回答'
-  if (answerType === 'WEB_AUGMENTED_ANSWER') return '联网增强'
-  if (answerType === 'REFUSAL') return '边界提示'
-  if (answerType === 'STREAMING') return '生成中'
-  return 'AI 回答'
+async function resumeLatestSession() {
+  if (!latestSessionId.value || loadingHistory.value || sending.value) {
+    return
+  }
+  await loadMessages(latestSessionId.value)
 }
 
-function sourceTypeLabel(sourceType) {
-  if (sourceType === 'STRUCTURED') return '站内板库'
-  if (sourceType === 'DOCUMENT') return '知识文档'
-  if (sourceType === 'WEB') return '联网来源'
-  return sourceType || '来源'
-}
-
-function sourceTypeClass(sourceType) {
-  if (sourceType === 'STRUCTURED') return 'citation-badge--structured'
-  if (sourceType === 'DOCUMENT') return 'citation-badge--document'
-  if (sourceType === 'WEB') return 'citation-badge--web'
-  return 'citation-badge--default'
-}
-
-function handleCitationAction(citation) {
-  if (!citation?.url) return
-  uni.setClipboardData({
-    data: citation.url,
-    success: () => uni.showToast({ title: '链接已复制', icon: 'none' }),
-  })
+async function openSession(sessionId) {
+  if (!sessionId || loadingHistory.value || sending.value) {
+    return
+  }
+  showHistory.value = false
+  await loadMessages(sessionId)
 }
 
 function startNewSession() {
+  loadError.value = ''
   activeSessionId.value = ''
   messages.value = []
   draft.value = ''
 }
 
-async function resetCurrentSession() {
+function resetCurrentSession() {
   if (!activeSessionId.value) {
     startNewSession()
     return
   }
+  uni.showModal({
+    title: '清空当前会话',
+    content: '会删除这个会话里的全部对话记录，且无法恢复。',
+    confirmText: '清空',
+    confirmColor: '#ff4d4f',
+    success: (res) => {
+      if (res.confirm) {
+        resetCurrentSessionNow()
+      }
+    },
+  })
+}
+
+async function resetCurrentSessionNow() {
   try {
     await assistant.resetSession(activeSessionId.value)
-    uni.showToast({ title: '会话已重置', icon: 'none' })
     startNewSession()
+    await loadSessionList()
+    uni.showToast({ title: '当前会话已清空', icon: 'none' })
   } catch (error) {
-    uni.showToast({ title: '重置失败', icon: 'none' })
+    uni.showToast({ title: '清空失败', icon: 'none' })
   }
+}
+
+async function retryCurrentView() {
+  if (!storage.getAuthToken()) {
+    goLogin()
+    return
+  }
+  if (activeSessionId.value) {
+    await loadMessages(activeSessionId.value)
+    return
+  }
+  await loadAll()
+}
+
+function messageTimeLabel(message) {
+  return formatDateTime(message?.createTime)
 }
 
 onLoad((options) => {
@@ -288,142 +441,159 @@ onLoad((options) => {
   } catch (error) {
     pageContext.value = {}
   }
+  pendingQuestion = decodeURIComponent(options?.question || '')
   loadAll()
+  loadContextAvatars()
+  loadRoleIndex()
+})
+
+onUnload(() => {
+  stopWaitClock()
+  if (activeStream) {
+    activeStream.abort()
+    activeStream = null
+  }
 })
 </script>
 
 <template>
-  <view class="page-shell assistant-page">
-    <view class="assistant-shell">
-      <view class="glass-card assistant-header">
-        <view class="assistant-header-kicker">WOLFBOOK AI ASSISTANT</view>
-        <view class="assistant-header-main">
-          <view class="assistant-header-copy">
-            <view class="assistant-header-title">AI 狼人顾问</view>
-            <view class="assistant-header-desc">规则、角色、板子和站内知识，都可以在这里快速问。</view>
-          </view>
-          <view class="assistant-header-actions">
-            <view class="header-action" @tap="startNewSession">新建</view>
-            <view class="header-action header-action--ghost" @tap="resetCurrentSession">重置</view>
+  <view class="nt-page chat-page">
+    <NavBar back title="规则速查">
+      <template #side>
+        <view class="chat-more" @tap="openTools"><view class="chat-more__dot" /><view class="chat-more__dot" /><view class="chat-more__dot" /></view>
+      </template>
+    </NavBar>
+
+    <view class="nt-gutter chat-top">
+      <view v-if="contextLabel" class="chat-context">
+        <view v-if="contextAvatars.length" class="chat-context__stack">
+          <view
+            v-for="(role, index) in contextAvatars"
+            :key="role.roleId"
+            class="nt-token chat-context__token"
+            :style="{ marginLeft: index ? '-16rpx' : '0', zIndex: 4 - index }"
+          >
+            <image class="nt-token__img" :src="role.portrait" mode="aspectFill" :style="{ borderColor: role.accent }" webp />
           </view>
         </view>
-        <view class="assistant-header-meta">
-          <view class="hero-chip">{{ bootstrap?.appearance?.dockLabel || 'AI狼人顾问' }}</view>
-        </view>
+        <text class="chat-context__text">{{ contextLabel }}</text>
       </view>
 
-      <scroll-view
-        class="assistant-chat-scroll"
-        scroll-y
-        enhanced
-        show-scrollbar="false"
-        :scroll-into-view="chatScrollIntoView"
-      >
-        <view class="assistant-chat-content">
-          <view v-if="bootstrap && !messages.length" class="glass-card section-card welcome-panel">
-            <view class="section-title">快捷提问</view>
-            <view class="section-desc">{{ bootstrap.welcomeMessage }}</view>
-            <view class="suggestion-grid">
-              <view v-for="item in bootstrap.quickQuestions" :key="item" class="suggestion-card" @tap="sendQuestion(item)">
-                {{ item }}
-              </view>
-            </view>
+      <view v-if="showHistory && sessions.length" class="chat-history">
+        <view
+          v-for="item in sessions.slice(0, 8)"
+          :key="item.sessionId"
+          class="nt-row chat-history__row"
+          :class="{ 'chat-history__row--on': item.sessionId === activeSessionId }"
+          @tap="openSession(item.sessionId)"
+        >
+          <text class="chat-history__title">{{ item.title }}</text>
+          <text class="nt-meta">{{ item.relativeUpdate || item.updateLabel }}</text>
+        </view>
+      </view>
+    </view>
+
+    <scroll-view class="chat-scroll" scroll-y :show-scrollbar="false" :scroll-into-view="chatScrollIntoView">
+      <view class="nt-gutter chat-list">
+        <view v-if="loadError" class="nt-panel chat-state">
+          <text class="nt-h2">当前加载失败</text>
+          <text class="nt-meta">{{ loadError }}</text>
+          <view class="chat-state__actions">
+            <view class="nt-btn nt-btn--gold nt-btn--small" @tap="retryCurrentView">重新加载</view>
+            <view v-if="!storage.getAuthToken()" class="nt-btn nt-btn--ghost nt-btn--small" @tap="goLogin">去登录</view>
           </view>
+        </view>
 
-          <view v-if="loading && !messages.length" class="glass-card section-card welcome-panel">
-            <view class="section-desc">正在整理当前会话和知识来源...</view>
+        <view v-if="showEmptyState && !loadError" class="chat-empty">
+          <view class="chat-avatar">☾</view>
+          <view class="chat-bubble">
+            <text>我是法官台的规则速查。问我板子规则、角色技能或对局里的判定，会尽量按你正在看的板子来回答。</text>
           </view>
+        </view>
 
-          <view
-            v-for="item in messages"
-            :key="item.id"
-            class="message-row"
-            :class="{ 'message-row--assistant': item.role === 'ASSISTANT' }"
-            :id="`message-${item.id}`"
-          >
-            <view class="message-avatar" :class="{ 'message-avatar--assistant': item.role === 'ASSISTANT' }">
-              {{ item.role === 'ASSISTANT' ? 'AI' : '我' }}
-            </view>
-            <view class="glass-card message-bubble" :class="{ 'message-bubble--assistant': item.role === 'ASSISTANT' }">
-              <view v-if="item.role === 'ASSISTANT'" class="message-bubble-head">
-                <view class="answer-chip" :class="{ 'answer-chip--streaming': item.isStreaming }">
-                  {{ item.isStreaming ? '生成中' : answerTypeLabel(item.answerType) }}
-                </view>
-                <view v-if="item.usedWebSearch" class="answer-chip answer-chip--web">联网补充</view>
-              </view>
+        <view v-if="(loading || loadingHistory) && !hasMessages" class="nt-empty">
+          {{ loading ? '正在连接规则速查…' : '正在载入历史对话…' }}
+        </view>
 
-              <rich-text
-                v-if="item.role === 'ASSISTANT'"
-                class="message-content message-content--markdown"
-                :nodes="item.renderedContent"
-              />
-              <view v-else class="message-content message-content--plain">{{ item.content }}</view>
-
-              <view v-if="item.recommendedBoards && item.recommendedBoards.length" class="board-stack">
-                <view
-                  v-for="board in item.recommendedBoards"
-                  :key="board.id"
-                  class="board-card"
-                  @tap="openBoard(board.id)"
-                >
-                  <image v-if="board.coverImage" class="board-cover" :src="board.coverImage" mode="aspectFill" />
-                  <view class="board-copy">
-                    <view class="board-name">{{ board.name }}</view>
-                    <view class="section-meta">{{ board.playerCount }} 人 / {{ board.difficulty }}</view>
-                    <view class="board-reason">{{ board.reason }}</view>
-                  </view>
-                </view>
-              </view>
-
-              <view v-if="item.visibleCitations && item.visibleCitations.length" class="citation-stack">
-                <view
-                  v-for="citation in item.visibleCitations"
-                  :key="`${citation.sourceType}-${citation.title}-${citation.sourceId}`"
-                  class="citation-card"
-                  @tap="handleCitationAction(citation)"
-                >
-                  <view class="citation-head">
-                    <view class="citation-badge" :class="sourceTypeClass(citation.sourceType)">
-                      {{ sourceTypeLabel(citation.sourceType) }}
+        <view v-for="item in messages" :key="item.id" :id="`message-${item.id}`">
+          <view v-if="item.role === 'USER'" class="chat-self">
+            <text class="chat-self__bubble">{{ item.content }}</text>
+          </view>
+          <view v-else class="chat-answer">
+            <view class="chat-avatar">☾</view>
+            <view class="chat-answer__body">
+              <view v-if="item.isStreaming && !item.content" class="chat-bubble chat-wait">
+                <view class="chat-wait__moon" />
+                <view class="chat-wait__body">
+                  <view class="chat-wait__row">
+                    <text class="chat-wait__label">{{ item.stageLabel || '正在理解问题' }}</text>
+                    <view class="chat-wait__dots">
+                      <view class="chat-wait__dot" />
+                      <view class="chat-wait__dot chat-wait__dot--2" />
+                      <view class="chat-wait__dot chat-wait__dot--3" />
                     </view>
-                    <view v-if="citation.url" class="citation-action">复制链接</view>
                   </view>
-                  <view class="citation-title">{{ citation.title }}</view>
+                  <text v-if="waitSeconds >= 8" class="chat-wait__hint">已等 {{ waitSeconds }} 秒，模型在组织语言，马上就好</text>
                 </view>
+              </view>
+              <view v-else class="chat-bubble">
+                <rich-text v-if="item.renderMode === 'markdown'" class="chat-markdown" :nodes="item.renderedContent" />
+                <text v-else class="chat-plain">{{ item.content }}</text>
+              </view>
+              <view v-for="board in item.recommendedBoards || []" :key="board.id" class="chat-ref" @tap="openBoard(board.id)">
+                <view class="chat-ref__mark"><text>{{ board.playerCount }}</text></view>
+                <view class="chat-ref__text">
+                  <text class="chat-ref__name">{{ board.name }}</text>
+                  <text class="chat-ref__meta">{{ board.playerCount }} 人 · {{ board.difficulty }}</text>
+                </view>
+                <text class="nt-arrow">›</text>
+              </view>
+              <view v-if="answerRoles[item.id]" class="chat-ref" @tap="openRole(answerRoles[item.id].id)">
+                <view class="nt-token chat-ref__token">
+                  <image v-if="answerRoles[item.id].portrait" class="nt-token__img" :src="answerRoles[item.id].portrait" mode="aspectFill" :style="{ borderColor: answerRoles[item.id].accent }" webp />
+                  <view v-else class="nt-token__text" :style="{ borderColor: answerRoles[item.id].accent }">{{ answerRoles[item.id].name.slice(0, 1) }}</view>
+                </view>
+                <view class="chat-ref__text">
+                  <text class="chat-ref__name">{{ answerRoles[item.id].name }}</text>
+                  <text class="chat-ref__meta">{{ sourceLabel }}</text>
+                </view>
+                <text class="nt-arrow">›</text>
+              </view>
+              <view v-if="item.visibleCitations && item.visibleCitations.length" class="chat-cite">
+                <text class="chat-cite__label">联网来源</text>
+                <text v-for="(cite, index) in item.visibleCitations.slice(0, 3)" :key="index" class="chat-cite__item">{{ index + 1 }}. {{ cite.title || cite.url }}</text>
               </view>
             </view>
           </view>
+        </view>
 
-          <view id="chat-scroll-anchor" class="scroll-anchor" />
+        <view id="chat-scroll-anchor" class="chat-anchor" />
+      </view>
+    </scroll-view>
+
+    <view class="chat-composer">
+      <scroll-view v-if="quickQuestions.length" scroll-x class="nt-chips" :show-scrollbar="false">
+        <view class="nt-chips__inner chat-quick">
+          <text v-for="item in quickQuestions" :key="item" class="nt-chip" @tap="sendQuestion(item)">{{ item }}</text>
         </view>
       </scroll-view>
-
-      <view class="assistant-composer glass-card">
-        <view class="composer-head">
-          <view class="composer-copy">
-            <view class="composer-kicker">TACTICAL QUERY</view>
-            <view class="composer-title">战术提问</view>
-          </view>
-          <view class="composer-meta">{{ draftCount }}/300</view>
-        </view>
-
-        <view class="composer-editor">
+      <view class="chat-input-row">
+        <view class="chat-input">
           <textarea
             v-model="draft"
-            class="assistant-input"
+            class="chat-input__field"
             maxlength="300"
             auto-height
             :show-confirm-bar="false"
             :cursor-spacing="24"
-            placeholder="比如：12人进阶推荐什么板子？女巫能不能自救？"
+            placeholder="问规则、问打法"
+            placeholder-class="nt-placeholder"
           />
+          <text v-if="draftCount" class="chat-input__count">{{ draftCount }}/300</text>
         </view>
-
-        <view class="composer-footer">
-          <view class="composer-hint">{{ composerHint }}</view>
-          <button class="composer-submit" :disabled="!canSend" :loading="sending" @tap="sendQuestion()">
-            发送
-          </button>
+        <view class="nt-btn nt-btn--gold chat-send" :class="{ 'nt-btn--disabled': sending }" @tap="trySend">
+          <text v-if="sending">…</text>
+          <image v-else class="chat-send__plane" src="/static/icons/send.png" mode="aspectFit" />
         </view>
       </view>
     </view>
@@ -431,432 +601,410 @@ onLoad((options) => {
 </template>
 
 <style scoped lang="scss">
-.assistant-page {
+.chat-page {
   height: 100vh;
-  padding: 24rpx 24rpx calc(env(safe-area-inset-bottom) + 20rpx);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
-.assistant-shell {
-  height: 100%;
+.chat-top {
+  flex-shrink: 0;
+  padding-top: 8rpx;
   display: flex;
   flex-direction: column;
   gap: 20rpx;
 }
 
-.assistant-header {
-  position: relative;
-  overflow: hidden;
-  flex-shrink: 0;
-  padding: 28rpx;
-  background:
-    radial-gradient(circle at right top, rgba(255, 192, 0, 0.18), transparent 34%),
-    linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(8, 8, 8, 0.98));
-}
-
-.assistant-header::after {
-  content: '';
-  position: absolute;
-  right: -20rpx;
-  bottom: -28rpx;
-  width: 220rpx;
-  height: 220rpx;
-  border-radius: 999rpx;
-  background: radial-gradient(circle, rgba(255, 192, 0, 0.14), transparent 68%);
-}
-
-.assistant-header-kicker {
-  position: relative;
-  z-index: 1;
-  color: #ffc000;
-  font-size: 20rpx;
-  font-weight: 700;
-  letter-spacing: 4rpx;
-}
-
-.assistant-header-main {
-  position: relative;
-  z-index: 1;
-  margin-top: 12rpx;
+.chat-context {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
   gap: 20rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 28rpx;
+  background: var(--panel);
+  border: 2rpx solid var(--panel-line);
 }
 
-.assistant-header-copy {
-  min-width: 0;
-  flex: 1;
-}
-
-.assistant-header-title {
-  font-size: 54rpx;
-  font-weight: 700;
-}
-
-.assistant-header-desc {
-  margin-top: 12rpx;
-  color: #d8d0bd;
-  line-height: 1.75;
-  font-size: 26rpx;
-}
-
-.assistant-header-actions {
+.chat-context__stack {
   display: flex;
-  gap: 12rpx;
+  padding-left: 4rpx;
   flex-shrink: 0;
 }
 
-.header-action {
-  min-width: 100rpx;
-  height: 64rpx;
-  padding: 0 22rpx;
-  border-radius: 999rpx;
-  background: rgba(255, 192, 0, 0.16);
-  color: #ffc000;
+.chat-context__token {
+  position: relative;
+  width: 56rpx;
+  height: 56rpx;
+}
+
+.chat-context__text {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 26rpx;
+  line-height: 1.5;
+}
+
+.chat-more {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 24rpx;
+  border: 4rpx solid var(--ink);
+  background: var(--panel);
+  box-shadow: 4rpx 4rpx 0 var(--ink);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22rpx;
-  font-weight: 700;
+  box-sizing: border-box;
 }
 
-.header-action--ghost {
-  background: rgba(255, 255, 255, 0.06);
-  color: #ece4cf;
+.chat-more__dot {
+  width: 8rpx;
+  height: 8rpx;
+  margin: 0 3rpx;
+  border-radius: 50%;
+  background: var(--text);
 }
 
-.assistant-header-meta {
-  position: relative;
-  z-index: 1;
+.chat-history {
   display: flex;
+  flex-direction: column;
   gap: 12rpx;
-  margin-top: 18rpx;
+  max-height: 520rpx;
+  overflow-y: auto;
 }
 
-.hero-chip {
-  padding: 10rpx 18rpx;
-  border-radius: 999rpx;
-  background: rgba(255, 192, 0, 0.14);
-  color: #ffc000;
-  font-size: 22rpx;
+.chat-history__row--on {
+  border: 3rpx solid var(--moon);
+}
+
+.chat-history__title {
+  min-width: 0;
+  flex: 1;
+  font-size: 28rpx;
   font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.assistant-chat-scroll {
+.chat-scroll {
   flex: 1;
   min-height: 0;
 }
 
-.assistant-chat-content {
-  padding-bottom: 8rpx;
+.chat-list {
+  padding-top: 32rpx;
+  padding-bottom: 24rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 32rpx;
 }
 
-.welcome-panel {
-  margin-top: 0;
+.chat-state__actions {
+  display: flex;
+  gap: 16rpx;
 }
 
-.suggestion-grid {
-  display: grid;
-  gap: 14rpx;
-  margin-top: 20rpx;
+.chat-self {
+  display: flex;
+  justify-content: flex-end;
 }
 
-.suggestion-card {
-  padding: 18rpx 22rpx;
-  border-radius: 16rpx;
-  background: linear-gradient(180deg, rgba(255, 192, 0, 0.1), rgba(255, 255, 255, 0.03));
-  border: 1rpx solid rgba(255, 192, 0, 0.18);
-  color: #f7f2df;
+.chat-self__bubble {
+  max-width: 78%;
+  padding: 24rpx 28rpx;
+  border-radius: 32rpx 32rpx 8rpx 32rpx;
+  background: var(--text);
+  color: var(--ink);
+  border: 4rpx solid var(--ink);
+  box-shadow: 4rpx 4rpx 0 var(--ink);
+  font-size: 30rpx;
   line-height: 1.6;
-  box-shadow: 0 14rpx 26rpx rgba(0, 0, 0, 0.14);
-}
-
-.message-row {
-  margin-top: 24rpx;
-  display: grid;
-  grid-template-columns: 72rpx 1fr;
-  gap: 16rpx;
-  align-items: start;
-}
-
-.message-row--assistant:first-of-type {
-  margin-top: 0;
-}
-
-.message-avatar {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 22rpx;
-  background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22rpx;
-  font-weight: 700;
-}
-
-.message-avatar--assistant {
-  background: rgba(255, 192, 0, 0.16);
-  color: #ffc000;
-}
-
-.message-bubble {
-  padding: 24rpx;
-}
-
-.message-bubble--assistant {
-  border: 1rpx solid rgba(255, 192, 0, 0.12);
-  background:
-    linear-gradient(180deg, rgba(255, 192, 0, 0.06), rgba(255, 255, 255, 0.03)),
-    linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(10, 10, 10, 0.98));
-}
-
-.message-bubble-head,
-.citation-head,
-.composer-head,
-.composer-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16rpx;
-}
-
-.answer-chip {
-  padding: 8rpx 16rpx;
-  border-radius: 999rpx;
-  background: rgba(255, 192, 0, 0.14);
-  color: #ffc000;
-  font-size: 20rpx;
-  font-weight: 700;
-}
-
-.answer-chip--web {
-  background: rgba(255, 255, 255, 0.06);
-  color: #ece4cf;
-}
-
-.answer-chip--streaming {
-  background: rgba(255, 255, 255, 0.08);
-  color: #ffd86b;
-}
-
-.message-content {
-  margin-top: 16rpx;
-}
-
-.message-content--plain {
   white-space: pre-wrap;
-  line-height: 1.8;
-  font-size: 28rpx;
-}
-
-.message-content--markdown {
-  display: block;
-}
-
-.board-stack,
-.citation-stack {
-  display: grid;
-  gap: 16rpx;
-  margin-top: 20rpx;
-}
-
-.board-card,
-.citation-card {
-  padding: 18rpx;
-  border-radius: 16rpx;
-  border: 1rpx solid rgba(255, 255, 255, 0.04);
-}
-
-.board-card {
-  display: flex;
-  gap: 16rpx;
-  background:
-    linear-gradient(180deg, rgba(255, 192, 0, 0.07), rgba(255, 255, 255, 0.03)),
-    rgba(255, 255, 255, 0.02);
-}
-
-.citation-card {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.02)),
-    rgba(255, 255, 255, 0.02);
-}
-
-.board-cover {
-  width: 140rpx;
-  height: 108rpx;
-  border-radius: 14rpx;
-  flex-shrink: 0;
-}
-
-.board-copy {
-  min-width: 0;
-  flex: 1;
-}
-
-.board-name,
-.citation-title {
-  font-size: 28rpx;
-  font-weight: 700;
-}
-
-.board-reason,
-.citation-snippet {
-  margin-top: 10rpx;
-  line-height: 1.7;
-  font-size: 24rpx;
-}
-
-.board-reason {
-  color: #cacaca;
-}
-
-.citation-snippet {
-  color: #d8cfba;
-}
-
-.citation-badge {
-  padding: 8rpx 16rpx;
-  border-radius: 999rpx;
-  font-size: 20rpx;
-  font-weight: 700;
-}
-
-.citation-badge--structured {
-  background: rgba(255, 192, 0, 0.16);
-  color: #ffc000;
-}
-
-.citation-badge--document {
-  background: rgba(255, 255, 255, 0.08);
-  color: #f2ebe0;
-}
-
-.citation-badge--web {
-  background: rgba(255, 114, 94, 0.14);
-  color: #ff9b82;
-}
-
-.citation-badge--default {
-  background: rgba(255, 255, 255, 0.08);
-  color: #f2ebe0;
-}
-
-.citation-action {
-  color: #8f8f8f;
-  font-size: 22rpx;
-}
-
-.assistant-composer {
-  flex-shrink: 0;
-  position: relative;
-  padding: 18rpx 18rpx 16rpx;
-  border: 1rpx solid rgba(255, 192, 0, 0.18);
-  background:
-    radial-gradient(circle at top right, rgba(255, 192, 0, 0.14), transparent 34%),
-    linear-gradient(180deg, rgba(255, 192, 0, 0.05), rgba(255, 255, 255, 0.025)),
-    linear-gradient(180deg, rgba(17, 17, 17, 0.98), rgba(8, 8, 8, 0.98));
-  box-shadow:
-    0 22rpx 42rpx rgba(0, 0, 0, 0.24),
-    inset 0 1rpx 0 rgba(255, 255, 255, 0.05);
-}
-
-.assistant-composer::before {
-  content: '';
-  position: absolute;
-  left: 18rpx;
-  right: 18rpx;
-  top: 0;
-  height: 2rpx;
-  background: linear-gradient(90deg, rgba(255, 192, 0, 0.8), rgba(255, 192, 0, 0.1));
-}
-
-.composer-copy {
-  display: grid;
-  gap: 4rpx;
-}
-
-.composer-kicker {
-  color: #ffc000;
-  font-size: 18rpx;
-  font-weight: 700;
-  letter-spacing: 3rpx;
-}
-
-.composer-title {
-  color: #f4efe4;
-  font-size: 28rpx;
-  font-weight: 700;
-}
-
-.composer-meta {
-  padding: 8rpx 14rpx;
-  border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.05);
-  color: #bda97b;
-  font-size: 20rpx;
-}
-
-.composer-editor {
-  margin-top: 14rpx;
-  padding: 10rpx 14rpx;
-  border-radius: 18rpx;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.03));
-  border: 1rpx solid rgba(255, 255, 255, 0.04);
-  box-shadow: inset 0 1rpx 0 rgba(255, 255, 255, 0.03);
-}
-
-.assistant-input {
-  width: 100%;
-  min-height: 68rpx;
-  max-height: 160rpx;
-  padding: 0;
-  background: transparent;
-  color: #ffffff;
-  font-size: 28rpx;
-  line-height: 1.65;
+  word-break: break-word;
   box-sizing: border-box;
 }
 
-.composer-footer {
-  margin-top: 14rpx;
+.chat-answer,
+.chat-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 20rpx;
 }
 
-.composer-hint {
-  flex: 1;
-  min-width: 0;
-  color: #a69d8b;
-  font-size: 22rpx;
-  line-height: 1.55;
-}
-
-.composer-submit {
-  margin: 0;
-  width: 168rpx;
-  height: 82rpx;
-  line-height: 82rpx;
-  border-radius: 16rpx;
-  background: linear-gradient(135deg, #ffd24f, #f3b91f);
-  color: #171105;
-  font-size: 30rpx;
-  font-weight: 800;
-  box-shadow: 0 14rpx 28rpx rgba(255, 192, 0, 0.2);
+.chat-avatar {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 24rpx;
+  background: var(--panel-raised);
+  border: 4rpx solid var(--ink);
+  color: var(--gold);
+  font-size: 36rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   flex-shrink: 0;
 }
 
-.composer-submit::after {
-  border: none;
+.chat-bubble {
+  flex: 1;
+  min-width: 0;
+  max-width: 86%;
+  padding: 28rpx;
+  border-radius: 8rpx 32rpx 32rpx 32rpx;
+  background: var(--panel);
+  border: 2rpx solid var(--panel-line);
+  color: var(--text);
+  font-size: 30rpx;
+  line-height: 1.75;
+  box-sizing: border-box;
 }
 
-.composer-submit[disabled] {
-  background: rgba(255, 255, 255, 0.1);
-  color: #8f8f8f;
-  box-shadow: none;
+.chat-markdown {
+  display: block;
 }
 
-.scroll-anchor {
-  height: 1rpx;
+.chat-plain {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-wait {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  min-width: 360rpx;
+}
+
+.chat-wait__moon {
+  flex-shrink: 0;
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  background: var(--moon);
+  box-shadow: 0 0 0 0 rgba(95, 227, 224, 0.5);
+  animation: chat-wait-pulse 1.6s ease-out infinite;
+}
+
+.chat-wait__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.chat-wait__row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.chat-wait__label {
+  color: var(--text);
+  font-size: 28rpx;
+}
+
+.chat-wait__dots {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.chat-wait__dot {
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  background: var(--gold);
+  opacity: 0.25;
+  animation: chat-wait-dot 1.2s ease-in-out infinite;
+}
+
+.chat-wait__dot--2 {
+  animation-delay: 0.2s;
+}
+
+.chat-wait__dot--3 {
+  animation-delay: 0.4s;
+}
+
+.chat-wait__hint {
+  color: var(--text-3);
+  font-size: 22rpx;
+}
+
+@keyframes chat-wait-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(95, 227, 224, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 18rpx rgba(95, 227, 224, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(95, 227, 224, 0);
+  }
+}
+
+@keyframes chat-wait-dot {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-6rpx);
+  }
+}
+
+.chat-anchor {
+  height: 2rpx;
+}
+
+.chat-composer {
+  flex-shrink: 0;
+  padding: 20rpx 0 calc(24rpx + env(safe-area-inset-bottom));
+  background: var(--bar-bg);
+  border-top: 4rpx solid var(--ink);
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.chat-quick .nt-chip {
+  height: 60rpx;
+  font-size: 26rpx;
+}
+
+.chat-input-row {
+  padding: 0 32rpx;
+  display: flex;
+  align-items: flex-end;
+  gap: 20rpx;
+}
+
+.chat-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 96rpx;
+  padding: 22rpx 28rpx;
+  border-radius: 28rpx;
+  background: var(--panel);
+  border: 4rpx solid var(--ink);
+  box-sizing: border-box;
+  position: relative;
+}
+
+.chat-input__field {
+  width: 100%;
+  min-height: 44rpx;
+  max-height: 200rpx;
+  color: var(--text);
+  font-size: 30rpx;
+  line-height: 1.5;
+}
+
+.chat-input__count {
+  position: absolute;
+  right: 20rpx;
+  bottom: 6rpx;
+  color: var(--text-3);
+  font-size: 20rpx;
+}
+
+.chat-send {
+  width: 96rpx;
+  padding: 0;
+  font-size: 36rpx;
+  flex-shrink: 0;
+}
+
+.chat-send__plane {
+  width: 44rpx;
+  height: 44rpx;
+}
+
+.chat-answer__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  padding-right: 24rpx;
+}
+
+.chat-answer__body .chat-bubble {
+  max-width: none;
+}
+
+.chat-ref {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 28rpx;
+  background: var(--panel-raised);
+  border: 4rpx solid var(--ink);
+  box-shadow: 4rpx 4rpx 0 var(--ink);
+}
+
+.chat-ref__token {
+  width: 84rpx;
+  height: 84rpx;
+  flex-shrink: 0;
+}
+
+.chat-ref__mark {
+  width: 84rpx;
+  height: 84rpx;
+  flex-shrink: 0;
+  border-radius: 20rpx;
+  background: #3a2e14;
+  color: var(--gold);
+  font-family: var(--serif);
+  font-size: 34rpx;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-ref__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.chat-ref__name {
+  font-size: 30rpx;
+  font-weight: 900;
+}
+
+.chat-ref__meta {
+  color: var(--text-2);
+  font-size: 24rpx;
+}
+
+.chat-cite {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  padding: 0 8rpx;
+}
+
+.chat-cite__label {
+  color: var(--text-3);
+  font-size: 22rpx;
+}
+
+.chat-cite__item {
+  color: var(--moon);
+  font-size: 24rpx;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 </style>

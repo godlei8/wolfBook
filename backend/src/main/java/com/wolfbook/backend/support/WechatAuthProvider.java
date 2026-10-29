@@ -33,6 +33,9 @@ public class WechatAuthProvider implements AuthProvider {
         }
         WechatProperties.MiniProgramProperties miniProgram = wechatProperties.getMiniProgram();
         if (!StringUtils.hasText(miniProgram.getAppId()) || !StringUtils.hasText(miniProgram.getAppSecret())) {
+            if (miniProgram.isMockLoginEnabled()) {
+                return MockWechatAuthSupport.buildAuthUser(code);
+            }
             throw new ApiException(5001, "微信登录未配置 appId 或 appSecret");
         }
 
@@ -78,7 +81,7 @@ public class WechatAuthProvider implements AuthProvider {
             case 40163 -> "微信登录 code 已被使用，请重新发起登录";
             case 45011 -> "微信登录请求过于频繁，请稍后再试";
             default -> StringUtils.hasText(errmsg)
-                    ? "微信登录失败：" + errmsg
+                    ? "微信登录失败: " + errmsg
                     : "微信登录失败，错误码 " + errcode;
         };
     }

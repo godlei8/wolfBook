@@ -5,6 +5,8 @@ import com.wolfbook.backend.common.ApiException;
 import com.wolfbook.backend.common.PageResponse;
 import com.wolfbook.backend.domain.Board;
 import com.wolfbook.backend.domain.BoardRoleRef;
+import com.wolfbook.backend.domain.RoleRelation;
+import com.wolfbook.backend.domain.BoardRuleDetail;
 import com.wolfbook.backend.domain.FaqItem;
 import com.wolfbook.backend.domain.Role;
 import com.wolfbook.backend.dto.WolfbookDtos;
@@ -15,6 +17,7 @@ import com.wolfbook.backend.mapper.BoardMapper;
 import com.wolfbook.backend.mapper.BoardRoleMapper;
 import com.wolfbook.backend.mapper.RoleMapper;
 import com.wolfbook.backend.support.DomainConverter;
+import com.wolfbook.backend.service.judge.RoleSkillRegistry;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -91,11 +94,17 @@ public class BoardService {
 
     public WolfbookDtos.BoardDetailView getBoardDetail(Integer id) {
         BoardEntity boardEntity = getBoardEntity(id);
+        if (!Integer.valueOf(1).equals(boardEntity.getStatus())) {
+            throw new ApiException(4004, "板子已下架");
+        }
         List<BoardRoleEntity> roleEntities = boardRoleMapper.selectList(
                 new LambdaQueryWrapper<BoardRoleEntity>()
                         .eq(BoardRoleEntity::getBoardId, id)
         );
-        Map<Integer, RoleEntity> rolesById = loadRolesById(roleEntities.stream().map(BoardRoleEntity::getRoleId).collect(Collectors.toSet()));
+        BoardRuleDetail ruleDetail = converter.readRuleDetail(boardEntity.getRuleDetail());
+        Set<Integer> roleIds = roleEntities.stream().map(BoardRoleEntity::getRoleId).collect(Collectors.toCollection(HashSet::new));
+        roleIds.addAll(referencedRoleIds(ruleDetail));
+        Map<Integer, RoleEntity> rolesById = loadRolesById(roleIds);
         List<WolfbookDtos.BoardRoleView> roles = roleEntities.stream()
                 .map(item -> toBoardRoleView(item, rolesById))
                 .toList();
@@ -107,14 +116,20 @@ public class BoardService {
                 boardEntity.getDifficulty(),
                 converter.readStringList(boardEntity.getTags()),
                 boardEntity.getCoverImage(),
+                boardEntity.getBackgroundImage(),
                 boardEntity.getBriefConfig(),
                 boardEntity.getCardDescription(),
                 converter.readStringList(boardEntity.getSpecialRules()),
                 converter.readStringList(boardEntity.getTips()),
                 converter.readFaqList(boardEntity.getFaqs()).stream().map(this::toFaqInput).toList(),
+                toRuleDetailView(ruleDetail, rolesById),
                 boardEntity.getWinCondition(),
                 boardEntity.getRuleType(),
-                roles
+                roles,
+                RoleSkillRegistry.supportLevel(roleEntities.stream()
+                        .map(item -> rolesById.get(item.getRoleId()))
+                        .filter(Objects::nonNull)
+                        .toList())
         );
     }
 
@@ -128,10 +143,13 @@ public class BoardService {
                         role.getId(),
                         role.getName(),
                         role.getAlias(),
+                        role.getTitle(),
                         role.getFaction(),
                         role.getRoleType(),
                         role.getCamp(),
-                        role.getPortrait()
+                        role.getPortrait(),
+                        role.getFullIllustration(),
+                        role.getThemeColor()
                 ))
                 .toList();
     }
@@ -146,17 +164,26 @@ public class BoardService {
                 .distinct()
                 .toList();
 
-        List<WolfbookDtos.RelatedBoardView> boards = boardIds.isEmpty()
-                ? List.of()
-                : boardMapper.selectBatchIds(boardIds).stream()
-                .sorted(Comparator.comparing(BoardEntity::getId))
-                .map(board -> new WolfbookDtos.RelatedBoardView(board.getId(), board.getName(), board.getCoverImage(), board.getPlayerCount()))
-                .toList();
+        List<WolfbookDtos.RelatedBoardView> boards = List.of();
+        if (!boardIds.isEmpty()) {
+            List<BoardEntity> boardEntities = boardMapper.selectBatchIds(boardIds).stream()
+                    .filter(board -> board.getStatus() == null || board.getStatus() == 1)
+                    .sorted(Comparator.comparing(BoardEntity::getId))
+                    .toList();
+            Map<Integer, List<BoardRoleEntity>> roleMap = loadBoardRoleMap(boardEntities.stream().map(BoardEntity::getId).toList());
+            Map<Integer, RoleEntity> rolesById = loadRolesById(
+                    roleMap.values().stream().flatMap(List::stream).map(BoardRoleEntity::getRoleId).collect(Collectors.toSet())
+            );
+            boards = boardEntities.stream()
+                    .map(board -> toRelatedBoardView(board, id, roleMap.getOrDefault(board.getId(), List.of()), rolesById))
+                    .toList();
+        }
 
         return new WolfbookDtos.RoleDetailView(
                 role.getId(),
                 role.getName(),
                 role.getAlias(),
+                role.getTitle(),
                 role.getFaction(),
                 role.getRoleType(),
                 role.getCamp(),
@@ -165,8 +192,40 @@ public class BoardService {
                 converter.readFaqList(role.getFaqs()).stream().map(this::toFaqInput).toList(),
                 role.getPortrait(),
                 role.getFullIllustration(),
+                role.getThemeColor(),
+                roleRelationViews(converter.readRelations(role.getRelations())),
                 boards
         );
+    }
+
+    /**
+     * 把 [{roleId, label}] 展开成带名字、头像、阵营的视图，保持原顺序；已经删掉的角色跳过。
+     * 角色详情的人物关系和编年史事件的出场角色都用它（事件里 label 为 null）。
+     */
+    public List<WolfbookDtos.RoleRelationView> roleRelationViews(List<RoleRelation> relations) {
+        if (relations == null || relations.isEmpty()) {
+            return List.of();
+        }
+        Map<Integer, RoleEntity> rolesById = loadRolesById(
+                relations.stream().map(RoleRelation::roleId).filter(Objects::nonNull).collect(Collectors.toSet())
+        );
+        return relations.stream()
+                .filter(relation -> rolesById.containsKey(relation.roleId()))
+                .map(relation -> {
+                    RoleEntity other = rolesById.get(relation.roleId());
+                    return new WolfbookDtos.RoleRelationView(
+                            other.getId(),
+                            other.getName(),
+                            other.getAlias(),
+                            relation.label(),
+                            other.getFaction(),
+                            other.getRoleType(),
+                            other.getPortrait(),
+                            other.getFullIllustration(),
+                            other.getThemeColor()
+                    );
+                })
+                .toList();
     }
 
     public List<Board> listAllBoards() {
@@ -232,6 +291,8 @@ public class BoardService {
                 board.getDifficulty(),
                 converter.readStringList(board.getTags()),
                 board.getCoverImage(),
+                board.getBackgroundImage(),
+                board.getWinCondition(),
                 board.getBriefConfig(),
                 board.getCardDescription(),
                 buildCampSummary(roleViews),
@@ -239,6 +300,31 @@ public class BoardService {
                 roleViews,
                 featuredRoles,
                 buildCardSummary(board)
+        );
+    }
+
+    private WolfbookDtos.RelatedBoardView toRelatedBoardView(BoardEntity board, Integer roleId, List<BoardRoleEntity> roleEntities, Map<Integer, RoleEntity> rolesById) {
+        List<WolfbookDtos.BoardRoleView> lineup = roleEntities.stream()
+                .filter(ref -> !Objects.equals(ref.getRoleId(), roleId) && rolesById.containsKey(ref.getRoleId()))
+                .map(ref -> toBoardRoleView(ref, rolesById))
+                .limit(3)
+                .toList();
+        BoardRuleDetail ruleDetail = converter.readRuleDetail(board.getRuleDetail());
+        Integer wakeOrder = null;
+        for (int index = 0; index < ruleDetail.nightOrder().size(); index++) {
+            if (Objects.equals(ruleDetail.nightOrder().get(index).roleId(), roleId)) {
+                wakeOrder = index + 1;
+                break;
+            }
+        }
+        return new WolfbookDtos.RelatedBoardView(
+                board.getId(),
+                board.getName(),
+                board.getCoverImage(),
+                board.getBackgroundImage(),
+                board.getPlayerCount(),
+                wakeOrder,
+                lineup
         );
     }
 
@@ -254,8 +340,53 @@ public class BoardService {
                 role.getRoleType(),
                 role.getCamp(),
                 role.getPortrait(),
+                role.getFullIllustration(),
+                role.getThemeColor(),
                 ref.getCount()
         );
+    }
+
+    /** 规则里引用的角色 id（夜间顺序 + 角色细则），保存时校验、展示时一起查库。 */
+    public static Set<Integer> referencedRoleIds(BoardRuleDetail detail) {
+        Set<Integer> ids = new LinkedHashSet<>();
+        if (detail == null) {
+            return ids;
+        }
+        detail.nightOrder().forEach(step -> ids.add(step.roleId()));
+        detail.roleRules().forEach(note -> ids.add(note.roleId()));
+        ids.remove(null);
+        return ids;
+    }
+
+    /** 引用的角色如果已经不存在就跳过这一条，详情页不因为一条脏数据整页报错。 */
+    private WolfbookDtos.BoardRuleDetailView toRuleDetailView(BoardRuleDetail detail, Map<Integer, RoleEntity> rolesById) {
+        List<WolfbookDtos.NightStepView> nightOrder = new ArrayList<>();
+        for (BoardRuleDetail.NightStep step : detail.nightOrder()) {
+            RoleEntity role = rolesById.get(step.roleId());
+            if (role == null) {
+                continue;
+            }
+            nightOrder.add(new WolfbookDtos.NightStepView(
+                    nightOrder.size() + 1,
+                    role.getId(),
+                    role.getName(),
+                    role.getFaction(),
+                    role.getPortrait(),
+                    role.getThemeColor(),
+                    step.action()
+            ));
+        }
+        List<WolfbookDtos.RoleRuleView> roleRules = detail.roleRules().stream()
+                .filter(note -> rolesById.containsKey(note.roleId()))
+                .map(note -> {
+                    RoleEntity role = rolesById.get(note.roleId());
+                    return new WolfbookDtos.RoleRuleView(role.getId(), role.getName(), role.getFaction(), role.getPortrait(), role.getThemeColor(), note.items());
+                })
+                .toList();
+        List<WolfbookDtos.RuleSectionView> sections = detail.sections().stream()
+                .map(section -> new WolfbookDtos.RuleSectionView(section.title(), section.items()))
+                .toList();
+        return new WolfbookDtos.BoardRuleDetailView(detail.overview(), nightOrder, roleRules, sections);
     }
 
     private WolfbookDtos.FaqInput toFaqInput(FaqItem faqItem) {

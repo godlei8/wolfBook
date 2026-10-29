@@ -17,6 +17,8 @@ import javax.sql.DataSource;
 @Configuration
 public class AssistantAiConfiguration {
 
+    private static final int MAX_INDEXED_DIMENSIONS = 2000;
+
     @Bean(name = "appJdbcTemplate")
     @Primary
     public JdbcTemplate appJdbcTemplate(DataSource dataSource) {
@@ -45,11 +47,18 @@ public class AssistantAiConfiguration {
             EmbeddingModel embeddingModel,
             AssistantProperties properties
     ) {
+        int dimensions = properties.getVolcengine().getEmbeddingDimensions();
         return PgVectorStore.builder(assistantPgVectorJdbcTemplate, embeddingModel)
                 .schemaName(properties.getPgVector().getSchemaName())
                 .vectorTableName(properties.getPgVector().getTableName())
-                .dimensions(properties.getVolcengine().getEmbeddingDimensions())
+                .dimensions(dimensions)
+                .indexType(indexTypeFor(dimensions))
                 .initializeSchema(true)
                 .build();
+    }
+
+    // pgvector 的 HNSW / IVFFlat 索引最多 2000 维，doubao-embedding-large 是 2048 维：超了就不建索引，按精确扫描检索（知识库条目少，够用）
+    static PgVectorStore.PgIndexType indexTypeFor(int dimensions) {
+        return dimensions > MAX_INDEXED_DIMENSIONS ? PgVectorStore.PgIndexType.NONE : PgVectorStore.PgIndexType.HNSW;
     }
 }

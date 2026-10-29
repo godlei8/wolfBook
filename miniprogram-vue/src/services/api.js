@@ -1,6 +1,7 @@
 import { BASE_URL } from './config'
 import { createAuthHeader, request, uploadFile } from './request'
 import storage from './storage'
+import { campBreakdown, campSegment, groupLineup, normalizeRuleDetail, pickLineupArt, roleAccent } from '../utils/board-rules.js'
 
 function withBaseUrl(url) {
   if (!url) return url
@@ -34,6 +35,10 @@ function normalizeBoardRole(role) {
   return {
     ...role,
     portrait: withBaseUrl(role.portrait),
+    fullIllustration: withBaseUrl(role.fullIllustration),
+    accent: roleAccent(role),
+    campColor: campSegment(role).text,
+    campFill: campSegment(role).fill,
   }
 }
 
@@ -44,11 +49,17 @@ function normalizeBoard(board) {
   return {
     ...board,
     coverImage: withBaseUrl(board.coverImage),
+    backgroundImage: withBaseUrl(board.backgroundImage),
+    ruleDetail: normalizeRuleDetail(board.ruleDetail, withBaseUrl),
     roles,
     featuredRoles,
     cardDescription: board.cardDescription || board.summary || '',
     lineupSummary: board.lineupSummary || buildLineupSummary(roles),
     cardRoles: buildCardRoles(roles, featuredRoles),
+    lineupArt: pickLineupArt(roles.length ? roles : featuredRoles),
+    heroArt: pickLineupArt(roles.length ? roles : featuredRoles, 5),
+    campSegments: campBreakdown(roles.length ? roles : featuredRoles),
+    lineupGroups: groupLineup(roles),
   }
 }
 
@@ -58,10 +69,36 @@ function normalizeRole(role) {
     ...role,
     portrait: withBaseUrl(role.portrait),
     fullIllustration: withBaseUrl(role.fullIllustration),
+    accent: roleAccent(role),
+    campColor: campSegment(role).text,
+    campFill: campSegment(role).fill,
+    campLabel: campSegment(role).label,
+    relations: (role.relations || []).map(normalizeBoardRole),
     boards: (role.boards || []).map((board) => ({
       ...board,
       coverImage: withBaseUrl(board.coverImage),
+      backgroundImage: withBaseUrl(board.backgroundImage),
+      lineup: (board.lineup || []).map(normalizeBoardRole),
     })),
+  }
+}
+
+/** 世界观：阵营配色和小程序其他地方一致，事件里的出场角色按角色头像处理。 */
+const WORLD_CAMP_COLORS = { good: '#8fd0a6', wolf: '#ff7468', third: '#f7a8cb' }
+const WORLD_CAMP_LABELS = { good: '好人阵营', wolf: '狼人阵营', third: '第三方' }
+
+function normalizeWorld(world) {
+  const value = world || {}
+  return {
+    ...value,
+    coverImage: withBaseUrl(value.coverImage),
+    introParagraphs: (value.intro || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
+    factions: (value.factions || []).map((faction) => ({
+      ...faction,
+      color: WORLD_CAMP_COLORS[faction.camp] || WORLD_CAMP_COLORS.good,
+      campLabel: WORLD_CAMP_LABELS[faction.camp] || WORLD_CAMP_LABELS.good,
+    })),
+    events: (value.events || []).map((event) => ({ ...event, roles: (event.roles || []).map(normalizeBoardRole) })),
   }
 }
 
@@ -107,6 +144,37 @@ function normalizePost(post) {
   }
 }
 
+function normalizeJudgePlayer(player) {
+  if (!player) return player
+  return {
+    ...player,
+    avatar: withBaseUrl(player.avatar),
+  }
+}
+
+function normalizeJudgeRoomSummary(room) {
+  if (!room) return room
+  return {
+    ...room,
+    judgeSupportLevel: room.judgeSupportLevel || 'manual_only',
+  }
+}
+
+function normalizeJudgeRoomSnapshot(snapshot) {
+  if (!snapshot) return snapshot
+  return {
+    ...snapshot,
+    judgeSupportLevel: snapshot.judgeSupportLevel || 'manual_only',
+    selfPlayer: normalizeJudgePlayer(snapshot.selfPlayer),
+    players: (snapshot.players || []).map(normalizeJudgePlayer),
+    timeline: snapshot.timeline || [],
+    voteTallies: snapshot.voteTallies || [],
+    nightActions: snapshot.nightActions || [],
+    nightHistory: snapshot.nightHistory || [],
+    pendingNightAction: snapshot.pendingNightAction || { submitted: false, targetSeatNo: null, note: '' },
+  }
+}
+
 export default {
   async getBoards(params = {}) {
     const data = await request({ url: '/api/boards', data: params, header: createAuthHeader() })
@@ -124,8 +192,17 @@ export default {
   async getRoleDetail(id) {
     return normalizeRole(await request({ url: `/api/roles/${id}`, header: createAuthHeader() }))
   },
-  async getPosts(page = 1, size = 20) {
-    const data = await request({ url: '/api/posts', data: { page, size }, header: createAuthHeader() })
+  // 夜镇编年史：小镇简介、三方势力、编年史事件
+  async getWorld() {
+    return normalizeWorld(await request({ url: '/api/world' }))
+  },
+  // filters: { sort: 'hot' | 'latest', category: '战报' | '教学' | '讨论', boardId }
+  async getPosts(page = 1, size = 20, filters = {}) {
+    const query = { page, size }
+    Object.entries(filters || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') query[key] = value
+    })
+    const data = await request({ url: '/api/posts', data: query, header: createAuthHeader() })
     return {
       ...data,
       list: (data.list || []).map(normalizePost),
@@ -201,6 +278,52 @@ export default {
   },
   async deleteUserSession(sessionId) {
     return request({ url: `/api/user/sessions/${sessionId}`, method: 'DELETE', header: createAuthHeader() })
+  },
+  async getJudgeRecentRooms() {
+    return (await request({ url: '/api/judge/rooms/recent', header: createAuthHeader() })).map(normalizeJudgeRoomSummary)
+  },
+  async createJudgeRoom(payload) {
+    return normalizeJudgeRoomSnapshot(
+      await request({ url: '/api/judge/rooms', method: 'POST', data: payload, header: createAuthHeader() }),
+    )
+  },
+  async getJudgeRoom(roomId) {
+    return normalizeJudgeRoomSnapshot(await request({ url: `/api/judge/rooms/${roomId}`, header: createAuthHeader() }))
+  },
+  async joinJudgeRoom(roomId) {
+    return normalizeJudgeRoomSnapshot(
+      await request({ url: `/api/judge/rooms/${roomId}/join`, method: 'POST', header: createAuthHeader() }),
+    )
+  },
+  async toggleJudgeReady(roomId) {
+    return normalizeJudgeRoomSnapshot(
+      await request({ url: `/api/judge/rooms/${roomId}/ready`, method: 'POST', header: createAuthHeader() }),
+    )
+  },
+  async startJudgeRoom(roomId) {
+    return normalizeJudgeRoomSnapshot(
+      await request({ url: `/api/judge/rooms/${roomId}/start`, method: 'POST', header: createAuthHeader() }),
+    )
+  },
+  async advanceJudgeRoom(roomId, payload) {
+    return normalizeJudgeRoomSnapshot(
+      await request({ url: `/api/judge/rooms/${roomId}/advance`, method: 'POST', data: payload, header: createAuthHeader() }),
+    )
+  },
+  async submitJudgeNightAction(roomId, payload) {
+    return normalizeJudgeRoomSnapshot(
+      await request({
+        url: `/api/judge/rooms/${roomId}/night-action`,
+        method: 'POST',
+        data: payload,
+        header: createAuthHeader(),
+      }),
+    )
+  },
+  async submitJudgeVote(roomId, payload) {
+    return normalizeJudgeRoomSnapshot(
+      await request({ url: `/api/judge/rooms/${roomId}/vote`, method: 'POST', data: payload, header: createAuthHeader() }),
+    )
   },
   async uploadImage(filePath) {
     const result = await uploadFile(filePath, storage.getAuthToken())

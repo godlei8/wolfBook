@@ -14,6 +14,8 @@ public class DomainConverter {
 
     private static final TypeReference<List<String>> STRING_LIST = new TypeReference<>() {
     };
+    private static final TypeReference<List<RoleRelation>> RELATION_LIST = new TypeReference<>() {
+    };
     private static final TypeReference<List<FaqItem>> FAQ_LIST = new TypeReference<>() {
     };
 
@@ -39,6 +41,52 @@ public class DomainConverter {
         return read(json, FAQ_LIST);
     }
 
+    /** 没有人物关系存成 NULL。 */
+    public String writeRelations(List<RoleRelation> relations) {
+        return relations == null || relations.isEmpty() ? null : write(relations);
+    }
+
+    public List<RoleRelation> readRelations(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        List<RoleRelation> relations = read(json, RELATION_LIST);
+        return relations == null ? List.of() : relations;
+    }
+
+    public String writeWorldLore(WorldLore lore) {
+        return write(lore);
+    }
+
+    public WorldLore readWorldLore(String json) {
+        if (json == null || json.isBlank()) {
+            return WorldLore.empty();
+        }
+        try {
+            WorldLore lore = objectMapper.readValue(json, WorldLore.class);
+            return lore == null ? WorldLore.empty() : lore.normalized();
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed to read json column", exception);
+        }
+    }
+
+    /** 空规则存成 NULL，避免库里出现一堆空对象。 */
+    public String writeRuleDetail(BoardRuleDetail detail) {
+        return detail == null || detail.isEmpty() ? null : write(detail);
+    }
+
+    public BoardRuleDetail readRuleDetail(String json) {
+        if (json == null || json.isBlank()) {
+            return BoardRuleDetail.empty();
+        }
+        try {
+            BoardRuleDetail detail = objectMapper.readValue(json, BoardRuleDetail.class);
+            return detail == null ? BoardRuleDetail.empty() : detail;
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed to read json column", exception);
+        }
+    }
+
     public Board toBoard(BoardEntity entity, List<BoardRoleEntity> roleEntities) {
         return new Board(
                 entity.getId(),
@@ -47,11 +95,13 @@ public class DomainConverter {
                 entity.getDifficulty(),
                 readStringList(entity.getTags()),
                 entity.getCoverImage(),
+                entity.getBackgroundImage(),
                 entity.getCardDescription(),
                 entity.getBriefConfig(),
                 readStringList(entity.getSpecialRules()),
                 readStringList(entity.getTips()),
                 readFaqList(entity.getFaqs()),
+                readRuleDetail(entity.getRuleDetail()),
                 entity.getWinCondition(),
                 entity.getRuleType(),
                 entity.getStatus(),
@@ -71,7 +121,8 @@ public class DomainConverter {
                 entity.getBackground(),
                 readFaqList(entity.getFaqs()),
                 entity.getPortrait(),
-                entity.getFullIllustration()
+                entity.getFullIllustration(),
+                entity.getThemeColor()
         );
     }
 
@@ -80,6 +131,10 @@ public class DomainConverter {
                 entity.getId(),
                 entity.getOpenid(),
                 entity.getContent(),
+                entity.getTitle(),
+                entity.getCategory(),
+                entity.getBoardId(),
+                entity.getBoardName(),
                 readStringList(entity.getImages()),
                 entity.getLikeCount(),
                 entity.getCommentCount(),

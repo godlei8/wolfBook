@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import BoardCard from '../../components/BoardCard.vue'
+import NavBar from '../../components/NavBar.vue'
 import api from '../../services/api'
 import userData from '../../services/user-data'
 
@@ -67,28 +68,32 @@ onShow(loadFavorites)
 </script>
 
 <template>
-  <view class="page-shell">
-    <view class="hero-title">我的收藏</view>
-    <view class="hero-subtitle">常用板子会保存在这里，方便你快速回到熟悉的配置。</view>
+  <view class="nt-page fv-page">
+    <NavBar back title="收藏的板子" />
 
-    <view v-if="!boards.length" class="empty-state glass-card section-card">
-      还没有收藏板子，去板子列表点亮右上角爱心吧。
+    <view class="nt-gutter nt-stack fv-body">
+      <view v-if="!boards.length" class="nt-empty">
+        还没有收藏板子。去板子详情点底部的爱心，常用的配置就会留在这里。
+      </view>
+      <BoardCard
+        v-for="board in boards"
+        :key="board.id"
+        :board="board"
+        show-favorite
+        :favorite="isFavorite(board.id)"
+        @select="openBoard"
+        @favorite-toggle="toggleFavorite"
+      />
     </view>
-
-    <BoardCard
-      v-for="board in boards"
-      :key="board.id"
-      :board-id="board.id"
-      :cover-image="board.coverImage"
-      :difficulty="board.difficulty"
-      :meta-text="`共 ${favoriteIds.length} 个收藏`"
-      :name="board.name"
-      :player-count="board.playerCount"
-      :card-roles="board.cardRoles || []"
-      :description="board.cardDescription || board.summary || ''"
-      :favorite="isFavorite(board.id)"
-      @select="openBoard"
-      @favorite-toggle="toggleFavorite"
-    />
   </view>
 </template>
+
+<style scoped lang="scss">
+.fv-page {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 60rpx);
+}
+
+.fv-body {
+  margin-top: 16rpx;
+}
+</style>
