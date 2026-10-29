@@ -452,9 +452,12 @@ public final class WolfbookDtos {
     public record RecentBoardView(Integer id, String name, LocalDateTime updateTime) {
     }
 
+    /** autoJudge：走服务端新阶段机（上警、公布死讯、PK、出局技能）；旧版小程序不传，房间保持原来的三段流程。 */
     public record JudgeRoomCreateRequest(
             @NotNull(message = "boardId is required") Integer boardId,
-            @NotBlank(message = "judgeMode is required") String judgeMode
+            @NotBlank(message = "judgeMode is required") String judgeMode,
+            Boolean autoJudge,
+            Boolean sheriffEnabled
     ) {
     }
 
@@ -463,7 +466,8 @@ public final class WolfbookDtos {
             List<Integer> deadSeatNos,
             Integer eliminatedSeatNo,
             String winnerCamp,
-            @Size(max = 500, message = "announcement is too long") String announcement
+            @Size(max = 500, message = "announcement is too long") String announcement,
+            Integer stepIndex
     ) {
     }
 
@@ -594,7 +598,19 @@ public final class WolfbookDtos {
             List<JudgeNightActionView> nightHistory,
             JudgePendingActionView pendingNightAction,
             LocalDateTime createTime,
-            LocalDateTime updateTime
+            LocalDateTime updateTime,
+            JudgeStepView currentStep,
+            JudgeRules rules,
+            boolean host,
+            JudgeVerdictView winVerdict
     ) {
+    }
+
+    /** 夜里当前这一步。line 只给这一步的持有者和法官，其他人是空串（零场外：别人的屏幕上不出现「轮到你」的差别）。 */
+    public record JudgeStepView(int index, int total, String kind, String roleName, String line, LocalDateTime deadline) {
+    }
+
+    /** 自动判定的胜负：阵营和依据（「神职全部出局，狼人阵营胜利」）。 */
+    public record JudgeVerdictView(String camp, String reason) {
     }
 }
