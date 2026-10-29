@@ -53,6 +53,16 @@ class BackendApplicationTests {
     }
 
     @Test
+    void boardDetailReportsHowMuchTheElectronicJudgeSupports() throws Exception {
+        // 守卫九人局：狼人、预言家、女巫、守卫、平民都登记了 → 可以开无法官
+        mockMvc.perform(get("/api/boards/3"))
+                .andExpect(jsonPath("$.data.judgeSupportLevel").value("full"));
+        // 黑狼王织梦人：黑狼王、织梦人没登记 → 只能有法官
+        mockMvc.perform(get("/api/boards/6"))
+                .andExpect(jsonPath("$.data.judgeSupportLevel").value("partial"));
+    }
+
+    @Test
     void loginShouldReturnTokenAndAllowUserInfoFetch() throws Exception {
         String token = loginAndGetToken();
 

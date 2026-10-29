@@ -17,7 +17,7 @@ import com.wolfbook.backend.mapper.BoardMapper;
 import com.wolfbook.backend.mapper.BoardRoleMapper;
 import com.wolfbook.backend.mapper.RoleMapper;
 import com.wolfbook.backend.support.DomainConverter;
-import com.wolfbook.backend.support.JudgeSupportLevels;
+import com.wolfbook.backend.service.judge.RoleSkillRegistry;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -126,7 +126,10 @@ public class BoardService {
                 boardEntity.getWinCondition(),
                 boardEntity.getRuleType(),
                 roles,
-                JudgeSupportLevels.normalize(null)
+                RoleSkillRegistry.supportLevel(roleEntities.stream()
+                        .map(item -> rolesById.get(item.getRoleId()))
+                        .filter(Objects::nonNull)
+                        .toList())
         );
     }
 
