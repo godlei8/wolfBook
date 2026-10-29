@@ -572,6 +572,26 @@ class BackendApplicationTests {
     }
 
     @Test
+    void adminBoardSaveRejectsAWitchWakingBeforeTheWolves() throws Exception {
+        String adminToken = loginAndGetAdminToken();
+        String witchFirst = """
+                {
+                  "name": "女巫先醒板",
+                  "playerCount": 6,
+                  "difficulty": "入门",
+                  "roles": [{"roleId": 6, "count": 2}, {"roleId": 2, "count": 1}, {"roleId": 9, "count": 3}],
+                  "ruleDetail": {"nightOrder": [{"roleId": 2, "action": "女巫用药"}, {"roleId": 6, "action": "狼人刀人"}]}
+                }
+                """;
+        mockMvc.perform(post("/admin/boards")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(witchFirst))
+                .andExpect(jsonPath("$.code").value(4000))
+                .andExpect(jsonPath("$.msg").value(containsString("女巫须在狼人后")));
+    }
+
+    @Test
     void adminBoardSaveShouldRejectRuleDetailThatReferencesRolesOutsideLineup() throws Exception {
         String adminToken = loginAndGetAdminToken();
         Integer before = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM boards", Integer.class);

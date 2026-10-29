@@ -4,9 +4,11 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.wolfbook.backend.common.ApiException;
 import com.wolfbook.backend.common.PageResponse;
 import com.wolfbook.backend.domain.Board;
+import com.wolfbook.backend.domain.BoardRoleRef;
 import com.wolfbook.backend.domain.BoardRuleDetail;
 import com.wolfbook.backend.domain.FaqItem;
 import com.wolfbook.backend.domain.JudgeRules;
+import com.wolfbook.backend.service.judge.NightPlan;
 import com.wolfbook.backend.domain.Report;
 import com.wolfbook.backend.domain.RoleRelation;
 import com.wolfbook.backend.dto.WolfbookDtos;
@@ -25,6 +27,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -468,6 +471,12 @@ public class AdminService {
             if (!lineupRoleIds.contains(roleId)) {
                 throw new ApiException(4000, "规则里引用的角色不在本板子的阵容中");
             }
+        }
+        if (!nightOrder.isEmpty() && !lineupRoleIds.isEmpty()) {
+            Map<Integer, RoleEntity> rolesById = roleMapper.selectBatchIds(lineupRoleIds).stream()
+                    .collect(Collectors.toMap(RoleEntity::getId, role -> role));
+            List<BoardRoleRef> lineup = lineupRoleIds.stream().map(roleId -> new BoardRoleRef(roleId, 1)).toList();
+            NightPlan.validateOrder(NightPlan.build(detail, lineup, rolesById, 1));
         }
         return detail;
     }
