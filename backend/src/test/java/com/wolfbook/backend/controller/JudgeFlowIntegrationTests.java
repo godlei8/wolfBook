@@ -660,6 +660,52 @@ class JudgeFlowIntegrationTests {
         Assertions.assertEquals("skill_pending", out.path("data").path("currentPhase").asText());
     }
 
+    // ---- 惰性推进（autoJudge）----
+
+    @Test
+    void pollingAfterDeadlineAdvancesTheStep() throws Exception {
+        Game game = autoGame(false);
+        Assertions.assertEquals(0, game.snapshot(game.host).path("currentStep").path("index").asInt());
+        jdbcTemplate.update("UPDATE judge_rooms SET step_deadline = ? WHERE room_id = ?",
+                java.sql.Timestamp.valueOf("2000-01-01 00:00:00"), game.roomId);
+        Assertions.assertEquals(1, game.snapshot(game.players.get(0)).path("currentStep").path("index").asInt(), "谁来轮询都会推进");
+    }
+
+    @Test
+    void wolvesSubmittingAllAdvancesImmediately() throws Exception {
+        Game game = autoGame(false);
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        game.advance(game.host, "{\"action\":\"next_step\",\"stepIndex\":0}");
+        int target = seats.get("平民").get(0);
+        List<Integer> wolves = seats.get("狼人");
+        for (int i = 0; i < wolves.size(); i++) {
+            Assertions.assertEquals(1, game.snapshot(game.host).path("currentStep").path("index").asInt(), "狼没交齐之前不动");
+            JsonNode submitted = game.call(game.players.get(wolves.get(i) - 1), "/night-action", "{\"actionType\":\"kill\",\"targetSeatNo\":" + target + "}");
+            Assertions.assertEquals(0, submitted.path("code").asInt(), submitted.toString());
+        }
+        Assertions.assertEquals(2, game.snapshot(game.host).path("currentStep").path("index").asInt(), "狼交齐了马上进下一步");
+    }
+
+    @Test
+    void singleHolderSubmitDoesNotAdvanceEarly() throws Exception {
+        Game game = autoGame(false);
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int guard = seats.get("守卫").get(0);
+        JsonNode submitted = game.call(game.players.get(guard - 1), "/night-action", "{\"actionType\":\"guard\",\"targetSeatNo\":" + guard + "}");
+        Assertions.assertEquals(0, submitted.path("code").asInt(), submitted.toString());
+        Assertions.assertEquals(0, game.snapshot(game.host).path("currentStep").path("index").asInt(), "守卫交了也等到点再切");
+    }
+
+    @Test
+    void timedOutSkillPromptIsSkipped() throws Exception {
+        Game game = autoGame(false);
+        int dead = game.seatsByRole().get("平民").get(0);
+        game.advance(game.host, "{\"action\":\"resolve_night\",\"deadSeatNos\":[" + dead + "]}");
+        jdbcTemplate.update("UPDATE judge_rooms SET step_deadline = ? WHERE room_id = ?",
+                java.sql.Timestamp.valueOf("2000-01-01 00:00:00"), game.roomId);
+        Assertions.assertEquals("day_announce", game.snapshot(game.host).path("currentPhase").asText(), "技能询问超时当作不发动");
+    }
+
     // ---- helpers ----
 
     /** 种子板子 2「预女猎白」：12 人，4 狼、预言家、女巫、猎人、白痴、4 平民；夜间顺序 狼人 → 女巫 → 预言家 → 猎人。 */

@@ -19,6 +19,7 @@ import com.wolfbook.backend.mapper.JudgeRoomMapper;
 import com.wolfbook.backend.mapper.JudgeRoomPlayerMapper;
 import com.wolfbook.backend.mapper.RoleMapper;
 import com.wolfbook.backend.service.judge.JudgeDayFlow;
+import com.wolfbook.backend.service.judge.JudgeNightFlow;
 import com.wolfbook.backend.service.judge.NightKind;
 import com.wolfbook.backend.service.judge.NightPlan;
 import com.wolfbook.backend.service.judge.NightResolver;
@@ -28,7 +29,10 @@ import com.wolfbook.backend.service.judge.WinJudge;
 import com.wolfbook.backend.support.JudgeSupportLevels;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -119,6 +123,8 @@ public class JudgeService {
     private final JudgeActionEventMapper judgeActionEventMapper;
     private final ObjectMapper objectMapper;
     private final Random random = new Random();
+    /** 惰性推进用独立事务：推进失败（另一个请求已经推进了）整体回滚，不影响本次请求。 */
+    private final TransactionTemplate tickTransaction;
 
     public JudgeService(
             UserService userService,
@@ -127,8 +133,11 @@ public class JudgeService {
             JudgeRoomMapper judgeRoomMapper,
             JudgeRoomPlayerMapper judgeRoomPlayerMapper,
             JudgeActionEventMapper judgeActionEventMapper,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            PlatformTransactionManager transactionManager
     ) {
+        this.tickTransaction = new TransactionTemplate(transactionManager);
+        this.tickTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.userService = userService;
         this.boardService = boardService;
         this.roleMapper = roleMapper;
@@ -238,7 +247,10 @@ public class JudgeService {
     }
 
     public WolfbookDtos.JudgeRoomSnapshotView getRoomSnapshot(String authorization, String roomId) {
-        return buildSnapshot(requireOpenid(authorization), resolveRoomId(roomId));
+        String openid = requireOpenid(authorization);
+        String resolved = resolveRoomId(roomId);
+        tick(resolved);
+        return buildSnapshot(openid, resolved);
     }
 
     @Transactional
@@ -435,6 +447,7 @@ public class JudgeService {
     public WolfbookDtos.JudgeRoomSnapshotView submitNightAction(String authorization, String roomId, WolfbookDtos.JudgeNightActionRequest request) {
         roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
+        tick(roomId);
         JudgeRoomEntity room = getRoom(roomId);
         if (!ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) || !PHASE_NIGHT_ACTION.equals(room.getCurrentPhase())) {
             throw new ApiException(4002, "当前不是夜间行动阶段");
@@ -487,6 +500,7 @@ public class JudgeService {
     public WolfbookDtos.JudgeRoomSnapshotView submitVote(String authorization, String roomId, WolfbookDtos.JudgeVoteRequest request) {
         roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
+        tick(roomId);
         JudgeRoomEntity room = getRoom(roomId);
         boolean pk = PHASE_VOTE_PK.equals(room.getCurrentPhase());
         if (!ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) || (!PHASE_EXILE_VOTE.equals(room.getCurrentPhase()) && !pk)) {
@@ -723,7 +737,7 @@ public class JudgeService {
             return;
         }
         room.setNightStep(current + 1);
-        room.setStepDeadline(now.plusSeconds(steps.get(current + 1).durationSeconds()));
+        room.setStepDeadline(now.plusSeconds(stepSeconds(steps.get(current + 1), players)));
         room.setUpdateTime(now);
         updateRoomGuarded(room, ROOM_STATUS_PLAYING, PHASE_NIGHT_ACTION, current);
     }
@@ -957,7 +971,7 @@ public class JudgeService {
     private void openNight(JudgeRoomEntity room, int dayNo, LocalDateTime now) {
         List<NightPlan.NightStep> steps = nightSteps(room, dayNo);
         room.setNightStep(steps.isEmpty() ? null : 0);
-        room.setStepDeadline(steps.isEmpty() ? null : now.plusSeconds(steps.get(0).durationSeconds()));
+        room.setStepDeadline(steps.isEmpty() ? null : now.plusSeconds(stepSeconds(steps.get(0), loadPlayers(room.getRoomId()))));
         room.setPhaseData(writeJson(Map.of()));
     }
 
@@ -1185,6 +1199,7 @@ public class JudgeService {
     public WolfbookDtos.JudgeRoomSnapshotView submitSheriff(String authorization, String roomId, WolfbookDtos.JudgeSheriffRequest request) {
         roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
+        tick(roomId);
         JudgeRoomEntity room = getRoom(roomId);
         if (!ROOM_STATUS_PLAYING.equals(room.getRoomStatus())) {
             throw new ApiException(4002, "对局不在进行中");
@@ -1555,6 +1570,7 @@ public class JudgeService {
     public WolfbookDtos.JudgeRoomSnapshotView submitSkill(String authorization, String roomId, WolfbookDtos.JudgeSkillRequest request) {
         roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
+        tick(roomId);
         JudgeRoomEntity room = getRoom(roomId);
         if (!ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) || !PHASE_SKILL_PENDING.equals(room.getCurrentPhase())) {
             throw new ApiException(4002, "现在没有待处理的技能");
@@ -1569,9 +1585,21 @@ public class JudgeService {
         if (!judge && (self == null || !Objects.equals(self.getSeatNo(), seat))) {
             throw new ApiException(4003, "现在不是你的技能");
         }
+        resolvePending(room, players, safeText(trimToNull(request.decision()), "skip"), request.targetSeatNo(), LocalDateTime.now(APP_ZONE));
+        return buildSnapshot(openid, roomId);
+    }
+
+    /** 处理当前这条待办（玩家 / 法官提交，或者超时当作 skip），处理完写回房间。 */
+    private void resolvePending(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players, String decision, Integer targetSeatNo, LocalDateTime now) {
+        String roomId = room.getRoomId();
+        Map<String, Object> phaseData = new LinkedHashMap<>(readMap(room.getPhaseData()));
+        List<Map<String, Object>> pending = pendingList(phaseData);
+        if (pending.isEmpty()) {
+            throw new ApiException(4002, "现在没有待处理的技能");
+        }
+        Map<String, Object> current = pending.get(0);
+        int seat = safeInt(asPositiveInteger(current.get("seat")), 0);
         JudgeRoomPlayerEntity actor = findSeatPlayer(players, seat);
-        String decision = safeText(trimToNull(request.decision()), "skip");
-        LocalDateTime now = LocalDateTime.now(APP_ZONE);
         int dayNo = safeInt(room.getCurrentDay(), 1);
         String kind = asString(current.get("kind"));
         pending.remove(0);
@@ -1583,7 +1611,7 @@ public class JudgeService {
                 pending.add(0, pendingEntry(seat, PENDING_HUNTER_SHOT, now.plusSeconds(HUNTER_SHOT_SECONDS)));
             }
         } else if (PENDING_HUNTER_SHOT.equals(kind) && "use".equals(decision)) {
-            JudgeRoomPlayerEntity target = requireAliveSeat(players, request.targetSeatNo());
+            JudgeRoomPlayerEntity target = requireAliveSeat(players, targetSeatNo);
             markPlayersDead(players, List.of(target.getSeatNo()), dayNo, PHASE_SKILL_PENDING, now);
             addEvent(roomId, dayNo, PHASE_SKILL_PENDING, actor.getPlayerId(), List.of(target.getPlayerId()), EVENT_HUNTER_SHOT,
                     mapOf("actorSeatNo", seat, "targetSeatNo", target.getSeatNo()), Map.of(), VISIBILITY_PUBLIC, now);
@@ -1593,7 +1621,7 @@ public class JudgeService {
                 finishByVerdict(room, verdict.get(), room.getLatestAnnouncement() + "。" + verdict.get().reason(), now);
                 room.setUpdateTime(now);
                 updateRoomGuarded(room, ROOM_STATUS_PLAYING, PHASE_SKILL_PENDING);
-                return buildSnapshot(openid, roomId);
+                return;
             }
             List<Map<String, Object>> chained = new ArrayList<>();
             chained.add(pendingEntry(target.getSeatNo(), PENDING_SKILL_ASK, now.plusSeconds(SKILL_ASK_SECONDS)));
@@ -1602,7 +1630,7 @@ public class JudgeService {
             }
             pending.addAll(0, chained);
         } else if (PENDING_BADGE.equals(kind)) {
-            JudgeRoomPlayerEntity heir = "use".equals(decision) ? requireAliveSeat(players, request.targetSeatNo()) : null;
+            JudgeRoomPlayerEntity heir = "use".equals(decision) ? requireAliveSeat(players, targetSeatNo) : null;
             actor.setSheriff(false);
             actor.setUpdateTime(now);
             judgeRoomPlayerMapper.updateById(actor);
@@ -1627,7 +1655,6 @@ public class JudgeService {
         room.setPhaseData(writeJson(phaseData));
         room.setUpdateTime(now);
         updateRoomGuarded(room, ROOM_STATUS_PLAYING, PHASE_SKILL_PENDING);
-        return buildSnapshot(openid, roomId);
     }
 
     /** 法官点杀：违规的玩家直接出局，公告注明法官判罚，照常问技能（点杀的猎人不能开枪）。 */
@@ -1739,6 +1766,58 @@ public class JudgeService {
         addEvent(room.getRoomId(), room.getCurrentDay(), room.getCurrentPhase(), player.getPlayerId(), List.of(), EVENT_IDIOT_REVEALED,
                 mapOf("actorSeatNo", seat), Map.of(), VISIBILITY_PUBLIC, now);
         return true;
+    }
+
+
+    // ---------- 惰性推进：没有定时器，任何一次轮询或提交进来时把到期的步骤推过去 ----------
+
+    /** 推进到期的夜间步骤和出局待办。独立事务，另一个请求先推进了就整体回滚、静默忽略。 */
+    private void tick(String roomId) {
+        try {
+            tickTransaction.executeWithoutResult(status -> tickInTransaction(roomId));
+        } catch (ApiException ignored) {
+            // 并发下别的请求已经推进过这一步
+        }
+    }
+
+    private void tickInTransaction(String roomId) {
+        JudgeRoomEntity room = judgeRoomMapper.selectById(roomId);
+        if (room == null || !ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) || !Boolean.TRUE.equals(room.getAutoJudgeEnabled())) {
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now(APP_ZONE);
+        String phase = safeText(room.getCurrentPhase(), "");
+        if (PHASE_NIGHT_ACTION.equals(phase) && room.getNightStep() != null) {
+            List<JudgeRoomPlayerEntity> players = loadPlayers(roomId);
+            List<NightPlan.NightStep> steps = nightSteps(room, safeInt(room.getCurrentDay(), 1));
+            if (room.getNightStep() >= steps.size()) {
+                return;
+            }
+            NightPlan.NightStep step = steps.get(room.getNightStep());
+            List<Integer> aliveHolders = players.stream()
+                    .filter(player -> Boolean.TRUE.equals(player.getPlaying()) && Boolean.TRUE.equals(player.getAlive()))
+                    .filter(player -> player.getRoleId() != null && step.roleIds().contains(player.getRoleId()) && player.getSeatNo() != null)
+                    .map(JudgeRoomPlayerEntity::getSeatNo)
+                    .toList();
+            Set<Integer> submitted = tonightSubmissions(room, players).stream()
+                    .map(NightResolver.Submission::actorSeat)
+                    .collect(Collectors.toSet());
+            if (JudgeNightFlow.shouldClose(step.kind(), aliveHolders, submitted, room.getStepDeadline(), now)) {
+                handleNextStep(room, players, new WolfbookDtos.JudgeRoomAdvanceRequest("next_step", null, null, null, null,
+                        room.getNightStep(), null, null, null, null), now);
+            }
+        } else if (PHASE_SKILL_PENDING.equals(phase) && room.getStepDeadline() != null && now.isAfter(room.getStepDeadline())) {
+            resolvePending(room, loadPlayers(roomId), "skip", null, now);
+        }
+    }
+
+    /** 这一步的时长：持有者都出局就是 15–25 秒的假步骤。 */
+    private int stepSeconds(NightPlan.NightStep step, List<JudgeRoomPlayerEntity> players) {
+        List<Boolean> holdersAlive = players.stream()
+                .filter(player -> Boolean.TRUE.equals(player.getPlaying()) && player.getRoleId() != null && step.roleIds().contains(player.getRoleId()))
+                .map(player -> Boolean.TRUE.equals(player.getAlive()))
+                .toList();
+        return JudgeNightFlow.stepSeconds(step, holdersAlive, random);
     }
 
     private JudgeRoomEntity requireJudgeRoom(String roomId, String openid) {
