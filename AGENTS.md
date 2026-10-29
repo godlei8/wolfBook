@@ -48,7 +48,7 @@ npm run build:mp-weixin   # 生产构建
 - `judge-night-order.test.mjs`：法官主持台的夜间步骤（板子没配夜间顺序时的通用顺序、狼队合并成一步）、女巫剩余用药、查验结果（`utils/judge/night-order.js`）。
 - `request-errors.test.mjs`：`services/request-errors.js` 里把 HTTP / 网络错误翻译成中文文案的纯函数，以及 4001 判定。
 
-后端测试（`backend/src/test`，H2）：`BackendApplicationTests`（接口冒烟，含后台能清空角色立绘/主题色）、`SecurityIntegrationTests`（伪造 token、禁用管理员、匿名/非图片上传、错误信息不泄露）、`JudgeFlowIntegrationTests`（用种子板子 3 / 2 跑完整法官流程：权限、身份可见性、座位校验、状态机、短房号、法官代记夜间行动、引擎结算与改判、自动胜负、上警、票型公布与 PK、出局技能与白痴翻牌、点杀、惰性推进）、`CommunityIntegrationTests`（下线帖子、评论数、分页上限、帖子标题/分类/关联板子筛选、只看我的）、`TokenServiceTests`，以及纯逻辑单测：助手的 `AssistantIntentRouterTests`（问题分流）、`BoardRecommenderTests`（板子打分），电子法官引擎的 `service/judge/*Tests`（`RoleSkillRegistry`、`NightPlan`、`NightResolver`、`VoteResolver`、`WinJudge`、`JudgeDayFlow`、`JudgeNightFlow`）和 `domain/JudgeRulesTests`。新增后端行为时优先往这几个文件里加 MockMvc 用例。
+后端测试（`backend/src/test`，H2）：`BackendApplicationTests`（接口冒烟，含后台能清空角色立绘/主题色）、`SecurityIntegrationTests`（伪造 token、禁用管理员、匿名/非图片上传、错误信息不泄露）、`JudgeFlowIntegrationTests`（用种子板子 3 / 2 跑完整法官流程：权限、身份可见性、座位校验、状态机、短房号、法官代记夜间行动、引擎结算与改判、自动胜负、上警、票型公布与 PK、出局技能与白痴翻牌、点杀、惰性推进），`JudgeFlowRepeatableReadTests` 继承它、用 H2 的 SNAPSHOT 隔离再跑一遍（线上 MySQL 默认 REPEATABLE READ，H2 默认的 READ COMMITTED 看不出惰性推进读到旧房间这类问题）、`CommunityIntegrationTests`（下线帖子、评论数、分页上限、帖子标题/分类/关联板子筛选、只看我的）、`TokenServiceTests`，以及纯逻辑单测：助手的 `AssistantIntentRouterTests`（问题分流）、`BoardRecommenderTests`（板子打分），电子法官引擎的 `service/judge/*Tests`（`RoleSkillRegistry`、`NightPlan`、`NightResolver`、`VoteResolver`、`WinJudge`、`JudgeDayFlow`、`JudgeNightFlow`）和 `domain/JudgeRulesTests`。新增后端行为时优先往这几个文件里加 MockMvc 用例。
 
 ## 架构
 
