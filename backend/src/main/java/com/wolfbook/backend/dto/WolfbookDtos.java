@@ -464,7 +464,19 @@ public final class WolfbookDtos {
             @NotNull(message = "boardId is required") Integer boardId,
             @NotBlank(message = "judgeMode is required") String judgeMode,
             Boolean autoJudge,
-            Boolean sheriffEnabled
+            Boolean sheriffEnabled,
+            /** 房间规则（节奏项），缺省取板子规则；胜负、女巫这些玩法规则跟板子走，不在这里。 */
+            JudgeRoomRulesInput rules
+    ) {
+    }
+
+    /** 房间规则：只有节奏。为空的项保持原值（建房时 = 板子规则）。范围：发言 30–300、狼队 30–120、单人 15–60 秒。 */
+    public record JudgeRoomRulesInput(
+            Boolean sheriffEnabled,
+            Integer speechSeconds,
+            Integer sheriffSpeechSeconds,
+            Integer wolfSeconds,
+            Integer roleSeconds
     ) {
     }
 

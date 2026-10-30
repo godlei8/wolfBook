@@ -206,9 +206,12 @@ public class JudgeService {
         room.setCurrentDay(1);
         room.setCurrentPhase(PHASE_LOBBY);
         boolean autoJudge = Boolean.TRUE.equals(request.autoJudge());
-        JudgeRules rules = JudgeRules.fromBoard(boardService.getBoard(board.id()));
+        JudgeRules boardRules = JudgeRules.fromBoard(boardService.getBoard(board.id()));
+        Boolean sheriffRequested = request.sheriffEnabled() != null ? request.sheriffEnabled()
+                : request.rules() == null ? null : request.rules().sheriffEnabled();
+        JudgeRules rules = applyRoomRules(boardRules, request.rules(), sheriffRequested);
         room.setAutoJudgeEnabled(autoJudge);
-        room.setSheriffEnabled(autoJudge && (request.sheriffEnabled() != null ? request.sheriffEnabled() : rules.sheriffDefault()));
+        room.setSheriffEnabled(autoJudge && Boolean.TRUE.equals(rules.sheriffDefault()));
         room.setRulesJson(writeJson(rules));
         room.setCanRollback(true);
         room.setWinnerCamp(null);
@@ -979,7 +982,54 @@ public class JudgeService {
 
     private List<NightPlan.NightStep> nightSteps(JudgeRoomEntity room, int dayNo) {
         Board board = boardService.getBoard(room.getBoardId());
-        return NightPlan.build(board, loadBoardRoleMap(room.getBoardId()), dayNo);
+        return NightPlan.build(board, loadBoardRoleMap(room.getBoardId()), dayNo, roomRules(room));
+    }
+
+    /**
+     * 把房间规则（节奏项）合并到底稿上：为空的项保持原值，超范围 4000。上警开关记在 sheriffDefault 里（快照里能看到本局开没开）。
+     * 胜负、女巫自救、一晚一瓶是玩法规则，永远取底稿（板子）的。
+     */
+    private JudgeRules applyRoomRules(JudgeRules base, WolfbookDtos.JudgeRoomRulesInput input, Boolean sheriffEnabled) {
+        JudgeRules rules = base.withDefaults();
+        if (input != null) {
+            requireRange(input.speechSeconds(), 30, 300);
+            requireRange(input.sheriffSpeechSeconds(), 30, 300);
+            requireRange(input.wolfSeconds(), 30, 120);
+            requireRange(input.roleSeconds(), 15, 60);
+        }
+        return new JudgeRules(
+                rules.winCondition(),
+                sheriffEnabled != null ? sheriffEnabled : rules.sheriffDefault(),
+                rules.witchSelfSave(),
+                rules.witchOnePotionPerNight(),
+                input != null && input.speechSeconds() != null ? input.speechSeconds() : rules.speechSeconds(),
+                input != null && input.sheriffSpeechSeconds() != null ? input.sheriffSpeechSeconds() : rules.sheriffSpeechSeconds(),
+                input != null && input.wolfSeconds() != null ? input.wolfSeconds() : rules.wolfSeconds(),
+                input != null && input.roleSeconds() != null ? input.roleSeconds() : rules.roleSeconds()
+        );
+    }
+
+    private void requireRange(Integer value, int min, int max) {
+        if (value != null && (value < min || value > max)) {
+            throw new ApiException(4000, "房间规则超出范围");
+        }
+    }
+
+    /** 大厅里改房间规则（节奏项）；开局后锁定。 */
+    @Transactional
+    public WolfbookDtos.JudgeRoomSnapshotView updateRoomRules(String authorization, String roomId, WolfbookDtos.JudgeRoomRulesInput request) {
+        roomId = resolveRoomId(roomId);
+        String openid = requireOpenid(authorization);
+        JudgeRoomEntity room = requireJudgeRoom(roomId, openid);
+        if (!ROOM_STATUS_LOBBY.equals(room.getRoomStatus())) {
+            throw new ApiException(4002, "开局后规则已锁定");
+        }
+        JudgeRules rules = applyRoomRules(roomRules(room), request, request == null ? null : request.sheriffEnabled());
+        room.setRulesJson(writeJson(rules));
+        room.setSheriffEnabled(Boolean.TRUE.equals(room.getAutoJudgeEnabled()) && Boolean.TRUE.equals(rules.sheriffDefault()));
+        room.setUpdateTime(LocalDateTime.now(APP_ZONE));
+        updateRoomGuarded(room, ROOM_STATUS_LOBBY, null);
+        return buildSnapshot(openid, roomId);
     }
 
     /** 本局规则：开局时拷进房间的；老房间没有就现取板子的。 */

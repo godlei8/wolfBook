@@ -4,6 +4,7 @@ import com.wolfbook.backend.common.ApiException;
 import com.wolfbook.backend.domain.Board;
 import com.wolfbook.backend.domain.BoardRoleRef;
 import com.wolfbook.backend.domain.BoardRuleDetail;
+import com.wolfbook.backend.domain.JudgeRules;
 import com.wolfbook.backend.entity.RoleEntity;
 
 import java.util.ArrayList;
@@ -21,9 +22,8 @@ import java.util.Set;
  */
 public final class NightPlan {
 
-    private static final int WOLF_FIRST_NIGHT_SECONDS = 90;
-    private static final int WOLF_SECONDS = 60;
-    private static final int ROLE_SECONDS = 30;
+    /** 首夜狼队多给 30 秒互认队友（默认 60 + 30 = 90，和官方手册一致）。 */
+    private static final int WOLF_FIRST_NIGHT_EXTRA_SECONDS = 30;
     private static final int HUNTER_SECONDS = 10;
     private static final int GENERIC_SECONDS = 25;
 
@@ -37,10 +37,21 @@ public final class NightPlan {
     }
 
     public static List<NightStep> build(Board board, Map<Integer, RoleEntity> rolesById, int dayNo) {
-        return build(board.ruleDetail(), board.roles(), rolesById, dayNo);
+        return build(board.ruleDetail(), board.roles(), rolesById, dayNo, JudgeRules.defaults());
+    }
+
+    /** 按本局规则的行动时长算每一步（房间规则里配的狼队 / 单人时长）。 */
+    public static List<NightStep> build(Board board, Map<Integer, RoleEntity> rolesById, int dayNo, JudgeRules rules) {
+        return build(board.ruleDetail(), board.roles(), rolesById, dayNo, rules);
     }
 
     public static List<NightStep> build(BoardRuleDetail detail, List<BoardRoleRef> lineup, Map<Integer, RoleEntity> rolesById, int dayNo) {
+        return build(detail, lineup, rolesById, dayNo, JudgeRules.defaults());
+    }
+
+    public static List<NightStep> build(BoardRuleDetail detail, List<BoardRoleRef> lineup, Map<Integer, RoleEntity> rolesById, int dayNo,
+                                        JudgeRules rules) {
+        JudgeRules timing = (rules == null ? JudgeRules.defaults() : rules).withDefaults();
         List<RoleEntity> lineupRoles = (lineup == null ? List.<BoardRoleRef>of() : lineup).stream()
                 .map(ref -> rolesById.get(ref.roleId()))
                 .filter(Objects::nonNull)
@@ -81,7 +92,7 @@ public final class NightPlan {
                     continue;
                 }
                 wolvesDone = true;
-                steps.add(step(steps.size(), NightKind.WOLF, wolfTeamIds, "狼人", true, dayNo));
+                steps.add(step(steps.size(), NightKind.WOLF, wolfTeamIds, "狼人", true, dayNo, timing));
                 continue;
             }
             NightKind kind = Mechanic.fromCode(role.getMechanic())
@@ -90,7 +101,7 @@ public final class NightPlan {
             if (kind == NightKind.NONE) {
                 continue;
             }
-            steps.add(step(steps.size(), kind, List.of(role.getId()), role.getName(), false, dayNo));
+            steps.add(step(steps.size(), kind, List.of(role.getId()), role.getName(), false, dayNo, timing));
         }
         return List.copyOf(steps);
     }
@@ -125,8 +136,10 @@ public final class NightPlan {
         return -1;
     }
 
-    private static NightStep step(int index, NightKind kind, List<Integer> roleIds, String roleName, boolean team, int dayNo) {
-        return new NightStep(index, kind, List.copyOf(roleIds), roleName, team, roleName + "请睁眼，" + hint(kind), duration(kind, dayNo));
+    private static NightStep step(int index, NightKind kind, List<Integer> roleIds, String roleName, boolean team, int dayNo,
+                                  JudgeRules timing) {
+        return new NightStep(index, kind, List.copyOf(roleIds), roleName, team, roleName + "请睁眼，" + hint(kind),
+                duration(kind, dayNo, timing));
     }
 
     private static String hint(NightKind kind) {
@@ -140,10 +153,10 @@ public final class NightPlan {
         };
     }
 
-    private static int duration(NightKind kind, int dayNo) {
+    private static int duration(NightKind kind, int dayNo, JudgeRules timing) {
         return switch (kind) {
-            case WOLF -> dayNo <= 1 ? WOLF_FIRST_NIGHT_SECONDS : WOLF_SECONDS;
-            case GUARD, WITCH, SEER -> ROLE_SECONDS;
+            case WOLF -> timing.wolfSeconds() + (dayNo <= 1 ? WOLF_FIRST_NIGHT_EXTRA_SECONDS : 0);
+            case GUARD, WITCH, SEER -> timing.roleSeconds();
             case HUNTER -> HUNTER_SECONDS;
             default -> GENERIC_SECONDS;
         };

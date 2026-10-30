@@ -706,6 +706,70 @@ class JudgeFlowIntegrationTests {
         game.snapshot(game.host);
     }
 
+    // ---- 房间规则 ----
+
+    @Test
+    void createRoomAppliesTheRoomRules() throws Exception {
+        Game game = lobbyGame("{\"boardId\":" + BOARD_ID + ",\"judgeMode\":\"observer\",\"autoJudge\":true,"
+                + "\"rules\":{\"wolfSeconds\":40,\"roleSeconds\":20,\"speechSeconds\":90}}");
+        game.readyAll();
+        game.start();
+        JsonNode snapshot = game.snapshot(game.host);
+        Assertions.assertEquals(40, snapshot.path("rules").path("wolfSeconds").asInt());
+        Assertions.assertEquals(90, snapshot.path("rules").path("speechSeconds").asInt());
+        Assertions.assertEquals("守卫", snapshot.path("currentStep").path("roleName").asText());
+        Assertions.assertTrue(secondsToDeadline(game) <= 20, "守卫那一步用单人时长 20 秒");
+        expire(game);
+        Assertions.assertEquals("狼人", game.snapshot(game.host).path("currentStep").path("roleName").asText());
+        long wolf = secondsToDeadline(game);
+        Assertions.assertTrue(wolf >= 68 && wolf <= 70, "首夜狼队 40 + 30 秒，实际 " + wolf);
+    }
+
+    @Test
+    void rulesCanOnlyChangeInTheLobby() throws Exception {
+        Game game = lobbyGame("{\"boardId\":" + BOARD_ID + ",\"judgeMode\":\"observer\",\"autoJudge\":true}");
+        Assertions.assertEquals(0, putRules(game, game.host, "{\"speechSeconds\":90,\"sheriffEnabled\":true}").path("code").asInt());
+        JsonNode lobby = game.snapshot(game.host);
+        Assertions.assertEquals(90, lobby.path("rules").path("speechSeconds").asInt());
+        Assertions.assertEquals(4003, putRules(game, game.players.get(0), "{\"speechSeconds\":60}").path("code").asInt(), "玩家不能改");
+        game.readyAll();
+        game.start();
+        Assertions.assertEquals(4002, putRules(game, game.host, "{\"speechSeconds\":60}").path("code").asInt(), "开局后锁定");
+    }
+
+    @Test
+    void outOfRangeRoomRulesAreRejected() throws Exception {
+        Game game = lobbyGame("{\"boardId\":" + BOARD_ID + ",\"judgeMode\":\"observer\",\"autoJudge\":true}");
+        Assertions.assertEquals(4000, putRules(game, game.host, "{\"speechSeconds\":10}").path("code").asInt());
+        Assertions.assertEquals(4000, putRules(game, game.host, "{\"wolfSeconds\":200}").path("code").asInt());
+        Assertions.assertEquals(4000, putRules(game, game.host, "{\"roleSeconds\":5}").path("code").asInt());
+    }
+
+    @Test
+    void roomRulesNeverChangeTheWinCondition() throws Exception {
+        Game game = lobbyGame("{\"boardId\":" + BOARD_ID + ",\"judgeMode\":\"observer\",\"autoJudge\":true,"
+                + "\"rules\":{\"winCondition\":\"city\",\"witchSelfSave\":\"never\"}}");
+        JsonNode rules = game.snapshot(game.host).path("rules");
+        Assertions.assertEquals("side", rules.path("winCondition").asText());
+        Assertions.assertEquals("first_night", rules.path("witchSelfSave").asText());
+    }
+
+    private JsonNode putRules(Game game, String token, String body) throws Exception {
+        String response = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .put("/api/judge/rooms/" + game.roomId + "/rules")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(response);
+    }
+
+    private long secondsToDeadline(Game game) {
+        java.time.LocalDateTime deadline = jdbcTemplate.queryForObject(
+                "SELECT step_deadline FROM judge_rooms WHERE room_id = ?", java.time.LocalDateTime.class, game.roomId);
+        return java.time.Duration.between(java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Shanghai")), deadline).getSeconds();
+    }
+
     @Test
     void wolvesSubmittingAllAdvancesImmediately() throws Exception {
         Game game = autoGame(false);

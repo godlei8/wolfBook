@@ -97,6 +97,17 @@ class NightPlanTests {
     }
 
     @Test
+    void durationsComeFromTheRoomRules() {
+        com.wolfbook.backend.domain.JudgeRules rules = new com.wolfbook.backend.domain.JudgeRules(
+                null, null, null, null, null, null, 40, 20);
+        List<BoardRoleRef> lineup = List.of(new BoardRoleRef(4, 1), new BoardRoleRef(6, 2), new BoardRoleRef(9, 2));
+        List<NightPlan.NightStep> first = NightPlan.build(BoardRuleDetail.empty(), lineup, ROLES, 1, rules);
+        assertEquals(20, first.get(0).durationSeconds(), "守卫用单人时长");
+        assertEquals(70, first.get(1).durationSeconds(), "首夜狼队多 30 秒互认队友");
+        assertEquals(40, NightPlan.build(BoardRuleDetail.empty(), lineup, ROLES, 2, rules).get(1).durationSeconds());
+    }
+
+    @Test
     void lineStartsWithTheRoleName() {
         List<NightPlan.NightStep> steps = NightPlan.build(BoardRuleDetail.empty(),
                 List.of(new BoardRoleRef(6, 2), new BoardRoleRef(3, 1)), ROLES, 1);

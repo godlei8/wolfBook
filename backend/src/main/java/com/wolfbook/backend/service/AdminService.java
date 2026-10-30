@@ -516,11 +516,16 @@ public class AdminService {
                 throw new ApiException(4000, "法官规则取值不合法");
             }
         }
+        if ((input.wolfSeconds() != null && (input.wolfSeconds() < 30 || input.wolfSeconds() > 120))
+                || (input.roleSeconds() != null && (input.roleSeconds() < 15 || input.roleSeconds() > 60))) {
+            throw new ApiException(4000, "法官规则取值不合法");
+        }
         JudgeRules normalized = new JudgeRules(null, input.sheriffDefault(), selfSave, input.witchOnePotionPerNight(),
-                input.speechSeconds(), input.sheriffSpeechSeconds());
+                input.speechSeconds(), input.sheriffSpeechSeconds(), input.wolfSeconds(), input.roleSeconds());
         boolean empty = normalized.sheriffDefault() == null && normalized.witchSelfSave() == null
                 && normalized.witchOnePotionPerNight() == null && normalized.speechSeconds() == null
-                && normalized.sheriffSpeechSeconds() == null;
+                && normalized.sheriffSpeechSeconds() == null && normalized.wolfSeconds() == null
+                && normalized.roleSeconds() == null;
         return empty ? null : normalized;
     }
 
