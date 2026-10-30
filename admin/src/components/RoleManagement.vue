@@ -5,7 +5,7 @@ import PageHeader from './ui/PageHeader.vue'
 import RoleEditor from './roles/RoleEditor.vue'
 import { api } from '../services/api'
 import type { Board, Role, WorldEvent } from '../types'
-import { CAMP_META, CAMP_ORDER, type CampKey, campOf, roleAccent } from '../utils/board'
+import { CAMP_META, CAMP_ORDER, type CampKey, MECHANIC_LABELS, campOf, roleAccent } from '../utils/board'
 import { resolveMediaUrl } from '../utils/media'
 import { checkRole, eventRoleIds } from '../utils/roleCompleteness'
 
@@ -175,7 +175,7 @@ onMounted(load)
             <strong>{{ role.name }}</strong>
             <em v-if="role.alias">{{ role.alias }}</em>
           </span>
-          <small :style="{ color: CAMP_META[campOf(role)].color }">{{ CAMP_META[campOf(role)].label }}</small>
+          <small :style="{ color: CAMP_META[campOf(role)].color }">{{ CAMP_META[campOf(role)].label }} · {{ role.mechanic ? MECHANIC_LABELS[role.mechanic] || role.mechanic : '未设机制' }}</small>
         </span>
       </button>
     </section>

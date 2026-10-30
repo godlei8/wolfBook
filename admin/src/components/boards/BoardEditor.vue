@@ -18,6 +18,9 @@ import {
   lineupSize,
   roleAccent,
   sortLineup,
+  JUDGE_SUPPORT_META,
+  judgeSupport,
+  isWolfTeam,
 } from '../../utils/board'
 
 const props = defineProps<{ boardId: number | null }>()
@@ -73,6 +76,12 @@ const WIN_CONDITIONS = ['屠边', '屠城']
 const isNew = computed(() => !props.boardId)
 const rolesById = computed(() => new Map(roles.value.map((role) => [role.id, role])))
 const size = computed(() => lineupSize(form.roles))
+const support = computed(() => judgeSupport(form.roles, rolesById.value))
+const autoOrderText = computed(() =>
+  defaultNightOrder(form.roles, rolesById.value)
+    .map((step) => (isWolfTeam(rolesById.value.get(step.roleId)) ? '狼队' : rolesById.value.get(step.roleId)?.name || ''))
+    .join(' → '),
+)
 const sizeDiff = computed(() => size.value - form.playerCount)
 const segments = computed(() => campSegments(form.roles, rolesById.value))
 const lineup = computed(() =>
@@ -474,6 +483,9 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
       <section id="sec-lineup" class="nt-panel">
         <div class="nt-row-between">
           <h2 class="nt-h2"><span class="nt-num">3</span>阵容</h2>
+          <span class="judge" :class="`judge--${JUDGE_SUPPORT_META[support.level].tone}`" :title="support.missing.length ? `${support.missing.join('、')} 没有技能机制` : ''">
+            电子法官：{{ JUDGE_SUPPORT_META[support.level].label }}<template v-if="support.missing.length">（{{ support.missing.join('、') }} 没有机制）</template>
+          </span>
           <span class="size" :class="`size--${sizeState.tone}`">
             <svg v-if="sizeState.tone === 'ok'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10" /></svg>
             <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M12 7v6M12 17h.01" /></svg>
@@ -530,7 +542,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
             <button class="nt-btn nt-btn--ghost nt-btn--small" type="button" :disabled="!lineupRoles.length" @click="addNightStep">+ 加一步</button>
           </div>
         </div>
-        <p class="nt-muted">电子法官按这个顺序逐步引导，狼队（狼人、狼美人、白狼王等）会合并成一步。按住左边的把手拖动排序。不填就用通用顺序。</p>
+        <p class="nt-muted">电子法官按这个顺序逐步引导，狼队（狼人、狼美人、白狼王等）会合并成一步。按住左边的把手拖动排序。不填就按角色的技能机制自动排：{{ autoOrderText || '阵容里还没有要睁眼的角色' }}。</p>
         <ol class="steps">
           <li
             v-for="(step, index) in form.nightOrder"
@@ -653,6 +665,22 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
 </template>
 
 <style scoped>
+.judge {
+  font-size: 12px;
+}
+
+.judge--ok {
+  color: var(--moon);
+}
+
+.judge--warn {
+  color: var(--gold);
+}
+
+.judge--off {
+  color: var(--text-3);
+}
+
 .head {
   display: flex;
   flex-wrap: wrap;
