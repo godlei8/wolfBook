@@ -1,24 +1,58 @@
 <script setup>
-// 建房：选板子（带阵容头像的列表，点选）→ 选法官模式 → 创建并进入等待入座。
+// 建房：选板子（带阵容头像的列表，点选）→ 选有法官 / 无法官 → 调本局的房间规则（节奏）→ 创建并进入大厅。
+// 胜负、女巫自救这些玩法规则跟板子走，这里只读一行；新建的房间都走新流程（autoJudge）。
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import NavBar from '../../components/NavBar.vue'
 import api from '../../services/api'
 import { getJudgeSupportMeta, judgeModeOptions } from '../../utils/judge/meta'
+import {
+  ROOM_RULE_STEPS,
+  boardRuleLine,
+  buildCreatePayload,
+  canChooseJoined,
+  defaultRoomRules,
+  stepRule,
+} from '../../utils/judge/create-room.js'
 
 const boards = ref([])
 const selectedBoardIndex = ref(0)
 const loading = ref(false)
 const creating = ref(false)
 const judgeMode = ref('observer')
+// 选中板子的详情（带 judgeRules 和支持级别），按板子 id 缓存
+const details = ref({})
+const rules = ref(defaultRoomRules(null))
 
 const selectedBoard = computed(() => boards.value[selectedBoardIndex.value] || null)
-const supportMeta = computed(() => getJudgeSupportMeta(selectedBoard.value?.judgeSupportLevel))
-const joinedDisabledReason = computed(() => {
-  if (!selectedBoard.value) return '请先选择板子'
-  if (selectedBoard.value.judgeSupportLevel === 'manual_only') return '当前板型仅支持主持人模式'
-  return '系统执法模式二期开放'
-})
+const selectedDetail = computed(() => (selectedBoard.value ? details.value[selectedBoard.value.id] || null : null))
+const supportMeta = computed(() => getJudgeSupportMeta(selectedDetail.value?.judgeSupportLevel))
+const joinedAllowed = computed(() => canChooseJoined(selectedDetail.value))
+const ruleLine = computed(() => (selectedDetail.value ? boardRuleLine(selectedDetail.value) : ''))
+const modeHint = computed(() => judgeModeOptions.find((item) => item.value === judgeMode.value)?.subtitle || '')
+const ruleSteps = Object.entries(ROOM_RULE_STEPS).map(([key, range]) => ({ key, label: range.label }))
+
+function modeDesc(item) {
+  if (item.value === 'joined' && selectedDetail.value && !joinedAllowed.value) return '这个板子有系统还不会结算的角色，只能开有法官'
+  return item.value === 'joined' ? '你也拿牌，手机当法官' : '你当法官，不拿牌'
+}
+
+async function loadDetail(board) {
+  if (!board) return
+  let detail = details.value[board.id]
+  if (!detail) {
+    try {
+      detail = await api.getBoardDetail(board.id)
+      details.value = { ...details.value, [board.id]: detail }
+    } catch (error) {
+      uni.showToast({ title: error?.message || '板子规则加载失败', icon: 'none' })
+      return
+    }
+  }
+  if (selectedBoard.value?.id !== board.id) return
+  rules.value = defaultRoomRules(detail)
+  if (judgeMode.value === 'joined' && !canChooseJoined(detail)) judgeMode.value = 'observer'
+}
 
 async function loadBoards(preferredBoardId = 0) {
   loading.value = true
@@ -29,6 +63,7 @@ async function loadBoards(preferredBoardId = 0) {
       const index = boards.value.findIndex((item) => item.id === preferredBoardId)
       selectedBoardIndex.value = index >= 0 ? index : 0
     }
+    loadDetail(selectedBoard.value)
   } catch (error) {
     uni.showToast({ title: error?.message || '板子加载失败', icon: 'none' })
   } finally {
@@ -38,29 +73,34 @@ async function loadBoards(preferredBoardId = 0) {
 
 function chooseBoard(index) {
   selectedBoardIndex.value = index
-  judgeMode.value = 'observer'
+  loadDetail(selectedBoard.value)
 }
 
 function chooseMode(mode) {
-  if (mode === 'joined') {
-    uni.showToast({ title: joinedDisabledReason.value, icon: 'none' })
+  if (mode === 'joined' && !joinedAllowed.value) {
+    uni.showToast({ title: '这个板子只能开有法官', icon: 'none' })
     return
   }
   judgeMode.value = mode
 }
 
+function toggleSheriff() {
+  rules.value = { ...rules.value, sheriffEnabled: !rules.value.sheriffEnabled }
+}
+
+function step(key, direction) {
+  rules.value = { ...rules.value, [key]: stepRule(rules.value[key], key, direction) }
+}
+
 async function createRoom() {
   if (creating.value) return
-  if (!selectedBoard.value) {
+  if (!selectedBoard.value || !selectedDetail.value) {
     uni.showToast({ title: '请先选择板子', icon: 'none' })
     return
   }
   creating.value = true
   try {
-    const snapshot = await api.createJudgeRoom({
-      boardId: selectedBoard.value.id,
-      judgeMode: judgeMode.value,
-    })
+    const snapshot = await api.createJudgeRoom(buildCreatePayload(selectedDetail.value, judgeMode.value, rules.value))
     uni.redirectTo({ url: `/pages/judge/room?roomId=${snapshot.roomId}` })
   } catch (error) {
     uni.showToast({ title: error?.message || '创建房间失败', icon: 'none' })
@@ -99,6 +139,10 @@ onLoad((options) => {
           <text class="nt-meta jc-preview__meta">{{ selectedBoard.playerCount }} 人 · {{ supportMeta.label }}</text>
         </view>
       </view>
+      <view v-if="ruleLine" class="jc-ruleline">
+        <text class="jc-ruleline__tag">板子规则</text>
+        <text class="jc-ruleline__text">{{ ruleLine }}</text>
+      </view>
     </view>
 
     <view class="nt-gutter nt-stack jc-body">
@@ -111,11 +155,33 @@ onLoad((options) => {
             v-for="item in judgeModeOptions"
             :key="item.value"
             class="jc-mode"
-            :class="{ 'jc-mode--on': judgeMode === item.value, 'jc-mode--off': item.value === 'joined' }"
+            :class="{ 'jc-mode--on': judgeMode === item.value, 'jc-mode--off': item.value === 'joined' && !joinedAllowed }"
             @tap="chooseMode(item.value)"
           >
             <text class="jc-mode__title serif">{{ item.title }}</text>
-            <text class="jc-mode__desc">{{ item.value === 'joined' ? joinedDisabledReason : item.subtitle }}</text>
+            <text class="jc-mode__desc">{{ modeDesc(item) }}</text>
+          </view>
+        </view>
+        <text class="jc-hint">{{ modeHint }}</text>
+      </view>
+
+      <view class="nt-panel">
+        <view class="nt-panel__head">
+          <text class="nt-h2">房间规则</text>
+          <text class="nt-meta">大厅里还能改</text>
+        </view>
+        <view class="jc-rule">
+          <text class="jc-rule__label">上警竞选</text>
+          <view class="jc-switch" :class="{ 'jc-switch--on': rules.sheriffEnabled }" @tap="toggleSheriff">
+            <view class="jc-switch__dot" :class="{ 'jc-switch__dot--on': rules.sheriffEnabled }" />
+          </view>
+        </view>
+        <view v-for="item in ruleSteps" :key="item.key" class="jc-rule">
+          <text class="jc-rule__label">{{ item.label }}</text>
+          <view class="jc-stepper">
+            <view class="jc-stepper__btn" @tap="step(item.key, -1)">-</view>
+            <text class="jc-stepper__value">{{ rules[item.key] }} 秒</text>
+            <view class="jc-stepper__btn" @tap="step(item.key, 1)">+</view>
           </view>
         </view>
       </view>
@@ -162,13 +228,108 @@ onLoad((options) => {
 </template>
 
 <style scoped lang="scss">
+.jc-ruleline {
+  margin-top: 16rpx;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 16rpx 24rpx;
+  border-radius: 20rpx;
+  background: var(--panel);
+  border: 2rpx solid var(--panel-line);
+}
+
+.jc-ruleline__tag {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.jc-ruleline__text {
+  font-size: 24rpx;
+  color: var(--text-soft);
+}
+
+.jc-hint {
+  display: block;
+  margin-top: 16rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.jc-rule {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 88rpx;
+  border-top: 2rpx solid var(--panel-line);
+}
+
+.jc-rule__label {
+  font-size: 28rpx;
+  color: var(--text);
+}
+
+.jc-switch {
+  position: relative;
+  width: 88rpx;
+  height: 48rpx;
+  border-radius: 24rpx;
+  background: var(--line);
+}
+
+.jc-switch--on {
+  background: var(--moon);
+}
+
+.jc-switch__dot {
+  position: absolute;
+  top: 6rpx;
+  left: 6rpx;
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 18rpx;
+  background: var(--text);
+  transition: left 0.15s;
+}
+
+.jc-switch__dot--on {
+  left: 46rpx;
+}
+
+.jc-stepper {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.jc-stepper__btn {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 16rpx;
+  background: var(--panel-raised);
+  color: var(--text);
+  font-size: 32rpx;
+  line-height: 56rpx;
+  text-align: center;
+}
+
+.jc-stepper__value {
+  min-width: 112rpx;
+  text-align: center;
+  font-size: 28rpx;
+  color: var(--text);
+}
+
 .jc-preview {
   position: relative;
   margin-top: 16rpx;
   height: 400rpx;
   border-radius: 40rpx;
   overflow: hidden;
-  background: #1b1724;
+  background: var(--panel-sunk);
 }
 
 .jc-preview__bg {

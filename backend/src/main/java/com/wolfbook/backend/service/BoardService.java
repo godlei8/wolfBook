@@ -8,6 +8,7 @@ import com.wolfbook.backend.domain.BoardRoleRef;
 import com.wolfbook.backend.domain.RoleRelation;
 import com.wolfbook.backend.domain.BoardRuleDetail;
 import com.wolfbook.backend.domain.FaqItem;
+import com.wolfbook.backend.domain.JudgeRules;
 import com.wolfbook.backend.domain.Role;
 import com.wolfbook.backend.dto.WolfbookDtos;
 import com.wolfbook.backend.entity.BoardEntity;
@@ -122,7 +123,7 @@ public class BoardService {
                 converter.readStringList(boardEntity.getSpecialRules()),
                 converter.readStringList(boardEntity.getTips()),
                 converter.readFaqList(boardEntity.getFaqs()).stream().map(this::toFaqInput).toList(),
-                toRuleDetailView(ruleDetail, rolesById),
+                toRuleDetailView(ruleDetail, rolesById, JudgeRules.resolve(ruleDetail, boardEntity.getWinCondition())),
                 boardEntity.getWinCondition(),
                 boardEntity.getRuleType(),
                 roles,
@@ -359,7 +360,7 @@ public class BoardService {
     }
 
     /** 引用的角色如果已经不存在就跳过这一条，详情页不因为一条脏数据整页报错。 */
-    private WolfbookDtos.BoardRuleDetailView toRuleDetailView(BoardRuleDetail detail, Map<Integer, RoleEntity> rolesById) {
+    private WolfbookDtos.BoardRuleDetailView toRuleDetailView(BoardRuleDetail detail, Map<Integer, RoleEntity> rolesById, JudgeRules judgeRules) {
         List<WolfbookDtos.NightStepView> nightOrder = new ArrayList<>();
         for (BoardRuleDetail.NightStep step : detail.nightOrder()) {
             RoleEntity role = rolesById.get(step.roleId());
@@ -386,7 +387,7 @@ public class BoardService {
         List<WolfbookDtos.RuleSectionView> sections = detail.sections().stream()
                 .map(section -> new WolfbookDtos.RuleSectionView(section.title(), section.items()))
                 .toList();
-        return new WolfbookDtos.BoardRuleDetailView(detail.overview(), nightOrder, roleRules, sections);
+        return new WolfbookDtos.BoardRuleDetailView(detail.overview(), nightOrder, roleRules, sections, judgeRules);
     }
 
     private WolfbookDtos.FaqInput toFaqInput(FaqItem faqItem) {

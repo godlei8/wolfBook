@@ -133,7 +133,12 @@ test('withAlpha converts hex to rgba and survives bad input', () => {
 
 test('missing rule detail becomes empty lists with no content', () => {
   const detail = normalizeRuleDetail(undefined)
-  assert.deepEqual(detail, { overview: '', nightOrder: [], roleRules: [], sections: [], hasContent: false })
+  assert.deepEqual(detail, { overview: '', nightOrder: [], roleRules: [], sections: [], judgeRules: null, hasContent: false })
+})
+
+test('rule detail keeps the board judge rules for the create page', () => {
+  const judgeRules = { winCondition: 'side', speechSeconds: 90 }
+  assert.equal(normalizeRuleDetail({ judgeRules }).judgeRules, judgeRules)
 })
 
 test('rule detail resolves portraits, accents and order, dropping empty entries', () => {
