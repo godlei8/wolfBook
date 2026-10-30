@@ -1756,7 +1756,7 @@ public class JudgeService {
 
     // ---------- 出局待办：技能询问、猎人开枪、移交警徽（只对 auto_judge_enabled 的房间）----------
 
-    private static final int SKILL_ASK_SECONDS = 10;
+    private static final int SKILL_ASK_SECONDS = 15;
     private static final int HUNTER_SHOT_SECONDS = 20;
     private static final int BADGE_SECONDS = 30;
     private static final String PENDING_SKILL_ASK = "skill_ask";

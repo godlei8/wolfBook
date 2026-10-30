@@ -856,6 +856,16 @@ class JudgeFlowIntegrationTests {
     }
 
     @Test
+    void skillAskGivesFifteenSeconds() throws Exception {
+        Game game = autoGame(false);
+        int villager = game.seatsByRole().get("平民").get(0);
+        JsonNode out = game.advance(game.host, "{\"action\":\"force_out\",\"forceOutSeatNo\":" + villager + "}");
+        Assertions.assertEquals("skill_pending", out.path("data").path("currentPhase").asText(), out.toString());
+        long seconds = secondsToDeadline(game);
+        Assertions.assertTrue(seconds >= 13 && seconds <= 15, "技能询问 15 秒，实际 " + seconds);
+    }
+
+    @Test
     void forceOutAtNightKeepsTheStepClock() throws Exception {
         Game game = autoGame(false);
         int villager = game.seatsByRole().get("平民").get(0);
