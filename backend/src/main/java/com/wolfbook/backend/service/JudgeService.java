@@ -112,6 +112,8 @@ public class JudgeService {
     private static final String EVENT_BADGE_PASSED = "badge_passed";
     private static final String EVENT_IDIOT_REVEALED = "idiot_revealed";
     private static final String EVENT_FORCE_OUT = "force_out";
+    private static final String EVENT_JUDGE_PAUSED = "judge_paused";
+    private static final String EVENT_JUDGE_RESUMED = "judge_resumed";
     private static final TypeReference<Map<String, Object>> OBJECT_MAP = new TypeReference<>() {
     };
     private static final TypeReference<List<String>> STRING_LIST = new TypeReference<>() {
@@ -437,6 +439,9 @@ public class JudgeService {
             throw new ApiException(4002, ROOM_STATUS_FINISHED.equals(room.getRoomStatus()) ? "对局已结束" : "对局尚未开始");
         }
 
+        if (!Set.of("resume", "force_out").contains(normalizeAction(request.action()))) {
+            requireNotPaused(room);
+        }
         List<JudgeRoomPlayerEntity> players = loadPlayers(roomId);
         LocalDateTime now = LocalDateTime.now(APP_ZONE);
         switch (normalizeAction(request.action())) {
@@ -452,6 +457,8 @@ public class JudgeService {
             case "start_speech" -> handleStartSpeech(room, players, request, now);
             case "continue" -> handleContinue(room, now);
             case "force_out" -> handleForceOut(room, players, request, now);
+            case "pause" -> handlePause(room, now);
+            case "resume" -> handleResume(room, now);
             default -> throw new ApiException(4000, "不支持的推进动作");
         }
         return buildSnapshot(openid, roomId);
@@ -463,6 +470,7 @@ public class JudgeService {
         String openid = requireOpenid(authorization);
         tick(roomId);
         JudgeRoomEntity room = getRoom(roomId);
+        requireNotPaused(room);
         if (!ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) || !PHASE_NIGHT_ACTION.equals(room.getCurrentPhase())) {
             throw new ApiException(4002, "当前不是夜间行动阶段");
         }
@@ -518,6 +526,7 @@ public class JudgeService {
         String openid = requireOpenid(authorization);
         tick(roomId);
         JudgeRoomEntity room = getRoom(roomId);
+        requireNotPaused(room);
         boolean pk = PHASE_VOTE_PK.equals(room.getCurrentPhase());
         if (!ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) || (!PHASE_EXILE_VOTE.equals(room.getCurrentPhase()) && !pk)) {
             throw new ApiException(4002, "当前不是投票阶段");
@@ -637,7 +646,9 @@ public class JudgeService {
                 speechView(room),
                 Set.of(PHASE_VOTE_RESULT, PHASE_VOTE_PK, PHASE_SHERIFF_PK).contains(safeText(room.getCurrentPhase(), "")) ? pkSeats(room) : List.of(),
                 buildRounds(events),
-                pendingView(room, players, self, judgeViewer)
+                pendingView(room, players, self, judgeViewer),
+                isPaused(room),
+                room.getStepDeadline()
         );
     }
 
@@ -1270,6 +1281,7 @@ public class JudgeService {
         String openid = requireOpenid(authorization);
         tick(roomId);
         JudgeRoomEntity room = getRoom(roomId);
+        requireNotPaused(room);
         if (!ROOM_STATUS_PLAYING.equals(room.getRoomStatus())) {
             throw new ApiException(4002, "对局不在进行中");
         }
@@ -1487,6 +1499,7 @@ public class JudgeService {
     /** 下一位发言：当前发言者自己点「结束发言」，或者房主跳过。 */
     private WolfbookDtos.JudgeRoomSnapshotView nextSpeaker(String openid, String roomId) {
         JudgeRoomEntity room = getRoom(roomId);
+        requireNotPaused(room);
         String phase = safeText(room.getCurrentPhase(), "");
         if (!ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) || (!PHASE_DAY_SPEECH.equals(phase) && !PHASE_SHERIFF_SPEECH.equals(phase))) {
             throw new ApiException(4002, "现在不是发言阶段");
@@ -1623,6 +1636,10 @@ public class JudgeService {
         } else {
             pending = added;
             phaseData.put("resumePhase", room.getCurrentPhase());
+            // 夜里点杀之类：待办处理完回到原阶段时，原来的倒计时照常继续
+            if (room.getStepDeadline() != null) {
+                phaseData.put("resumeDeadline", room.getStepDeadline().toString());
+            }
         }
         phaseData.put("pending", pending);
         room.setPhaseData(writeJson(phaseData));
@@ -1636,6 +1653,7 @@ public class JudgeService {
         String openid = requireOpenid(authorization);
         tick(roomId);
         JudgeRoomEntity room = getRoom(roomId);
+        requireNotPaused(room);
         if (!ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) || !PHASE_SKILL_PENDING.equals(room.getCurrentPhase())) {
             throw new ApiException(4002, "现在没有待处理的技能");
         }
@@ -1708,9 +1726,10 @@ public class JudgeService {
         }
         if (pending.isEmpty()) {
             room.setCurrentPhase(safeText(asString(phaseData.get("resumePhase")), PHASE_DAY_ANNOUNCE));
+            room.setStepDeadline(parseDeadline(Map.of("deadline", safeText(asString(phaseData.get("resumeDeadline")), ""))));
             phaseData.remove("pending");
             phaseData.remove("resumePhase");
-            room.setStepDeadline(null);
+            phaseData.remove("resumeDeadline");
         } else {
             phaseData.put("pending", pending);
             room.setStepDeadline(parseDeadline(pending.get(0)));
@@ -1718,6 +1737,68 @@ public class JudgeService {
         room.setPhaseData(writeJson(phaseData));
         room.setUpdateTime(now);
         updateRoomGuarded(room, ROOM_STATUS_PLAYING, PHASE_SKILL_PENDING);
+    }
+
+    // ---------- 暂停 / 继续（只认法官，只在新流程房间）----------
+
+    private boolean isPaused(JudgeRoomEntity room) {
+        return readMap(room.getPhaseData()).containsKey("pausedAt");
+    }
+
+    private void requireNotPaused(JudgeRoomEntity room) {
+        if (ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) && isPaused(room)) {
+            throw new ApiException(4002, "法官暂停中");
+        }
+    }
+
+    /** 暂停：记下暂停时刻；惰性推进跳过暂停中的房间，所有提交都先等着。 */
+    private void handlePause(JudgeRoomEntity room, LocalDateTime now) {
+        if (!Boolean.TRUE.equals(room.getAutoJudgeEnabled())) {
+            throw new ApiException(4002, "旧流程房间没有计时，不用暂停");
+        }
+        if (isPaused(room)) {
+            throw new ApiException(4002, "已经暂停了");
+        }
+        Map<String, Object> phaseData = new LinkedHashMap<>(readMap(room.getPhaseData()));
+        phaseData.put("pausedAt", now.toString());
+        room.setPhaseData(writeJson(phaseData));
+        room.setUpdateTime(now);
+        updateRoomGuarded(room, ROOM_STATUS_PLAYING, room.getCurrentPhase(), room.getNightStep());
+        addEvent(room.getRoomId(), room.getCurrentDay(), room.getCurrentPhase(), null, List.of(), EVENT_JUDGE_PAUSED,
+                Map.of(), Map.of(), VISIBILITY_PUBLIC, now);
+    }
+
+    /** 继续：当前截止时间、每条待办的截止时间、待办结束后要恢复的截止时间，全部顺延暂停了多久。 */
+    private void handleResume(JudgeRoomEntity room, LocalDateTime now) {
+        Map<String, Object> phaseData = new LinkedHashMap<>(readMap(room.getPhaseData()));
+        LocalDateTime pausedAt = parseDeadline(Map.of("deadline", safeText(asString(phaseData.get("pausedAt")), "")));
+        if (pausedAt == null) {
+            throw new ApiException(4002, "现在没有暂停");
+        }
+        java.time.Duration paused = java.time.Duration.between(pausedAt, now);
+        if (room.getStepDeadline() != null) {
+            room.setStepDeadline(room.getStepDeadline().plus(paused));
+        }
+        List<Map<String, Object>> pending = pendingList(phaseData);
+        for (Map<String, Object> entry : pending) {
+            LocalDateTime deadline = parseDeadline(entry);
+            if (deadline != null) {
+                entry.put("deadline", deadline.plus(paused).toString());
+            }
+        }
+        if (!pending.isEmpty()) {
+            phaseData.put("pending", pending);
+        }
+        LocalDateTime resumeDeadline = parseDeadline(Map.of("deadline", safeText(asString(phaseData.get("resumeDeadline")), "")));
+        if (resumeDeadline != null) {
+            phaseData.put("resumeDeadline", resumeDeadline.plus(paused).toString());
+        }
+        phaseData.remove("pausedAt");
+        room.setPhaseData(writeJson(phaseData));
+        room.setUpdateTime(now);
+        updateRoomGuarded(room, ROOM_STATUS_PLAYING, room.getCurrentPhase(), room.getNightStep());
+        addEvent(room.getRoomId(), room.getCurrentDay(), room.getCurrentPhase(), null, List.of(), EVENT_JUDGE_RESUMED,
+                Map.of(), Map.of(), VISIBILITY_PUBLIC, now);
     }
 
     /** 法官点杀：违规的玩家直接出局，公告注明法官判罚，照常问技能（点杀的猎人不能开枪）。 */
@@ -1844,7 +1925,8 @@ public class JudgeService {
 
     private void tickInTransaction(String roomId) {
         JudgeRoomEntity room = judgeRoomMapper.selectById(roomId);
-        if (room == null || !ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) || !Boolean.TRUE.equals(room.getAutoJudgeEnabled())) {
+        if (room == null || !ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) || !Boolean.TRUE.equals(room.getAutoJudgeEnabled())
+                || isPaused(room)) {
             return;
         }
         LocalDateTime now = LocalDateTime.now(APP_ZONE);

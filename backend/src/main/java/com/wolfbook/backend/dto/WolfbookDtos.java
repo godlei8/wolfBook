@@ -632,7 +632,11 @@ public final class WolfbookDtos {
             JudgeSpeechView speech,
             List<Integer> pkSeats,
             List<JudgeRoundView> rounds,
-            JudgePendingView pending
+            JudgePendingView pending,
+            /** 法官暂停中：所有人显示同一张「法官暂停」画面，倒计时停表。 */
+            boolean paused,
+            /** 当前阶段的截止时间（夜间步骤、出局技能询问、投票、发言），给客户端倒计时；没有为 null。 */
+            LocalDateTime phaseDeadline
     ) {
     }
 

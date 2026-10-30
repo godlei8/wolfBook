@@ -733,6 +733,79 @@ class JudgeFlowIntegrationTests {
         Assertions.assertEquals(4003, game.advance(game.players.get(1), "{\"action\":\"start_speech\"}").path("code").asInt());
     }
 
+    // ---- 暂停 / 继续 ----
+
+    @Test
+    void pauseFreezesTheNightStep() throws Exception {
+        Game game = autoGame(false);
+        Assertions.assertEquals(0, game.advance(game.host, "{\"action\":\"pause\"}").path("code").asInt());
+        JsonNode paused = game.expireDeadline();
+        Assertions.assertTrue(paused.path("paused").asBoolean(), paused.toString());
+        Assertions.assertEquals(0, paused.path("currentStep").path("index").asInt(), "暂停时到点也不切步");
+        Assertions.assertTrue(game.snapshot(game.players.get(0)).path("paused").asBoolean(), "所有人都看到暂停");
+        Assertions.assertEquals(4002, game.advance(game.host, "{\"action\":\"pause\"}").path("code").asInt(), "不能重复暂停");
+        JsonNode resumed = game.advance(game.host, "{\"action\":\"resume\"}");
+        Assertions.assertEquals(0, resumed.path("code").asInt(), resumed.toString());
+        Assertions.assertFalse(resumed.path("data").path("paused").asBoolean());
+        Assertions.assertEquals(4002, game.advance(game.host, "{\"action\":\"resume\"}").path("code").asInt(), "没暂停不能继续");
+    }
+
+    @Test
+    void resumeShiftsTheDeadlineByThePause() throws Exception {
+        Game game = autoGame(false);
+        java.time.LocalDateTime before = java.time.LocalDateTime.parse(game.snapshot(game.host).path("phaseDeadline").asText());
+        game.advance(game.host, "{\"action\":\"pause\"}");
+        Thread.sleep(2000);
+        game.advance(game.host, "{\"action\":\"resume\"}");
+        java.time.LocalDateTime after = java.time.LocalDateTime.parse(game.snapshot(game.host).path("phaseDeadline").asText());
+        Assertions.assertTrue(java.time.Duration.between(before, after).toMillis() >= 1900, before + " → " + after);
+    }
+
+    @Test
+    void pauseShiftsPendingDeadlines() throws Exception {
+        Game game = autoGame(false);
+        int dead = game.seatsByRole().get("平民").get(0);
+        Assertions.assertEquals("skill_pending", game.finishNight(dead, null).path("currentPhase").asText());
+        java.time.LocalDateTime before = java.time.LocalDateTime.parse(
+                game.snapshot(game.players.get(dead - 1)).path("pending").path("deadline").asText());
+        game.advance(game.host, "{\"action\":\"pause\"}");
+        Thread.sleep(2000);
+        game.advance(game.host, "{\"action\":\"resume\"}");
+        java.time.LocalDateTime after = java.time.LocalDateTime.parse(
+                game.snapshot(game.players.get(dead - 1)).path("pending").path("deadline").asText());
+        Assertions.assertTrue(java.time.Duration.between(before, after).toMillis() >= 1900, before + " → " + after);
+    }
+
+    @Test
+    void onlyTheJudgePauses() throws Exception {
+        Game game = autoGame(false);
+        Assertions.assertEquals(4003, game.advance(game.players.get(0), "{\"action\":\"pause\"}").path("code").asInt());
+        Game joined = joinedGame(2, 12);
+        Assertions.assertEquals(4003, joined.advance(joined.host, "{\"action\":\"pause\"}").path("code").asInt(), "无法官房间没有法官");
+    }
+
+    @Test
+    void submissionsWaitWhilePaused() throws Exception {
+        Game game = autoGame(false);
+        int guard = game.seatsByRole().get("守卫").get(0);
+        game.advance(game.host, "{\"action\":\"pause\"}");
+        JsonNode blocked = game.call(game.players.get(guard - 1), "/night-action", "{\"actionType\":\"guard\",\"targetSeatNo\":" + guard + "}");
+        Assertions.assertEquals(4002, blocked.path("code").asInt(), blocked.toString());
+    }
+
+    @Test
+    void forceOutAtNightKeepsTheStepClock() throws Exception {
+        Game game = autoGame(false);
+        int villager = game.seatsByRole().get("平民").get(0);
+        JsonNode out = game.advance(game.host, "{\"action\":\"force_out\",\"forceOutSeatNo\":" + villager + "}");
+        Assertions.assertEquals("skill_pending", out.path("data").path("currentPhase").asText(), out.toString());
+        JsonNode night = game.skipPending();
+        Assertions.assertEquals("night_action", night.path("currentPhase").asText(), night.toString());
+        Assertions.assertEquals(0, night.path("currentStep").path("index").asInt());
+        Assertions.assertTrue(java.time.LocalDateTime.parse(night.path("phaseDeadline").asText())
+                .isAfter(java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Shanghai"))), "夜间步骤照常倒计时");
+    }
+
     // ---- 惰性推进（autoJudge）----
 
     @Test
