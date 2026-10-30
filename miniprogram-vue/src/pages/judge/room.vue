@@ -5,15 +5,18 @@
 import { computed, ref } from 'vue'
 import { onHide, onLoad, onShareAppMessage, onShow, onUnload } from '@dcloudio/uni-app'
 import NavBar from '../../components/NavBar.vue'
+import LobbyView from './views/LobbyView.vue'
 import api from '../../services/api'
 import storage from '../../services/storage'
-import { getJudgePhaseLabel } from '../../utils/judge/meta'
 import { mergePollResult, pollInterval } from '../../utils/judge/room-poll.js'
+import { phaseTitle, pickView } from '../../utils/judge/room-view.js'
 import { goToUserTab, hasAuthToken } from '../../utils/auth'
 
 const roomId = ref('')
 const loadOptions = ref({})
 const snapshot = ref(null)
+// 板子详情（立绘、背景图、阵容头像），按快照里的 boardId 拉一次
+const board = ref(null)
 const pollError = ref('')
 const actionLoading = ref(false)
 
@@ -21,8 +24,8 @@ let pollTimer = null
 let active = false
 let redirected = false
 
-const roomCode = computed(() => snapshot.value?.roomCode || '')
-const phaseLabel = computed(() => getJudgePhaseLabel(snapshot.value?.currentPhase || ''))
+const view = computed(() => pickView(snapshot.value))
+const title = computed(() => phaseTitle(snapshot.value) || '法官房间')
 
 function safeDecode(value) {
   if (!value) return ''
@@ -58,6 +61,16 @@ function applySnapshot(data) {
   }
   snapshot.value = data
   storage.clearPendingJudgeInvite()
+  loadBoard(data.boardId)
+}
+
+async function loadBoard(boardId) {
+  if (!boardId || board.value?.id === boardId) return
+  try {
+    board.value = await api.getBoardDetail(boardId)
+  } catch (error) {
+    board.value = null
+  }
 }
 
 async function refresh() {
@@ -129,12 +142,27 @@ async function runAction(task) {
   }
 }
 
+/** 视图组件 emit('act', { kind, ... })，在这里换成接口调用。 */
+function onAct(event) {
+  const id = snapshot.value?.roomId || roomId.value
+  const tasks = {
+    join: () => api.joinJudgeRoom(id),
+    ready: () => api.toggleJudgeReady(id),
+    unready: () => api.toggleJudgeReady(id),
+    start: () => api.startJudgeRoom(id),
+    rules: () => api.updateJudgeRoomRules(id, event.rules),
+  }
+  const task = tasks[event?.kind]
+  if (task) runAction(task)
+}
+
 function judgeSharePayload() {
   const room = snapshot.value
   const boardName = encodeURIComponent(room?.boardName || '')
   return {
     title: room?.boardName ? `房号 ${room.roomCode || ''} · 来「${room.boardName}」入座` : '邀请你加入狼人杀电子法官房间',
     path: `/pages/judge/room?roomId=${room?.roomId || roomId.value}&boardName=${boardName}&fromShare=1`,
+    imageUrl: board.value?.backgroundImage || board.value?.coverImage || '',
   }
 }
 
@@ -175,15 +203,18 @@ onUnload(() => {
 </script>
 
 <template>
-  <view class="nt-page">
-    <NavBar back :title="roomCode ? `房号 ${roomCode}` : '法官房间'" />
-    <view class="nt-gutter">
-      <view v-if="pollError" class="jr-warn">{{ pollError }}</view>
-      <view v-if="snapshot" class="nt-panel jr-placeholder">
+  <view class="nt-page" :class="{ 'nt-page--bar': view === 'lobby' }">
+    <NavBar back :title="title" />
+    <view v-if="pollError" class="nt-gutter">
+      <view class="jr-warn">{{ pollError }}</view>
+    </view>
+    <view v-if="!snapshot" class="jr-loading">正在进入房间…</view>
+    <LobbyView v-else-if="view === 'lobby'" :snapshot="snapshot" :board="board" :busy="actionLoading" @act="onAct" />
+    <view v-else class="nt-gutter">
+      <view class="nt-panel jr-placeholder">
         <text class="jr-placeholder__title">{{ snapshot.boardName }}</text>
-        <text class="jr-placeholder__phase">{{ phaseLabel }}</text>
+        <text class="jr-placeholder__phase">{{ title }}</text>
       </view>
-      <view v-else class="jr-loading">正在进入房间…</view>
     </view>
   </view>
 </template>
