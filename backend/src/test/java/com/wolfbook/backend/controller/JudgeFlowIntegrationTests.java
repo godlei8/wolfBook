@@ -383,9 +383,9 @@ class JudgeFlowIntegrationTests {
         Game game = autoGame(false);
         Map<String, List<Integer>> seats = game.seatsByRole();
         int dead = seats.get("平民").get(0);
-        JsonNode announced = game.advance(game.host, "{\"action\":\"resolve_night\",\"deadSeatNos\":[" + dead + "]}");
-        Assertions.assertEquals("skill_pending", announced.path("data").path("currentPhase").asText(), "公布死讯前先问出局者的技能");
-        Assertions.assertTrue(announced.path("data").path("latestAnnouncement").asText().contains(dead + "号"));
+        JsonNode announced = game.finishNight(dead, null);
+        Assertions.assertEquals("skill_pending", announced.path("currentPhase").asText(), "公布死讯前先问出局者的技能");
+        Assertions.assertTrue(announced.path("latestAnnouncement").asText().contains(dead + "号"));
         Assertions.assertEquals("day_announce", game.skill(dead, "{\"decision\":\"skip\"}").path("currentPhase").asText());
 
         JsonNode speech = game.advance(game.host, "{\"action\":\"start_speech\"}");
@@ -400,9 +400,9 @@ class JudgeFlowIntegrationTests {
     void sheriffElectionEndsWithOneAndAHalfVotes() throws Exception {
         Game game = autoGame(true);
         int dead = game.seatsByRole().get("平民").get(0);
-        JsonNode signup = game.advance(game.host, "{\"action\":\"resolve_night\",\"deadSeatNos\":[" + dead + "]}");
-        Assertions.assertEquals("sheriff_signup", signup.path("data").path("currentPhase").asText(), signup.toString());
-        Assertions.assertTrue(game.player(signup.path("data"), dead).path("alive").asBoolean(), "上警时还没公布昨夜死讯");
+        JsonNode signup = game.finishNight(dead, null);
+        Assertions.assertEquals("sheriff_signup", signup.path("currentPhase").asText(), signup.toString());
+        Assertions.assertTrue(game.player(signup, dead).path("alive").asBoolean(), "上警时还没公布昨夜死讯");
 
         int a = dead == 1 ? 2 : 1;
         int b = dead == 3 ? 4 : 3;
@@ -433,14 +433,17 @@ class JudgeFlowIntegrationTests {
     @Test
     void nobodyOrEveryoneOnStageLosesTheBadge() throws Exception {
         Game nobody = autoGame(true);
-        nobody.advance(nobody.host, "{\"action\":\"resolve_night\",\"deadSeatNos\":[]}");
+        nobody.finishNight();
         JsonNode lost = nobody.advance(nobody.host, "{\"action\":\"close_sheriff_signup\"}");
         Assertions.assertEquals("day_announce", lost.path("data").path("currentPhase").asText(), lost.toString());
         Assertions.assertTrue(lost.path("data").path("sheriffSeatNo").isNull());
 
         Game everyone = autoGame(true);
-        everyone.advance(everyone.host, "{\"action\":\"resolve_night\",\"deadSeatNos\":[]}");
-        everyone.advance(everyone.host, "{\"action\":\"close_sheriff_signup\",\"sheriffCandidates\":[1,2,3,4,5,6,7,8,9]}");
+        everyone.finishNight();
+        for (int seat = 1; seat <= PLAYER_COUNT; seat++) {
+            everyone.sheriff(seat, "{\"candidate\":true}");
+        }
+        everyone.advance(everyone.host, "{\"action\":\"close_sheriff_signup\"}");
         JsonNode all = everyone.snapshot(everyone.host);
         Assertions.assertEquals("day_announce", all.path("currentPhase").asText());
         Assertions.assertTrue(all.path("sheriffSeatNo").isNull());
@@ -449,7 +452,7 @@ class JudgeFlowIntegrationTests {
     @Test
     void candidatesCannotVoteForSheriff() throws Exception {
         Game game = autoGame(true);
-        game.advance(game.host, "{\"action\":\"resolve_night\",\"deadSeatNos\":[]}");
+        game.finishNight();
         game.sheriff(1, "{\"candidate\":true}");
         game.sheriff(2, "{\"candidate\":true}");
         game.advance(game.host, "{\"action\":\"close_sheriff_signup\"}");
@@ -461,7 +464,7 @@ class JudgeFlowIntegrationTests {
     @Test
     void exileTieGoesToPkAndOnlyOthersVote() throws Exception {
         Game game = autoGame(false);
-        game.advance(game.host, "{\"action\":\"resolve_night\",\"deadSeatNos\":[]}");
+        game.finishNight();
         game.advance(game.host, "{\"action\":\"start_speech\"}");
         game.advance(game.host, "{\"action\":\"start_vote\"}");
         game.vote(1, 5);
@@ -506,9 +509,9 @@ class JudgeFlowIntegrationTests {
         Game game = autoGame(true);
         Map<String, List<Integer>> seats = game.seatsByRole();
         int dead = seats.get("平民").get(0);
-        // 第 0 步是守卫：记一条守护，最后检查它没出现在公开记录里
-        game.record(seats.get("守卫").get(0), "guard", dead);
-        game.advance(game.host, "{\"action\":\"resolve_night\",\"deadSeatNos\":[" + dead + "]}");
+        // 第 0 步是守卫：守卫自己守一个别人，最后检查它没出现在公开记录里
+        game.act(seats.get("守卫").get(0), "guard", seats.get("平民").get(2));
+        game.finishNight(dead, null);
         int a = dead == 1 ? 2 : 1;
         game.sheriff(a, "{\"candidate\":true}");
         game.advance(game.host, "{\"action\":\"close_sheriff_signup\"}");
@@ -543,8 +546,8 @@ class JudgeFlowIntegrationTests {
         Game game = autoGame(false);
         Map<String, List<Integer>> seats = game.seatsByRole();
         int dead = seats.get("平民").get(0);
-        JsonNode day = game.advance(game.host, "{\"action\":\"resolve_night\",\"deadSeatNos\":[" + dead + "]}");
-        Assertions.assertEquals("skill_pending", day.path("data").path("currentPhase").asText(), day.toString());
+        JsonNode day = game.finishNight(dead, null);
+        Assertions.assertEquals("skill_pending", day.path("currentPhase").asText(), day.toString());
 
         JsonNode own = game.snapshot(game.players.get(dead - 1)).path("pending");
         Assertions.assertEquals("skill_ask", own.path("kind").asText(), own.toString());
@@ -562,7 +565,7 @@ class JudgeFlowIntegrationTests {
         int hunter = seats.get("猎人").get(0);
         int sheriff = seats.get("平民").get(0);
         int heir = seats.get("平民").get(1);
-        game.advance(game.host, "{\"action\":\"resolve_night\",\"deadSeatNos\":[" + hunter + "]}");
+        game.finishNight(hunter, null);
         game.sheriff(sheriff, "{\"candidate\":true}");
         JsonNode announce = game.advance(game.host, "{\"action\":\"close_sheriff_signup\"}");
         Assertions.assertEquals("skill_pending", announce.path("data").path("currentPhase").asText(), announce.toString());
@@ -588,10 +591,8 @@ class JudgeFlowIntegrationTests {
         Game game = autoGame12(false);
         Map<String, List<Integer>> seats = game.seatsByRole();
         int hunter = seats.get("猎人").get(0);
-        game.advance(game.host, "{\"action\":\"next_step\",\"stepIndex\":0}");
-        game.record(seats.get("女巫").get(0), "poison", hunter);
-        JsonNode day = game.advance(game.host, "{\"action\":\"resolve_night\"}");
-        Assertions.assertFalse(game.player(day.path("data"), hunter).path("alive").asBoolean(), day.toString());
+        JsonNode day = game.finishNight(null, hunter);
+        Assertions.assertFalse(game.player(day, hunter).path("alive").asBoolean(), day.toString());
         JsonNode ask = game.snapshot(game.players.get(hunter - 1)).path("pending");
         Assertions.assertEquals("skill_ask", ask.path("kind").asText());
         Assertions.assertEquals("[\"skip\"]", ask.path("options").toString(), "被毒的猎人不能开枪");
@@ -605,7 +606,7 @@ class JudgeFlowIntegrationTests {
         int idiot = seats.get("白痴").get(0);
         List<Integer> voters = seats.get("狼人");
 
-        game.advance(game.host, "{\"action\":\"resolve_night\",\"deadSeatNos\":[]}");
+        game.finishNight();
         game.advance(game.host, "{\"action\":\"start_speech\"}");
         game.advance(game.host, "{\"action\":\"start_vote\"}");
         game.vote(voters.get(0), idiot);
@@ -616,7 +617,7 @@ class JudgeFlowIntegrationTests {
         Assertions.assertEquals("vote_result", revealed.path("data").path("currentPhase").asText());
 
         game.advance(game.host, "{\"action\":\"continue\"}");
-        game.advance(game.host, "{\"action\":\"resolve_night\",\"deadSeatNos\":[]}");
+        game.finishNight();
         game.advance(game.host, "{\"action\":\"start_speech\"}");
         game.advance(game.host, "{\"action\":\"start_vote\"}");
         Assertions.assertEquals(4003, game.call(game.players.get(idiot - 1), "/vote", "{\"targetSeatNo\":" + voters.get(0) + "}").path("code").asInt(),
@@ -635,8 +636,11 @@ class JudgeFlowIntegrationTests {
         int seer = seats.get("预言家").get(0);
         int witch = seats.get("女巫").get(0);
         int idiot = seats.get("白痴").get(0);
-        game.advance(game.host, "{\"action\":\"resolve_night\",\"deadSeatNos\":[" + seer + "," + witch + "," + idiot + "]}");
-        for (int seat : List.of(seer, witch, idiot).stream().sorted().toList()) {
+        game.finishNight();
+        // 法官点杀三个神职（点杀走正常出局流程），只剩猎人一个神职
+        for (int seat : List.of(seer, witch, idiot)) {
+            JsonNode out = game.advance(game.host, "{\"action\":\"force_out\",\"forceOutSeatNo\":" + seat + "}");
+            Assertions.assertEquals(0, out.path("code").asInt(), out.toString());
             game.skill(seat, "{\"decision\":\"skip\"}");
         }
         game.advance(game.host, "{\"action\":\"start_speech\"}");
@@ -651,13 +655,82 @@ class JudgeFlowIntegrationTests {
     @Test
     void onlyTheJudgeCanForceOut() throws Exception {
         Game game = autoGame(false);
-        game.advance(game.host, "{\"action\":\"resolve_night\",\"deadSeatNos\":[]}");
+        game.finishNight();
         Assertions.assertEquals(4003, game.advance(game.players.get(0), "{\"action\":\"force_out\",\"forceOutSeatNo\":3}").path("code").asInt());
         JsonNode out = game.advance(game.host, "{\"action\":\"force_out\",\"forceOutSeatNo\":3}");
         Assertions.assertEquals(0, out.path("code").asInt(), out.toString());
         Assertions.assertFalse(game.player(out.path("data"), 3).path("alive").asBoolean());
         Assertions.assertTrue(out.path("data").path("latestAnnouncement").asText().contains("法官判罚"));
         Assertions.assertEquals("skill_pending", out.path("data").path("currentPhase").asText());
+    }
+
+    // ---- 无法官模式与推进权 ----
+
+    @Test
+    void joinedHostTakesSeatOneAndStartsTheGame() throws Exception {
+        Game game = joinedLobby(2, 12);
+        JsonNode lobby = game.snapshot(game.host);
+        Assertions.assertEquals(1, lobby.path("selfPlayer").path("seatNo").asInt(), lobby.toString());
+        Assertions.assertFalse(lobby.path("judgeViewer").asBoolean());
+        Assertions.assertTrue(lobby.path("host").asBoolean());
+        game.readyAll();
+        Assertions.assertTrue(game.snapshot(game.host).path("canStart").asBoolean());
+        game.start();
+        JsonNode playing = game.snapshot(game.host);
+        Assertions.assertEquals("playing", playing.path("roomStatus").asText());
+        Assertions.assertTrue(playing.path("canAdvance").asBoolean());
+        Assertions.assertTrue(playing.path("nightActions").isEmpty(), "房主是玩家，看不到别人的夜间行动");
+    }
+
+    @Test
+    void joinedModeIsOnlyForFullBoards() throws Exception {
+        String host = login("judge-host-partial-" + SEQUENCE.incrementAndGet());
+        String created = mockMvc.perform(post("/api/judge/rooms")
+                        .header("Authorization", "Bearer " + host)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"boardId\":1,\"judgeMode\":\"joined\"}"))
+                .andReturn().getResponse().getContentAsString();
+        Assertions.assertEquals(4000, objectMapper.readTree(created).path("code").asInt(), created);
+    }
+
+    @Test
+    void judgeCannotDriveTheAutoFlow() throws Exception {
+        Game game = autoGame(false);
+        int guard = game.seatsByRole().get("守卫").get(0);
+        JsonNode proxy = game.call(game.host, "/night-action", "{\"actionType\":\"guard\",\"targetSeatNo\":" + guard + ",\"actorSeatNo\":" + guard + "}");
+        Assertions.assertEquals(4003, proxy.path("code").asInt(), proxy.toString());
+        Assertions.assertEquals(4003, game.advance(game.host, "{\"action\":\"next_step\",\"stepIndex\":0}").path("code").asInt());
+        Assertions.assertEquals(4003, game.advance(game.host, "{\"action\":\"resolve_night\",\"deadSeatNos\":[]}").path("code").asInt());
+        Assertions.assertEquals(4003, game.advance(game.host, "{\"action\":\"finish\"}").path("code").asInt());
+    }
+
+    @Test
+    void joinedHostCanForceFinish() throws Exception {
+        Game game = joinedGame(2, 12);
+        JsonNode finished = game.advance(game.host, "{\"action\":\"finish\"}");
+        Assertions.assertEquals(0, finished.path("code").asInt(), finished.toString());
+        Assertions.assertEquals("流局", finished.path("data").path("winnerCamp").asText());
+    }
+
+    @Test
+    void deadJoinedHostStillAdvancesTheDay() throws Exception {
+        Game game = joinedGame(2, 12);
+        // 狼可以自刀，1 号（房主）拿什么牌都刀得到
+        game.finishNight(1, null);
+        game.skipPending();
+        JsonNode day = game.snapshot(game.host);
+        Assertions.assertFalse(game.player(day, 1).path("alive").asBoolean(), day.toString());
+        JsonNode speech = game.advance(game.host, "{\"action\":\"start_speech\"}");
+        Assertions.assertEquals(0, speech.path("code").asInt(), speech.toString());
+        Assertions.assertEquals("day_speech", speech.path("data").path("currentPhase").asText());
+    }
+
+    @Test
+    void playersCannotUseHostActions() throws Exception {
+        Game game = joinedGame(2, 12);
+        game.finishNight();
+        game.skipPending();
+        Assertions.assertEquals(4003, game.advance(game.players.get(1), "{\"action\":\"start_speech\"}").path("code").asInt());
     }
 
     // ---- 惰性推进（autoJudge）----
@@ -774,7 +847,7 @@ class JudgeFlowIntegrationTests {
     void wolvesSubmittingAllAdvancesImmediately() throws Exception {
         Game game = autoGame(false);
         Map<String, List<Integer>> seats = game.seatsByRole();
-        game.advance(game.host, "{\"action\":\"next_step\",\"stepIndex\":0}");
+        game.expireDeadline();
         int target = seats.get("平民").get(0);
         List<Integer> wolves = seats.get("狼人");
         for (int i = 0; i < wolves.size(); i++) {
@@ -813,8 +886,8 @@ class JudgeFlowIntegrationTests {
         // 活着的守卫一定等满 30 秒，死了的守卫那一步也得等满，否则从时长听得出他死了
         Game game = autoGame(false);
         int guard = game.seatsByRole().get("守卫").get(0);
-        game.advance(game.host, "{\"action\":\"resolve_night\",\"deadSeatNos\":[" + guard + "]}");
-        Assertions.assertEquals(0, game.call(game.host, "/skill", "{\"decision\":\"skip\"}").path("code").asInt());
+        game.finishNight(guard, null);
+        game.skipPending();
         game.advance(game.host, "{\"action\":\"start_speech\"}");
         game.advance(game.host, "{\"action\":\"start_vote\"}");
         game.advance(game.host, "{\"action\":\"resolve_vote\"}");
@@ -831,10 +904,8 @@ class JudgeFlowIntegrationTests {
     void timedOutSkillPromptIsSkipped() throws Exception {
         Game game = autoGame(false);
         int dead = game.seatsByRole().get("平民").get(0);
-        game.advance(game.host, "{\"action\":\"resolve_night\",\"deadSeatNos\":[" + dead + "]}");
-        jdbcTemplate.update("UPDATE judge_rooms SET step_deadline = ? WHERE room_id = ?",
-                java.sql.Timestamp.valueOf("2000-01-01 00:00:00"), game.roomId);
-        Assertions.assertEquals("day_announce", game.snapshot(game.host).path("currentPhase").asText(), "技能询问超时当作不发动");
+        Assertions.assertEquals("skill_pending", game.finishNight(dead, null).path("currentPhase").asText());
+        Assertions.assertEquals("day_announce", game.expireDeadline().path("currentPhase").asText(), "技能询问超时当作不发动");
     }
 
     // ---- helpers ----
@@ -849,6 +920,34 @@ class JudgeFlowIntegrationTests {
 
     private Game autoGame(boolean sheriff) throws Exception {
         Game game = lobbyGame("{\"boardId\":" + BOARD_ID + ",\"judgeMode\":\"observer\",\"autoJudge\":true,\"sheriffEnabled\":" + sheriff + "}");
+        game.readyAll();
+        game.start();
+        return game;
+    }
+
+    /** 无法官房：房主坐 1 号，其余人入座，还没准备。players.get(0) 就是房主。 */
+    private Game joinedLobby(int boardId, int playerCount) throws Exception {
+        int run = SEQUENCE.incrementAndGet();
+        String host = login("judge-host-" + run);
+        String created = mockMvc.perform(post("/api/judge/rooms")
+                        .header("Authorization", "Bearer " + host)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"boardId\":" + boardId + ",\"judgeMode\":\"joined\",\"sheriffEnabled\":false}"))
+                .andReturn().getResponse().getContentAsString();
+        JsonNode createdRoot = objectMapper.readTree(created);
+        Assertions.assertEquals(0, createdRoot.path("code").asInt(), created);
+        Game game = new Game(host, createdRoot.path("data").path("roomId").asText());
+        game.players.add(host);
+        for (int i = 2; i <= playerCount; i++) {
+            String token = login("judge-player-" + run + "-" + i);
+            Assertions.assertEquals(0, game.call(token, "/join", null).path("code").asInt());
+            game.players.add(token);
+        }
+        return game;
+    }
+
+    private Game joinedGame(int boardId, int playerCount) throws Exception {
+        Game game = joinedLobby(boardId, playerCount);
         game.readyAll();
         game.start();
         return game;
@@ -932,6 +1031,63 @@ class JudgeFlowIntegrationTests {
             Assertions.assertEquals(0, response.path("code").asInt(), response.toString());
         }
 
+        /** 座位本人提交夜间行动（必须成功）。target 为空是不行动。 */
+        JsonNode act(int seat, String action, Integer target) throws Exception {
+            String body = target == null ? "{\"actionType\":\"" + action + "\"}"
+                    : "{\"actionType\":\"" + action + "\",\"targetSeatNo\":" + target + "}";
+            JsonNode response = call(players.get(seat - 1), "/night-action", body);
+            Assertions.assertEquals(0, response.path("code").asInt(), response.toString());
+            return response.path("data");
+        }
+
+        /** 把当前截止时间改到过去，再用房主拉一次快照，让惰性推进走一步。 */
+        JsonNode expireDeadline() throws Exception {
+            jdbcTemplate.update("UPDATE judge_rooms SET step_deadline = ? WHERE room_id = ?",
+                    java.sql.Timestamp.valueOf("2000-01-01 00:00:00"), roomId);
+            return snapshot(host);
+        }
+
+        /** 平安夜：谁都不行动，每一步到点。 */
+        JsonNode finishNight() throws Exception {
+            return finishNight(null, null);
+        }
+
+        /** 走完今晚：狼队那一步所有活狼刀 knife（null = 空刀），女巫那一步毒 poison（null = 不用药），其余步骤到点。返回天亮后的快照。 */
+        JsonNode finishNight(Integer knife, Integer poison) throws Exception {
+            Map<String, List<Integer>> roles = seatsByRole();
+            JsonNode view = snapshot(host);
+            boolean knifed = false;
+            boolean poisoned = false;
+            for (int i = 0; i < 12 && "night_action".equals(view.path("currentPhase").asText()); i++) {
+                String kind = view.path("currentStep").path("kind").asText();
+                if ("wolf".equals(kind) && knife != null && !knifed) {
+                    knifed = true;
+                    for (int wolf : roles.getOrDefault("狼人", List.of())) {
+                        if (player(view, wolf).path("alive").asBoolean()) {
+                            act(wolf, "kill", knife);
+                        }
+                    }
+                    view = snapshot(host);
+                    continue;
+                }
+                if ("witch".equals(kind) && poison != null && !poisoned) {
+                    poisoned = true;
+                    act(roles.get("女巫").get(0), "poison", poison);
+                }
+                view = expireDeadline();
+            }
+            return view;
+        }
+
+        /** 出局技能询问全部超时跳过。 */
+        JsonNode skipPending() throws Exception {
+            JsonNode view = snapshot(host);
+            for (int i = 0; i < 10 && "skill_pending".equals(view.path("currentPhase").asText()); i++) {
+                view = expireDeadline();
+            }
+            return view;
+        }
+
         /** 某个座位的玩家投票（必须成功）。玩家按入座顺序坐，players.get(i) 是 i+1 号。 */
         void vote(int voterSeat, int targetSeat) throws Exception {
             JsonNode response = call(players.get(voterSeat - 1), "/vote", "{\"targetSeatNo\":" + targetSeat + "}");
@@ -951,15 +1107,16 @@ class JudgeFlowIntegrationTests {
             Assertions.assertEquals(0, response.path("code").asInt(), response.toString());
         }
 
-        /** 法官视角下每个角色坐在哪些座位（升序）。 */
+        /** 每个角色坐在哪些座位（升序）。 */
         Map<String, List<Integer>> seatsByRole() throws Exception {
+            // 直接查库：无法官房的房主快照里看不到别人的身份
             Map<String, List<Integer>> seats = new TreeMap<>();
-            for (JsonNode player : snapshot(host).path("players")) {
-                if (player.path("playing").asBoolean()) {
-                    seats.computeIfAbsent(player.path("roleName").asText(), ignored -> new ArrayList<>()).add(player.path("seatNo").asInt());
-                }
+            for (Map<String, Object> row : jdbcTemplate.queryForList(
+                    "SELECT seat_no, role_name FROM judge_room_players WHERE room_id = ? AND is_playing = 1 ORDER BY seat_no", roomId)) {
+                Object role = row.get("ROLE_NAME") != null ? row.get("ROLE_NAME") : row.get("role_name");
+                Object seat = row.get("SEAT_NO") != null ? row.get("SEAT_NO") : row.get("seat_no");
+                seats.computeIfAbsent(String.valueOf(role), ignored -> new ArrayList<>()).add(((Number) seat).intValue());
             }
-            seats.values().forEach(list -> list.sort(Integer::compareTo));
             return seats;
         }
 

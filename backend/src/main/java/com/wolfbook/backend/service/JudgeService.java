@@ -205,7 +205,9 @@ public class JudgeService {
         room.setRoomStatus(ROOM_STATUS_LOBBY);
         room.setCurrentDay(1);
         room.setCurrentPhase(PHASE_LOBBY);
-        boolean autoJudge = Boolean.TRUE.equals(request.autoJudge());
+        boolean joined = JUDGE_MODE_JOINED.equals(judgeMode);
+        // 无法官房间只能走新流程（系统推进）
+        boolean autoJudge = joined || Boolean.TRUE.equals(request.autoJudge());
         JudgeRules boardRules = JudgeRules.fromBoard(boardService.getBoard(board.id()));
         Boolean sheriffRequested = request.sheriffEnabled() != null ? request.sheriffEnabled()
                 : request.rules() == null ? null : request.rules().sheriffEnabled();
@@ -220,21 +222,27 @@ public class JudgeService {
         room.setUpdateTime(now);
         judgeRoomMapper.insert(room);
 
+        // 有法官：房主是法官，不入座；无法官：房主自己坐 1 号拿牌
         JudgeRoomPlayerEntity judgeObserver = new JudgeRoomPlayerEntity();
         judgeObserver.setPlayerId(makeId("player"));
         judgeObserver.setRoomId(room.getRoomId());
         judgeObserver.setUserId(user.openid());
         judgeObserver.setNickname(user.nickname());
         judgeObserver.setAvatar(user.avatar());
-        judgeObserver.setSeatNo(null);
+        judgeObserver.setSeatNo(joined ? 1 : null);
         judgeObserver.setRoomOwner(true);
-        judgeObserver.setJudgeObserver(true);
-        judgeObserver.setPlaying(false);
-        judgeObserver.setReady(true);
+        judgeObserver.setJudgeObserver(!joined);
+        judgeObserver.setPlaying(joined);
+        judgeObserver.setReady(!joined);
         judgeObserver.setAlive(true);
         judgeObserver.setCreateTime(now);
         judgeObserver.setUpdateTime(now);
         judgeRoomPlayerMapper.insert(judgeObserver);
+        if (joined) {
+            room.setOwnerPlayerId(judgeObserver.getPlayerId());
+            room.setOwnerSeatNo(1);
+            judgeRoomMapper.updateById(room);
+        }
 
         addEvent(
                 room.getRoomId(),
@@ -354,7 +362,7 @@ public class JudgeService {
     public WolfbookDtos.JudgeRoomSnapshotView startRoom(String authorization, String roomId) {
         roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
-        JudgeRoomEntity room = requireJudgeRoom(roomId, openid);
+        JudgeRoomEntity room = requireHost(roomId, openid);
         if (!ROOM_STATUS_LOBBY.equals(room.getRoomStatus())) {
             throw new ApiException(4002, "房间不在可开局状态");
         }
@@ -424,7 +432,7 @@ public class JudgeService {
             // 发言者自己点「结束发言」也走这里，不要求是法官
             return nextSpeaker(openid, roomId);
         }
-        JudgeRoomEntity room = requireJudgeRoom(roomId, openid);
+        JudgeRoomEntity room = requireAdvancePermission(roomId, openid, normalizeAction(request.action()));
         if (!ROOM_STATUS_PLAYING.equals(room.getRoomStatus())) {
             throw new ApiException(4002, ROOM_STATUS_FINISHED.equals(room.getRoomStatus()) ? "对局已结束" : "对局尚未开始");
         }
@@ -462,8 +470,11 @@ public class JudgeService {
         List<JudgeRoomPlayerEntity> players = loadPlayers(roomId);
         JudgeRoomPlayerEntity player;
         if (request.actorSeatNo() != null) {
-            // 线下面杀：玩家闭眼指人，由法官替这个座位记下夜间行动
+            // 线下面杀：玩家闭眼指人，由法官替这个座位记下夜间行动（只有旧流程房间；新流程玩家自己操作）
             requireJudgeRoom(roomId, openid);
+            if (Boolean.TRUE.equals(room.getAutoJudgeEnabled())) {
+                throw new ApiException(4003, "新流程里请玩家自己操作");
+            }
             player = requireAliveSeat(players, request.actorSeatNo());
         } else {
             player = requireAlivePlayingPlayer(roomId, openid);
@@ -596,8 +607,9 @@ public class JudgeService {
                 joinedViewer,
                 ROOM_STATUS_LOBBY.equals(room.getRoomStatus()) && self == null && joinedCount < room.getPlayerCount(),
                 ROOM_STATUS_LOBBY.equals(room.getRoomStatus()) && joinedViewer,
-                ROOM_STATUS_LOBBY.equals(room.getRoomStatus()) && judgeViewer && joinedCount == room.getPlayerCount() && readyCount == room.getPlayerCount(),
-                ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) && judgeViewer,
+                ROOM_STATUS_LOBBY.equals(room.getRoomStatus()) && openid.equals(room.getOwnerUserId())
+                        && joinedCount == room.getPlayerCount() && readyCount == room.getPlayerCount(),
+                ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) && openid.equals(room.getOwnerUserId()),
                 joinedViewer && Boolean.TRUE.equals(self.getAlive()) && PHASE_EXILE_VOTE.equals(room.getCurrentPhase()) && ROOM_STATUS_PLAYING.equals(room.getRoomStatus()),
                 joinedViewer && Boolean.TRUE.equals(self.getAlive()) && PHASE_NIGHT_ACTION.equals(room.getCurrentPhase()) && ROOM_STATUS_PLAYING.equals(room.getRoomStatus()),
                 joinedCount,
@@ -1020,7 +1032,7 @@ public class JudgeService {
     public WolfbookDtos.JudgeRoomSnapshotView updateRoomRules(String authorization, String roomId, WolfbookDtos.JudgeRoomRulesInput request) {
         roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
-        JudgeRoomEntity room = requireJudgeRoom(roomId, openid);
+        JudgeRoomEntity room = requireHost(roomId, openid);
         if (!ROOM_STATUS_LOBBY.equals(room.getRoomStatus())) {
             throw new ApiException(4002, "开局后规则已锁定");
         }
@@ -1327,14 +1339,7 @@ public class JudgeService {
                                           WolfbookDtos.JudgeRoomAdvanceRequest request, LocalDateTime now) {
         requirePhase(room, PHASE_SHERIFF_SIGNUP);
         if (request.sheriffCandidates() != null) {
-            Set<Integer> chosen = new LinkedHashSet<>(normalizeSeatNos(request.sheriffCandidates()));
-            for (JudgeRoomPlayerEntity player : players) {
-                if (Boolean.TRUE.equals(player.getPlaying()) && player.getSeatNo() != null) {
-                    player.setSheriffCandidate(chosen.contains(player.getSeatNo()));
-                    player.setUpdateTime(now);
-                    judgeRoomPlayerMapper.updateById(player);
-                }
-            }
+            throw new ApiException(4000, "上警由玩家自己选");
         }
         List<Integer> candidates = onStage(players);
         int alive = aliveSeats(players).size();
@@ -1640,8 +1645,7 @@ public class JudgeService {
         List<Map<String, Object>> pending = pendingList(phaseData);
         Map<String, Object> current = pending.get(0);
         int seat = safeInt(asPositiveInteger(current.get("seat")), 0);
-        boolean judge = self != null && Boolean.TRUE.equals(self.getJudgeObserver());
-        if (!judge && (self == null || !Objects.equals(self.getSeatNo(), seat))) {
+        if (self == null || !Objects.equals(self.getSeatNo(), seat)) {
             throw new ApiException(4003, "现在不是你的技能");
         }
         resolvePending(room, players, safeText(trimToNull(request.decision()), "skip"), request.targetSeatNo(), LocalDateTime.now(APP_ZONE));
@@ -1869,6 +1873,37 @@ public class JudgeService {
         }
     }
 
+
+    /** 房主：有法官时就是法官，无法官时是坐 1 号的玩家。白天推进、开局、改规则归房主。 */
+    private JudgeRoomEntity requireHost(String roomId, String openid) {
+        JudgeRoomEntity room = getRoom(roomId);
+        if (!openid.equals(room.getOwnerUserId())) {
+            throw new ApiException(4003, "只有房主可以执行此操作");
+        }
+        return room;
+    }
+
+    /**
+     * 推进动作的权限：点杀、暂停 / 继续只认法官；旧流程房间其余动作也只认法官（线上旧版小程序的主持台）；
+     * 新流程房间其余动作认房主，但系统负责的夜间推进（手动切步、改判）不开放，有法官时也不能流局。
+     */
+    private JudgeRoomEntity requireAdvancePermission(String roomId, String openid, String action) {
+        if (Set.of("force_out", "pause", "resume").contains(action)) {
+            return requireJudgeRoom(roomId, openid);
+        }
+        JudgeRoomEntity room = getRoom(roomId);
+        if (!Boolean.TRUE.equals(room.getAutoJudgeEnabled())) {
+            return requireJudgeRoom(roomId, openid);
+        }
+        requireHost(roomId, openid);
+        if ("next_step".equals(action) || "resolve_night".equals(action)) {
+            throw new ApiException(4003, "新流程由系统推进");
+        }
+        if ("finish".equals(action) && JUDGE_MODE_OBSERVER.equals(room.getJudgeMode())) {
+            throw new ApiException(4003, "有法官模式不能流局");
+        }
+        return room;
+    }
 
     private JudgeRoomEntity requireJudgeRoom(String roomId, String openid) {
         JudgeRoomEntity room = getRoom(roomId);
@@ -2427,13 +2462,10 @@ public class JudgeService {
         if (!JUDGE_MODE_OBSERVER.equals(normalized) && !JUDGE_MODE_JOINED.equals(normalized)) {
             throw new ApiException(4000, "无效的法官模式");
         }
-        if (JUDGE_MODE_JOINED.equals(normalized) && JudgeSupportLevels.isManualOnly(judgeSupportLevel)) {
-            throw new ApiException(4002, "当前板型仅支持主持人模式");
+        if (JUDGE_MODE_JOINED.equals(normalized) && !JudgeSupportLevels.FULL.equals(judgeSupportLevel)) {
+            throw new ApiException(4000, "这个板子只能开有法官");
         }
-        if (JUDGE_MODE_JOINED.equals(normalized)) {
-            throw new ApiException(4002, "系统执法模式将在二期开放");
-        }
-        return JUDGE_MODE_OBSERVER;
+        return normalized;
     }
 
     private String normalizeAction(String action) {
