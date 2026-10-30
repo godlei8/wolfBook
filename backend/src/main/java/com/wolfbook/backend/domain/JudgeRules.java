@@ -40,9 +40,13 @@ public record JudgeRules(
 
     /** 板子的法官规则（没配的项用默认值），胜负规则按板子的 win_condition 文字判断。 */
     public static JudgeRules fromBoard(Board board) {
-        BoardRuleDetail detail = board == null ? null : board.ruleDetail();
+        return resolve(board == null ? null : board.ruleDetail(), board == null ? null : board.winCondition());
+    }
+
+    /** 同 fromBoard，给只有板子行数据（规则详情 + 胜利条件文字）的地方用，比如板子详情接口。 */
+    public static JudgeRules resolve(BoardRuleDetail detail, String boardWinCondition) {
         JudgeRules configured = detail == null || detail.judgeRules() == null ? defaults() : detail.judgeRules().withDefaults();
-        String winCondition = board != null && board.winCondition() != null && board.winCondition().contains("屠城") ? WIN_CITY : WIN_SIDE;
+        String winCondition = boardWinCondition != null && boardWinCondition.contains("屠城") ? WIN_CITY : WIN_SIDE;
         return new JudgeRules(
                 winCondition,
                 configured.sheriffDefault(),

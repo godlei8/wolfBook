@@ -309,7 +309,9 @@ public final class WolfbookDtos {
             String overview,
             List<NightStepView> nightOrder,
             List<RoleRuleView> roleRules,
-            List<RuleSectionView> sections
+            List<RuleSectionView> sections,
+            /** 板子的电子法官规则（没配的项已补默认值，胜负按胜利条件文字判断），建房页显示和预填房间规则用。 */
+            JudgeRules judgeRules
     ) {
     }
 

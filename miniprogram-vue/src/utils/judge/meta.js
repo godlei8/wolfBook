@@ -1,13 +1,13 @@
 export const judgeModeOptions = [
   {
     value: 'observer',
-    title: '主持人',
-    subtitle: '法官不入局，拥有完整控制台',
+    title: '有法官',
+    subtitle: '你是法官，不拿牌；系统自动走流程，你能看全场、暂停和点杀',
   },
   {
     value: 'joined',
-    title: '系统执法',
-    subtitle: '法官入局模式，二期开放',
+    title: '无法官',
+    subtitle: '你也拿牌；手机就是法官的声音，建议连蓝牙音箱',
   },
 ]
 
