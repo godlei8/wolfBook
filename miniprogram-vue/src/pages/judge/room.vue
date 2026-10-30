@@ -10,11 +10,14 @@ import NightView from './views/NightView.vue'
 import PendingView from './views/PendingView.vue'
 import SheriffView from './views/SheriffView.vue'
 import AnnounceView from './views/AnnounceView.vue'
+import SpeechView from './views/SpeechView.vue'
+import VoteView from './views/VoteView.vue'
 import api from '../../services/api'
 import storage from '../../services/storage'
 import { mergePollResult, pollInterval } from '../../utils/judge/room-poll.js'
 import { phaseTitle, pickView } from '../../utils/judge/room-view.js'
 import { judgeActions, pausedOverlay } from '../../utils/judge/judge-bar.js'
+import { hostActions } from '../../utils/judge/day.js'
 import { goToUserTab, hasAuthToken } from '../../utils/auth'
 
 const roomId = ref('')
@@ -38,6 +41,9 @@ const title = computed(() => phaseTitle(snapshot.value) || '法官房间')
 const judgeBar = computed(() => judgeActions(snapshot.value))
 const overlay = computed(() => pausedOverlay(snapshot.value))
 const hasJudgeBar = computed(() => judgeBar.value.pause || judgeBar.value.resume || judgeBar.value.forceOut)
+// 房主的白天推进按钮（有法官时房主就是法官，和暂停 / 点杀放在同一条操作栏）
+const hostItems = computed(() => hostActions(snapshot.value))
+const hasBar = computed(() => view.value === 'lobby' || hasJudgeBar.value || hostItems.value.length > 0)
 // 点杀：先打开座位面板选人，再二次确认
 const forceOutOpen = ref(false)
 const forceOutSeats = computed(() => (snapshot.value?.players || []).filter((player) => player.seatNo && player.alive !== false))
@@ -185,9 +191,26 @@ function onAct(event) {
     advance: () => api.advanceJudgeRoom(id, event.payload),
     skill: () => api.submitJudgeSkill(id, { decision: event.decision, targetSeatNo: event.targetSeatNo }),
     sheriff: () => api.submitJudgeSheriff(id, event.payload),
+    vote: () => api.submitJudgeVote(id, { targetSeatNo: event.targetSeatNo }),
   }
   const task = tasks[event?.kind]
   if (task) runAction(task)
+}
+
+function tapHostItem(item) {
+  if (item.disabled || actionLoading.value) return
+  if (!item.confirm) {
+    onAct({ kind: 'advance', payload: item.payload })
+    return
+  }
+  uni.showModal({
+    title: item.label,
+    content: '强制结束这一局，记为流局？',
+    confirmText: '结束',
+    success: (result) => {
+      if (result.confirm) onAct({ kind: 'advance', payload: item.payload })
+    },
+  })
 }
 
 function pauseOrResume() {
@@ -256,7 +279,7 @@ onUnload(() => {
 </script>
 
 <template>
-  <view class="nt-page" :class="{ 'nt-page--bar': view === 'lobby' || hasJudgeBar }">
+  <view class="nt-page" :class="{ 'nt-page--bar': hasBar }">
     <NavBar back :title="title" />
     <view v-if="pollError" class="nt-gutter">
       <view class="jr-warn">{{ pollError }}</view>
@@ -267,6 +290,8 @@ onUnload(() => {
     <PendingView v-else-if="view === 'pending'" :snapshot="snapshot" :now="now" :busy="actionLoading" @act="onAct" />
     <SheriffView v-else-if="view === 'sheriff'" :snapshot="snapshot" :now="now" :busy="actionLoading" @act="onAct" />
     <AnnounceView v-else-if="view === 'announce'" :snapshot="snapshot" :busy="actionLoading" @act="onAct" />
+    <SpeechView v-else-if="view === 'speech'" :snapshot="snapshot" :now="now" :busy="actionLoading" @act="onAct" />
+    <VoteView v-else-if="view === 'vote' || view === 'voteResult'" :snapshot="snapshot" :now="now" :busy="actionLoading" @act="onAct" />
     <view v-else class="nt-gutter">
       <view class="nt-panel jr-placeholder">
         <text class="jr-placeholder__title">{{ snapshot.boardName }}</text>
@@ -281,8 +306,16 @@ onUnload(() => {
       <text class="jr-pause__hint">{{ overlay.hint }}</text>
     </view>
 
-    <view v-if="hasJudgeBar" class="nt-bar jr-judgebar">
+    <view v-if="view !== 'lobby' && (hasJudgeBar || hostItems.length)" class="nt-bar jr-judgebar">
       <view
+        v-for="item in hostItems"
+        :key="item.action"
+        class="nt-btn jr-judgebar__btn"
+        :class="[item.confirm ? 'nt-btn--ghost' : 'nt-btn--gold', { 'nt-btn--disabled': item.disabled || actionLoading }]"
+        @tap="tapHostItem(item)"
+      >{{ item.label }}</view>
+      <view
+        v-if="hasJudgeBar"
         class="nt-btn jr-judgebar__btn"
         :class="[judgeBar.resume ? 'nt-btn--gold' : 'nt-btn--ghost', { 'nt-btn--disabled': actionLoading }]"
         @tap="pauseOrResume"
@@ -372,6 +405,11 @@ onUnload(() => {
 
 .jr-judgebar__btn {
   flex: 1;
+  min-width: 0;
+  padding-left: 8rpx;
+  padding-right: 8rpx;
+  font-size: 26rpx;
+  white-space: nowrap;
 }
 
 .jr-sheet {
