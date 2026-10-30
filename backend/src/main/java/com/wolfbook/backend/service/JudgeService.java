@@ -652,8 +652,69 @@ public class JudgeService {
                 buildRounds(events),
                 pendingView(room, players, self, judgeViewer),
                 isPaused(room),
-                room.getStepDeadline()
+                room.getStepDeadline(),
+                buildNightInfo(room, players, self, judgeViewer)
         );
+    }
+
+    /** 查看者本人的夜间私密信息（只在新流程房间）。法官有 nightActions 全量，不给。 */
+    private WolfbookDtos.JudgeNightInfoView buildNightInfo(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players,
+                                                          JudgeRoomPlayerEntity self, boolean judgeViewer) {
+        if (judgeViewer || self == null || !Boolean.TRUE.equals(self.getPlaying()) || self.getSeatNo() == null
+                || !Boolean.TRUE.equals(room.getAutoJudgeEnabled()) || ROOM_STATUS_LOBBY.equals(room.getRoomStatus())) {
+            return null;
+        }
+        Mechanic mechanic = mechanicOf(self).orElse(null);
+        boolean wolf = RoleSkillRegistry.isWolfTeam(mechanic, self.getRoleName(), self.getFaction());
+        boolean alive = Boolean.TRUE.equals(self.getAlive());
+        List<Integer> teammates = wolf ? players.stream()
+                .filter(player -> Boolean.TRUE.equals(player.getPlaying()) && player.getSeatNo() != null
+                        && !player.getSeatNo().equals(self.getSeatNo()) && nightKindOf(player) == NightKind.WOLF)
+                .map(JudgeRoomPlayerEntity::getSeatNo)
+                .sorted()
+                .toList() : List.of();
+
+        List<WolfbookDtos.JudgeWolfPickView> picks = List.of();
+        Integer knifeSeat = null;
+        Integer checkedSeat = null;
+        String checkResult = null;
+        boolean night = ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) && PHASE_NIGHT_ACTION.equals(room.getCurrentPhase())
+                && room.getNightStep() != null;
+        if (night && alive) {
+            List<NightPlan.NightStep> steps = nightSteps(room, safeInt(room.getCurrentDay(), 1));
+            NightPlan.NightStep step = room.getNightStep() < steps.size() ? steps.get(room.getNightStep()) : null;
+            List<NightResolver.Submission> submissions = tonightSubmissions(room, players);
+            if (step != null && step.kind() == NightKind.WOLF && wolf) {
+                Map<Integer, Integer> chosen = new HashMap<>();
+                submissions.stream()
+                        .filter(submission -> submission.kind() == NightKind.WOLF && NightResolver.KILL.equals(submission.action()))
+                        .forEach(submission -> chosen.put(submission.actorSeat(), submission.targetSeat()));
+                picks = players.stream()
+                        .filter(player -> Boolean.TRUE.equals(player.getPlaying()) && Boolean.TRUE.equals(player.getAlive())
+                                && player.getSeatNo() != null && nightKindOf(player) == NightKind.WOLF)
+                        .sorted(Comparator.comparing(JudgeRoomPlayerEntity::getSeatNo))
+                        .map(player -> new WolfbookDtos.JudgeWolfPickView(player.getSeatNo(), chosen.get(player.getSeatNo())))
+                        .toList();
+            }
+            if (step != null && step.kind() == NightKind.WITCH && mechanic == Mechanic.WITCH) {
+                Map<String, Object> phaseData = readMap(room.getPhaseData());
+                knifeSeat = Boolean.TRUE.equals(phaseData.get("knifeDecided")) ? asPositiveInteger(phaseData.get("knifeSeat")) : null;
+            }
+            if (mechanic == Mechanic.SEER) {
+                NightResolver.Submission check = submissions.stream()
+                        .filter(submission -> submission.actorSeat() == self.getSeatNo() && NightResolver.CHECK.equals(submission.action()))
+                        .findFirst().orElse(null);
+                if (check != null && check.targetSeat() != null) {
+                    JudgeRoomPlayerEntity target = findSeatPlayer(players, check.targetSeat());
+                    checkedSeat = check.targetSeat();
+                    checkResult = target != null && "狼人".equals(target.getFaction()) ? "狼人" : "好人";
+                }
+            }
+        }
+        if (teammates.isEmpty() && picks.isEmpty() && knifeSeat == null && checkedSeat == null) {
+            return null;
+        }
+        return new WolfbookDtos.JudgeNightInfoView(teammates, picks, knifeSeat, checkedSeat, checkResult);
     }
 
     private WolfbookDtos.JudgeSpeechView speechView(JudgeRoomEntity room) {

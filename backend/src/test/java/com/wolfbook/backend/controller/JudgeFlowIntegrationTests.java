@@ -889,6 +889,71 @@ class JudgeFlowIntegrationTests {
         Assertions.assertEquals(0, after.path("speech").path("index").asInt(), "到点不强制切下一位");
     }
 
+    // ---- 玩家各自的夜间私密信息 ----
+
+    @Test
+    void wolvesSeeTeammatesAndLivePicks() throws Exception {
+        Game game = autoGame12(false);
+        List<Integer> wolves = game.seatsByRole().get("狼人");
+        int target = game.seatsByRole().get("平民").get(0);
+        game.act(wolves.get(0), "kill", target);
+        JsonNode info = game.snapshot(game.players.get(wolves.get(1) - 1)).path("nightInfo");
+        List<Integer> mates = new ArrayList<>(wolves);
+        mates.remove(wolves.get(1));
+        Assertions.assertEquals(mates.toString(), info.path("teammateSeats").toString().replace(",", ", "), info.toString());
+        Assertions.assertEquals(4, info.path("wolfPicks").size());
+        for (JsonNode pick : info.path("wolfPicks")) {
+            if (pick.path("seatNo").asInt() == wolves.get(0)) {
+                Assertions.assertEquals(target, pick.path("targetSeatNo").asInt());
+            } else {
+                Assertions.assertTrue(pick.path("targetSeatNo").isNull(), pick.toString());
+            }
+        }
+    }
+
+    @Test
+    void witchSeesTheKnifeOnlyOnHerStep() throws Exception {
+        Game game = autoGame12(false);
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int witch = seats.get("女巫").get(0);
+        int target = seats.get("平民").get(0);
+        Assertions.assertTrue(game.snapshot(game.players.get(witch - 1)).path("nightInfo").path("knifeSeat").isMissingNode()
+                || game.snapshot(game.players.get(witch - 1)).path("nightInfo").path("knifeSeat").isNull(), "狼队那一步女巫还不知道刀口");
+        for (int wolf : seats.get("狼人")) {
+            game.act(wolf, "kill", target);
+        }
+        Assertions.assertEquals("witch", game.snapshot(game.host).path("currentStep").path("kind").asText());
+        Assertions.assertEquals(target, game.snapshot(game.players.get(witch - 1)).path("nightInfo").path("knifeSeat").asInt());
+    }
+
+    @Test
+    void seerSeesTheResultRightAway() throws Exception {
+        Game game = autoGame12(false);
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int seer = seats.get("预言家").get(0);
+        int wolf = seats.get("狼人").get(0);
+        game.expireDeadline();
+        game.expireDeadline();
+        Assertions.assertEquals("seer", game.snapshot(game.host).path("currentStep").path("kind").asText());
+        game.act(seer, "check", wolf);
+        JsonNode info = game.snapshot(game.players.get(seer - 1)).path("nightInfo");
+        Assertions.assertEquals(wolf, info.path("checkedSeat").asInt(), info.toString());
+        Assertions.assertEquals("狼人", info.path("checkResult").asText());
+    }
+
+    @Test
+    void nonWolvesNeverSeeWolfInfo() throws Exception {
+        Game game = autoGame12(false);
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        game.act(seats.get("狼人").get(0), "kill", seats.get("平民").get(1));
+        for (int seat : List.of(seats.get("平民").get(0), seats.get("预言家").get(0), seats.get("女巫").get(0))) {
+            JsonNode info = game.snapshot(game.players.get(seat - 1)).path("nightInfo");
+            Assertions.assertTrue(info.isNull() || (info.path("teammateSeats").isEmpty() && info.path("wolfPicks").isEmpty()
+                    && info.path("knifeSeat").isNull()), seat + " 号看到了 " + info);
+        }
+        Assertions.assertTrue(game.snapshot(game.host).path("nightInfo").isNull(), "法官已经有全量 nightActions");
+    }
+
     // ---- 惰性推进（autoJudge）----
 
     @Test
