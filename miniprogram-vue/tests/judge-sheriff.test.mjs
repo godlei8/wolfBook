@@ -64,3 +64,10 @@ test('sheriffVoteSaysWhyYouCannotVote', () => {
   assert.equal(sheriffPanel(room('sheriff_vote', { seatNo: null }, { judgeViewer: true, sheriffCandidates: [3] })).reason, '法官不投票')
   assert.equal(sheriffPanel(room('sheriff_vote', me(3), { sheriffCandidates: [3], dayInfo: { canVote: false } })).reason, '你在警上，不能投票')
 })
+
+test('theSheriffSpeakerCanEndTheirSpeech', () => {
+  const speaking = room('sheriff_speech', me(5), { sheriffCandidates: [3, 5], speech: { order: [5, 3], index: 0 } })
+  assert.equal(sheriffPanel(speaking).isSpeaker, true)
+  assert.equal(sheriffPanel({ ...speaking, selfPlayer: me(3) }).isSpeaker, false, '还没轮到')
+  assert.equal(sheriffPanel({ ...speaking, currentPhase: 'sheriff_vote' }).isSpeaker, false, '投票阶段没有发言人')
+})

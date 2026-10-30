@@ -29,3 +29,11 @@ test('aPollSentBeforeAnActionCannotOverwriteIt', () => {
   assert.equal(mergePollResult(afterAction, stalePoll, { requestedAt: 300, lastActionAt: 200 }).snapshot, stalePoll.snapshot)
   assert.equal(mergePollResult(afterAction, stalePoll).snapshot, stalePoll.snapshot)
 })
+
+test('aMissingRoomStopsPolling', () => {
+  const merged = mergePollResult(null, { ok: false, code: 4004, message: '房间不存在' })
+  assert.equal(merged.gone, true)
+  assert.equal(merged.error, '房间不存在')
+  assert.ok(!mergePollResult(null, { ok: false, code: 5000, message: '网络错误' }).gone, '别的错误照常重试')
+  assert.ok(!mergePollResult(null, { ok: true, snapshot: { roomId: 1 } }).gone)
+})

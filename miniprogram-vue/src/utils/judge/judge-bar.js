@@ -1,6 +1,8 @@
 // 有法官模式的上帝视角（纯函数，有单测）：座位身份角标、今晚汇总、暂停 / 点杀按钮、暂停遮罩。
 // 只有法官（judgeViewer）拿得到这些；暂停遮罩所有人同一张。
 
+import { isWolfTeam } from './night-order.js'
+
 const CAMP_COLORS = { wolf: '#ff7468', god: '#e9c46a', villager: '#8fd0a6', third: '#f7a8cb' }
 
 function campOf(player) {
@@ -68,12 +70,32 @@ function knifeText(bySeat, wolves) {
   return leaders.length > 1 ? '平票 · 随机' : `${leaders[0][0]} 号`
 }
 
+/**
+ * 角色在今晚的先后：板子配了 nightOrder 按它排（狼队各角色都算「狼人」那一步），没配按通用顺序。
+ * 返回 { orderOf(roleName), current }，排不上的角色是 99（夜里不睁眼）。
+ */
+function nightRanking(snapshot, board) {
+  const configured = board?.ruleDetail?.nightOrder || []
+  if (!configured.length) {
+    return { orderOf: (role) => ROLE_ORDER[role] || 99, current: KIND_ORDER[snapshot?.currentStep?.kind] || 0 }
+  }
+  const ranks = new Map()
+  for (const step of configured) {
+    const name = isWolfTeam(step) ? '狼人' : step.roleName
+    if (name && !ranks.has(name)) ranks.set(name, ranks.size + 1)
+  }
+  const step = snapshot?.currentStep
+  const currentName = step?.kind === 'wolf' ? '狼人' : step?.roleName
+  return { orderOf: (role) => ranks.get(role) || 99, current: ranks.get(currentName) || 0 }
+}
+
 /** 今晚每个角色做了什么：「1→5 2→? · 刀口 5 号」「救 5 号」「还没轮到」。 */
-export function tonightRows(snapshot) {
+export function tonightRows(snapshot, board = null) {
   if (!snapshot?.judgeViewer) return []
   const bySeat = latestBySeat(tonight(snapshot))
   const alive = (snapshot.players || []).filter((player) => player?.seatNo && player.alive !== false)
-  const currentOrder = KIND_ORDER[snapshot.currentStep?.kind] || 0
+  const ranking = nightRanking(snapshot, board)
+  const currentOrder = ranking.current
   const rows = []
 
   const wolves = alive.filter((player) => player.faction === '狼人').map((player) => player.seatNo).sort((a, b) => a - b)
@@ -89,7 +111,7 @@ export function tonightRows(snapshot) {
   const byRole = new Map()
   for (const player of alive) {
     if (player.faction === '狼人') continue
-    if (!ROLE_ORDER[player.roleName] && !bySeat.has(player.seatNo)) continue
+    if (ranking.orderOf(player.roleName) === 99 && !bySeat.has(player.seatNo)) continue
     if (!byRole.has(player.roleName)) byRole.set(player.roleName, [])
     byRole.get(player.roleName).push(player.seatNo)
   }
@@ -106,7 +128,7 @@ export function tonightRows(snapshot) {
         })
         .join(' · ')
     } else {
-      const order = ROLE_ORDER[role] || 99
+      const order = ranking.orderOf(role)
       state = order > currentOrder ? '还没轮到' : order === currentOrder ? '行动中' : '没有行动'
     }
     rows.push({ role, seats, state })

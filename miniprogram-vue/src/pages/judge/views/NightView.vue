@@ -31,7 +31,7 @@ const art = computed(() => nightArt(props.snapshot, props.board))
 const areaHeight = computed(() => panelHeight(props.snapshot.currentStep?.kind))
 // 法官的上帝视角：座位上的身份角标、今晚汇总（法官手机不在零场外的约束里，大家都知道谁是法官）
 const god = computed(() => godSeats(props.snapshot))
-const rows = computed(() => tonightRows(props.snapshot))
+const rows = computed(() => tonightRows(props.snapshot, props.board))
 
 function godOf(seatNo) {
   return god.value.get(seatNo) || null

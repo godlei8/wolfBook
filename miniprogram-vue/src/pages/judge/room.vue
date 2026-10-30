@@ -49,6 +49,8 @@ let clockTimer = null
 let lastActionAt = 0
 let active = false
 let redirected = false
+// 房间不存在（4004）：停掉轮询，页面显示一句话，不再反复弹错
+const roomGone = ref(false)
 
 const view = computed(() => pickView(snapshot.value))
 const title = computed(() => navTitle(snapshot.value))
@@ -130,6 +132,11 @@ async function refresh() {
   }
   const merged = mergePollResult(snapshot.value, result, { requestedAt, lastActionAt })
   pollError.value = merged.error
+  if (merged.gone) {
+    roomGone.value = true
+    stopPolling()
+    return
+  }
   if (result.ok) {
     if (merged.snapshot !== snapshot.value) applySnapshot(merged.snapshot)
   } else if (!snapshot.value && merged.error) {
@@ -140,7 +147,7 @@ async function refresh() {
 // setTimeout 链：上一次请求回来才排下一次，网络慢时不会堆积请求。
 function schedulePoll() {
   stopPolling()
-  if (!active || redirected) return
+  if (!active || redirected || roomGone.value) return
   const delay = pollInterval(snapshot.value)
   if (!delay) return
   pollTimer = setTimeout(async () => {
@@ -369,7 +376,8 @@ onUnload(() => {
     <view v-if="pollError" class="nt-gutter">
       <view class="jr-warn">{{ pollError }}</view>
     </view>
-    <view v-if="!snapshot" class="jr-loading">正在进入房间…</view>
+    <view v-if="!snapshot && roomGone" class="jr-loading">房间不存在或已经关闭</view>
+    <view v-else-if="!snapshot" class="jr-loading">正在进入房间…</view>
     <LobbyView v-else-if="view === 'lobby'" :snapshot="snapshot" :board="board" :busy="actionLoading" @act="onAct" />
     <NightView v-else-if="view === 'night'" :snapshot="snapshot" :board="board" :now="now" :busy="actionLoading" @act="onAct" />
     <PendingView v-else-if="view === 'pending'" :snapshot="snapshot" :now="now" :busy="actionLoading" @act="onAct" />
@@ -385,7 +393,7 @@ onUnload(() => {
       </view>
     </view>
 
-    <!-- 法官暂停：所有人同一张遮罩，倒计时停表；法官的操作栏浮在遮罩上面 -->
+    <!-- 法官暂停：所有人同一张遮罩，倒计时停表；导航栏（返回、记录、身份）和法官的操作栏浮在遮罩上面 -->
     <view v-if="overlay" class="jr-pause">
       <text class="jr-pause__moon">☾</text>
       <text class="jr-pause__title serif">{{ overlay.title }}</text>
@@ -479,7 +487,7 @@ onUnload(() => {
   top: 0;
   right: 0;
   bottom: 0;
-  z-index: 40;
+  z-index: 15;
   background: rgba(7, 6, 10, 0.86);
   display: flex;
   flex-direction: column;

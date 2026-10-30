@@ -33,6 +33,8 @@ export function sheriffPanel(snapshot) {
     targets,
     candidates,
     speakerSeat: stage === 'speech' ? speakerOf(snapshot) : null,
+    // 正在警上发言的本人可以「结束发言」（和白天发言一样走 next_speaker）
+    isSpeaker: stage === 'speech' && alive && Boolean(selfSeat) && speakerOf(snapshot) === selfSeat,
     voted: Boolean(info.voted),
     myVote: info.myVote ?? null,
     progress: voting ? `已投 ${info.votedCount || 0} / ${info.voterCount || 0}` : '',

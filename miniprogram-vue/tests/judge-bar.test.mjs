@@ -69,3 +69,13 @@ test('judgeSummaryBeforeWolvesChoose', () => {
   const rows = tonightRows(room({ nightActions: [], currentStep: { index: 0, kind: 'wolf', roleName: '狼人' } }))
   assert.equal(rows.find((row) => row.role === '狼人').state, '1→? 2→? · 刀口 还没定')
 })
+
+test('tonightRowsFollowTheBoardNightOrder', () => {
+  // 板子把预言家排在狼前面：狼队行动时预言家已经轮过了，女巫还没到
+  const board = { ruleDetail: { nightOrder: [{ roleName: '预言家', faction: '好人' }, { roleName: '狼人', faction: '狼人' }, { roleName: '女巫', faction: '好人' }] } }
+  const snapshot = room({ nightActions: [], currentStep: { index: 1, kind: 'wolf', roleName: '狼人' } })
+  const rows = tonightRows(snapshot, board)
+  assert.equal(rows.find((row) => row.role === '预言家').state, '没有行动')
+  assert.equal(rows.find((row) => row.role === '女巫').state, '还没轮到')
+  assert.equal(tonightRows(snapshot).find((row) => row.role === '预言家').state, '还没轮到', '没有板子时按通用顺序')
+})

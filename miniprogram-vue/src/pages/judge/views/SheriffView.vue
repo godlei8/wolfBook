@@ -1,5 +1,5 @@
 <script setup>
-// 上警：报名（只看到自己报没报）→ 警上发言（警上的人能退水）→ 警长投票 / PK（没上警的人投）。
+// 上警：报名（只看到自己报没报）→ 警上发言（警上的人能退水，发言者本人能结束发言）→ 警长投票 / PK（没上警的人投）。
 // 房主的推进按钮（截止报名、开始投票等）在房间页底部的操作栏。
 import { computed, ref, watch } from 'vue'
 import { countdown, phaseTitle } from '../../../utils/judge/room-view.js'
@@ -39,6 +39,11 @@ function tapSeat(player) {
 function send(payload) {
   if (props.busy) return
   emit('act', { kind: 'sheriff', payload })
+}
+
+function endSpeech() {
+  if (props.busy) return
+  emit('act', { kind: 'advance', payload: { action: 'next_speaker' } })
 }
 
 function vote() {
@@ -81,8 +86,9 @@ function vote() {
       <block v-else-if="panel.stage === 'speech'">
         <text class="jd-panel__title">{{ panel.speakerSeat ? `${panel.speakerSeat} 号警上发言` : '警上发言' }}</text>
         <text class="jd-panel__hint">警上：{{ panel.candidates.join('、') || '无' }} 号</text>
-        <view v-if="panel.canWithdraw" class="jd-buttons">
-          <view class="nt-btn nt-btn--ghost jd-button" :class="{ 'nt-btn--disabled': busy }" @tap="send({ withdraw: true })">退水</view>
+        <view v-if="panel.canWithdraw || panel.isSpeaker" class="jd-buttons">
+          <view v-if="panel.isSpeaker" class="nt-btn nt-btn--gold jd-button" :class="{ 'nt-btn--disabled': busy }" @tap="endSpeech">结束发言</view>
+          <view v-if="panel.canWithdraw" class="nt-btn nt-btn--ghost jd-button" :class="{ 'nt-btn--disabled': busy }" @tap="send({ withdraw: true })">退水</view>
         </view>
       </block>
       <block v-else>
