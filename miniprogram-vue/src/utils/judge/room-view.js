@@ -77,6 +77,15 @@ const DAY_TITLES = {
   skill_pending: '出局技能',
 }
 
+/**
+ * 导航栏标题：只在大厅显示。开局后返回键右边有「记录」「身份」，居中的标题会被压住，
+ * 阶段标题本来就在画面里，导航栏就不再放。
+ */
+export function navTitle(snapshot) {
+  if (!snapshot) return '法官房间'
+  return snapshot.roomStatus === 'lobby' ? '等待入座' : ''
+}
+
 /** 夜里只用 currentStep.roleName，不看查看者身份。 */
 export function phaseTitle(snapshot) {
   if (!snapshot) return ''

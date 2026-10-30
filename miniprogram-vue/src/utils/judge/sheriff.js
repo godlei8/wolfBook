@@ -29,6 +29,7 @@ export function sheriffPanel(snapshot) {
     candidate: Boolean(info.sheriffCandidate),
     canWithdraw: stage === 'speech' && alive && candidates.includes(selfSeat),
     canVote: voting && alive && Boolean(info.canVote) && !candidates.includes(selfSeat),
+    reason: snapshot?.judgeViewer ? '法官不投票' : candidates.includes(selfSeat) ? '你在警上，不能投票' : '你这一轮不能投票',
     targets,
     candidates,
     speakerSeat: stage === 'speech' ? speakerOf(snapshot) : null,

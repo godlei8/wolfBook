@@ -32,6 +32,7 @@ function knifeOf(picks) {
   for (const pick of picks) {
     if (pick.decided && pick.targetSeatNo) counts.set(pick.targetSeatNo, (counts.get(pick.targetSeatNo) || 0) + 1)
   }
+  if (!picks.some((pick) => pick.decided)) return { seat: null, text: '还没选' }
   if (!counts.size) return { seat: null, text: '空刀' }
   const top = Math.max(...counts.values())
   const leaders = [...counts.entries()].filter(([, count]) => count === top).map(([seat]) => seat)

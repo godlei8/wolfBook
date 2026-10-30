@@ -64,3 +64,8 @@ test('everyoneGetsTheSamePauseOverlay', () => {
   assert.deepEqual(judge, player)
   assert.equal(judge.title, '法官暂停')
 })
+
+test('judgeSummaryBeforeWolvesChoose', () => {
+  const rows = tonightRows(room({ nightActions: [], currentStep: { index: 0, kind: 'wolf', roleName: '狼人' } }))
+  assert.equal(rows.find((row) => row.role === '狼人').state, '1→? 2→? · 刀口 还没定')
+})

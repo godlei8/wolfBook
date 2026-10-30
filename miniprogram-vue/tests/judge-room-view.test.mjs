@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { countdown, parseServerTime, phaseTitle, pickView, seatColumns } from '../src/utils/judge/room-view.js'
+import { countdown, navTitle, parseServerTime, phaseTitle, pickView, seatColumns } from '../src/utils/judge/room-view.js'
 
 const playing = (currentPhase, extra = {}) => ({ roomStatus: 'playing', currentPhase, currentDay: 2, ...extra })
 
@@ -73,4 +73,11 @@ test('nightTitleIsTheSameForEveryViewer', () => {
   assert.equal(phaseTitle(villager), title)
   assert.equal(phaseTitle(dead), title)
   assert.equal(phaseTitle(playing('exile_vote')), '第 2 天 · 放逐投票')
+})
+
+test('navBarShowsTheRoomNotThePhase', () => {
+  assert.equal(navTitle({ roomStatus: 'lobby', roomCode: '4601' }), '等待入座')
+  assert.equal(navTitle({ roomStatus: 'playing', roomCode: '4601', currentPhase: 'night_action' }), '', '对局中左边有「记录」「身份」，标题会被压住；阶段标题在画面里')
+  assert.equal(navTitle({ roomStatus: 'finished', roomCode: '4601' }), '')
+  assert.equal(navTitle(null), '法官房间')
 })

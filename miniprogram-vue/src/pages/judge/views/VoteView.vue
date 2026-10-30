@@ -69,7 +69,7 @@ function vote(targetSeatNo) {
           </view>
           <view class="nt-btn nt-btn--ghost jv-button" :class="{ 'nt-btn--disabled': busy }" @tap="vote(null)">弃票</view>
         </view>
-        <text v-else class="jv-panel__hint">你这一轮不能投票</text>
+        <text v-else class="jv-panel__hint">{{ panel.reason }}</text>
       </view>
     </block>
 

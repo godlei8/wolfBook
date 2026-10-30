@@ -16,8 +16,16 @@ export function speechPanel(snapshot) {
     index,
     speakerSeat,
     isSpeaker: Boolean(speakerSeat) && aliveSelf(snapshot) && snapshot.selfPlayer.seatNo === speakerSeat,
+    // 发言时长只有 30 秒时一开始就剩 30 秒，那就只在最后 10 秒变红
+    warnAt: Number(snapshot?.rules?.speechSeconds || 120) > 30 ? 30 : 10,
     sequence: order.map((seatNo, i) => ({ seatNo, state: i < index ? 'done' : i === index ? 'current' : 'next' })),
   }
+}
+
+function cannotVoteReason(snapshot) {
+  if (snapshot?.judgeViewer) return '法官不投票'
+  if (snapshot?.selfPlayer?.seatNo && snapshot.selfPlayer.alive === false) return '你已出局，不能投票'
+  return '你这一轮不能投票'
 }
 
 export function votePanel(snapshot) {
@@ -31,6 +39,7 @@ export function votePanel(snapshot) {
   return {
     stage,
     canVote: aliveSelf(snapshot) && Boolean(info.canVote),
+    reason: cannotVoteReason(snapshot),
     targets,
     abstainAllowed: true,
     voted: Boolean(info.voted),

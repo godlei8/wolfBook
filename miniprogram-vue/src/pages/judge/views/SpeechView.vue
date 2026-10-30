@@ -28,7 +28,7 @@ function endSpeech() {
   <view class="nt-gutter js">
     <view class="js-head">
       <text class="js-head__title serif">{{ title }}</text>
-      <text class="js-head__clock" :class="{ 'js-head__clock--warn': clock.seconds <= 30 && clock.text !== '暂停' }">{{ clock.text }}</text>
+      <text class="js-head__clock" :class="{ 'js-head__clock--warn': clock.seconds <= panel.warnAt && clock.text !== '暂停' }">{{ clock.text }}</text>
     </view>
 
     <view class="nt-ink js-card">

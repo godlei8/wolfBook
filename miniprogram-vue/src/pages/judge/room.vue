@@ -17,7 +17,8 @@ import LogSheet from './views/LogSheet.vue'
 import api from '../../services/api'
 import storage from '../../services/storage'
 import { mergePollResult, pollInterval } from '../../utils/judge/room-poll.js'
-import { phaseTitle, pickView } from '../../utils/judge/room-view.js'
+import { navTitle, pickView } from '../../utils/judge/room-view.js'
+import { identityCard } from '../../utils/judge/identity.js'
 import { judgeActions, pausedOverlay } from '../../utils/judge/judge-bar.js'
 import { hostActions } from '../../utils/judge/day.js'
 import { rememberCue, shouldPlay, voiceCue, withTimeout } from '../../utils/judge/voice-cue.js'
@@ -50,7 +51,10 @@ let active = false
 let redirected = false
 
 const view = computed(() => pickView(snapshot.value))
-const title = computed(() => phaseTitle(snapshot.value) || '法官房间')
+const title = computed(() => navTitle(snapshot.value))
+// 自己的身份牌：每个入座的玩家导航栏都有「身份」，点开才显示
+const identity = computed(() => identityCard(snapshot.value, board.value))
+const identityOpen = ref(false)
 const judgeBar = computed(() => judgeActions(snapshot.value))
 const overlay = computed(() => pausedOverlay(snapshot.value))
 const hasJudgeBar = computed(() => judgeBar.value.pause || judgeBar.value.resume || judgeBar.value.forceOut)
@@ -358,6 +362,7 @@ onUnload(() => {
     <NavBar back :title="title">
       <template #side>
         <text v-if="snapshot && view !== 'lobby'" class="jr-logbtn" @tap="logOpen = true">记录</text>
+        <text v-if="identity" class="jr-logbtn" @tap="identityOpen = true">身份</text>
         <text v-if="snapshot && snapshot.host && voicePlayer.supported" class="jr-logbtn" @tap="toggleVoice">{{ voiceOn ? '播报开' : '播报关' }}</text>
       </template>
     </NavBar>
@@ -405,6 +410,24 @@ onUnload(() => {
     </view>
 
     <LogSheet v-if="logOpen && snapshot" :snapshot="snapshot" @close="logOpen = false" />
+
+    <view v-if="identityOpen && identity" class="jr-sheet jr-identity" @tap="identityOpen = false">
+      <view class="nt-ink jr-identity__card" @tap.stop>
+        <view class="nt-card jr-identity__art">
+          <view class="nt-card__frame">
+            <image v-if="identity.art" class="nt-card__img" :src="identity.art" mode="aspectFill" webp />
+            <view v-else class="nt-card__back">
+              <view class="nt-card__line" />
+              <text class="nt-card__moon">☾</text>
+            </view>
+          </view>
+        </view>
+        <text class="jr-identity__seat">{{ identity.seatNo }} 号{{ identity.alive ? '' : ' · 已出局' }}</text>
+        <text class="jr-identity__role serif">{{ identity.roleName }}</text>
+        <text class="jr-identity__camp" :class="{ 'jr-identity__camp--wolf': identity.wolf }">{{ identity.camp }}</text>
+        <view class="nt-btn nt-btn--ghost jr-identity__close" @tap="identityOpen = false">盖上</view>
+      </view>
+    </view>
 
     <view v-if="forceOutOpen" class="jr-sheet" @tap="forceOutOpen = false">
       <view class="nt-panel jr-sheet__body" @tap.stop>
@@ -555,6 +578,53 @@ onUnload(() => {
   background: var(--panel-raised);
   color: var(--text);
   font-size: 24rpx;
+}
+
+.jr-identity {
+  justify-content: center;
+  align-items: center;
+}
+
+.jr-identity__card {
+  width: 520rpx;
+  padding: 36rpx;
+  border-radius: 36rpx;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.jr-identity__art {
+  width: 360rpx;
+  margin-bottom: 12rpx;
+}
+
+.jr-identity__seat {
+  color: var(--text-3);
+  font-size: 24rpx;
+}
+
+.jr-identity__role {
+  color: var(--text);
+  font-size: 48rpx;
+  font-weight: 900;
+}
+
+.jr-identity__camp {
+  color: var(--camp-god);
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+.jr-identity__camp--wolf {
+  color: var(--camp-wolf);
+}
+
+.jr-identity__close {
+  margin-top: 16rpx;
+  width: 100%;
 }
 
 .jr-loading {

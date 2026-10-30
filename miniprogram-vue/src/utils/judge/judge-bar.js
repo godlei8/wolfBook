@@ -61,6 +61,7 @@ function knifeText(bySeat, wolves) {
     const action = bySeat.get(seat)
     if (action && actionCode(action) === 'kill' && action.targetSeatNo) counts.set(action.targetSeatNo, (counts.get(action.targetSeatNo) || 0) + 1)
   }
+  if (!wolves.some((seat) => bySeat.has(seat))) return '还没定'
   if (!counts.size) return '空刀'
   const top = Math.max(...counts.values())
   const leaders = [...counts.entries()].filter(([, count]) => count === top)

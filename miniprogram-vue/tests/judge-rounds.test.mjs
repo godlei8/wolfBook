@@ -31,7 +31,7 @@ test('roundsShowPublicInfoDuringTheGame', () => {
   assert.equal(day.dayNo, 1)
   assert.equal(day.nightDeaths, '5 号')
   assert.equal(day.sheriff, '2 号当选警长（上警 2、3，退水 3）')
-  assert.equal(day.speechOrder, '从 3 号开始向右 · 3 4 6 7 1 2')
+  assert.equal(day.speechOrder, '从 3 号开始 · 3、4、6、7、1、2')
   assert.equal(day.exiles.length, 2)
   assert.equal(day.exiles[0].pk, '4、6 号平票进入 PK')
   assert.equal(day.exiles[1].out, '4 号出局')
@@ -53,6 +53,10 @@ test('peacefulNightAndNoSheriff', () => {
 })
 
 test('drawShowsLiuju', () => {
+  assert.deepEqual(verdictText({ roomStatus: 'finished', winnerCamp: '流局', winVerdict: { camp: '流局', reason: '法官结束了对局（流局）' } }), {
+    title: '流局',
+    reason: '法官结束了对局（流局）',
+  })
   assert.deepEqual(verdictText({ roomStatus: 'finished', winnerCamp: '', winVerdict: null }), { title: '流局', reason: '对局被提前结束，不计胜负' })
   assert.deepEqual(verdictText({ roomStatus: 'finished', winnerCamp: '狼人', winVerdict: { camp: '狼人', reason: '神职全部出局，狼人阵营胜利' } }), {
     title: '狼人阵营胜利',

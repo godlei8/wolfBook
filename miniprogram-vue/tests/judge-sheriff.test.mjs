@@ -59,3 +59,8 @@ test('onlyTheSheriffChoosesTheOrder', () => {
   assert.deepEqual(quiet.orderOptions.map((option) => option.label), ['警左', '警右'])
   assert.equal(announcePanel(room('day_announce', me(2, false), extra)).canChooseOrder, false)
 })
+
+test('sheriffVoteSaysWhyYouCannotVote', () => {
+  assert.equal(sheriffPanel(room('sheriff_vote', { seatNo: null }, { judgeViewer: true, sheriffCandidates: [3] })).reason, '法官不投票')
+  assert.equal(sheriffPanel(room('sheriff_vote', me(3), { sheriffCandidates: [3], dayInfo: { canVote: false } })).reason, '你在警上，不能投票')
+})

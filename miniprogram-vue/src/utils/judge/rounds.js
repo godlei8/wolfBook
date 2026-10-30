@@ -14,8 +14,7 @@ function sheriffText(sheriff) {
 
 function speechOrderText(order) {
   if (!order?.order?.length) return ''
-  const way = order.direction === 'left' ? '向左' : '向右'
-  return `${order.startSeat ? `从 ${order.startSeat} 号开始${way}` : '发言顺序'} · ${order.order.join(' ')}`
+  return `${order.startSeat ? `从 ${order.startSeat} 号开始` : '发言顺序'} · ${order.order.join('、')}`
 }
 
 function exileRow(exile) {
@@ -67,6 +66,6 @@ export function roundRows(snapshot) {
 
 export function verdictText(snapshot) {
   const camp = snapshot?.winVerdict?.camp || snapshot?.winnerCamp || ''
-  if (!camp) return { title: '流局', reason: '对局被提前结束，不计胜负' }
+  if (!camp || camp === '流局') return { title: '流局', reason: snapshot?.winVerdict?.reason || '对局被提前结束，不计胜负' }
   return { title: `${camp}阵营胜利`, reason: snapshot?.winVerdict?.reason || '' }
 }

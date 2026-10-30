@@ -93,7 +93,7 @@ function vote() {
             {{ selection ? `投给 ${selection} 号` : '点一个警上的座位' }}
           </view>
         </view>
-        <text v-else class="jd-panel__hint">{{ panel.candidates.includes(snapshot.selfPlayer && snapshot.selfPlayer.seatNo) ? '你在警上，不能投票' : '你这一轮不能投票' }}</text>
+        <text v-else class="jd-panel__hint">{{ panel.reason }}</text>
       </block>
     </view>
   </view>

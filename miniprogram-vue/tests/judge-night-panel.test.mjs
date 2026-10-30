@@ -124,3 +124,8 @@ test('judgeIsNeverAHolder', () => {
   assert.equal(isStepHolder(judge), false)
   assert.equal(nightPanel(judge), null)
 })
+
+test('wolfKnifeBeforeAnyoneChooses', () => {
+  const info = { teammateSeats: [2], wolfPicks: [{ seatNo: 1, targetSeatNo: null, decided: false }, { seatNo: 2, targetSeatNo: null, decided: false }] }
+  assert.equal(nightPanel(night('wolf', '狼人', me(1), { line: 'x', nightInfo: info })).knife.text, '还没选')
+})

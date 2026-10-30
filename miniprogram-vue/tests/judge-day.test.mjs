@@ -83,3 +83,14 @@ test('hostActionsNeverCarryResultFields', () => {
     }
   }
 })
+
+test('whyYouCannotVote', () => {
+  assert.equal(votePanel(room('exile_vote', { seatNo: null, judgeObserver: true }, { judgeViewer: true })).reason, '法官不投票')
+  assert.equal(votePanel(room('exile_vote', me(3), { dayInfo: { canVote: false } })).reason, '你这一轮不能投票')
+  assert.equal(votePanel(room('exile_vote', me(3, false))).reason, '你已出局，不能投票')
+})
+
+test('speechClockWarnsAtThirtyOnlyForLongSpeeches', () => {
+  assert.equal(speechPanel(room('day_speech', me(1), { rules: { speechSeconds: 120 } })).warnAt, 30)
+  assert.equal(speechPanel(room('day_speech', me(1), { rules: { speechSeconds: 30 } })).warnAt, 10)
+})
