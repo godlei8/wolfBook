@@ -8,6 +8,8 @@ import NavBar from '../../components/NavBar.vue'
 import LobbyView from './views/LobbyView.vue'
 import NightView from './views/NightView.vue'
 import PendingView from './views/PendingView.vue'
+import SheriffView from './views/SheriffView.vue'
+import AnnounceView from './views/AnnounceView.vue'
 import api from '../../services/api'
 import storage from '../../services/storage'
 import { mergePollResult, pollInterval } from '../../utils/judge/room-poll.js'
@@ -182,6 +184,7 @@ function onAct(event) {
     night: () => api.submitJudgeNightAction(id, { actionType: event.actionType, targetSeatNo: event.targetSeatNo }),
     advance: () => api.advanceJudgeRoom(id, event.payload),
     skill: () => api.submitJudgeSkill(id, { decision: event.decision, targetSeatNo: event.targetSeatNo }),
+    sheriff: () => api.submitJudgeSheriff(id, event.payload),
   }
   const task = tasks[event?.kind]
   if (task) runAction(task)
@@ -262,6 +265,8 @@ onUnload(() => {
     <LobbyView v-else-if="view === 'lobby'" :snapshot="snapshot" :board="board" :busy="actionLoading" @act="onAct" />
     <NightView v-else-if="view === 'night'" :snapshot="snapshot" :board="board" :now="now" :busy="actionLoading" @act="onAct" />
     <PendingView v-else-if="view === 'pending'" :snapshot="snapshot" :now="now" :busy="actionLoading" @act="onAct" />
+    <SheriffView v-else-if="view === 'sheriff'" :snapshot="snapshot" :now="now" :busy="actionLoading" @act="onAct" />
+    <AnnounceView v-else-if="view === 'announce'" :snapshot="snapshot" :busy="actionLoading" @act="onAct" />
     <view v-else class="nt-gutter">
       <view class="nt-panel jr-placeholder">
         <text class="jr-placeholder__title">{{ snapshot.boardName }}</text>
