@@ -694,6 +694,68 @@ class JudgeFlowIntegrationTests {
     }
 
     @Test
+    void hostCannotDictateResultsInAutoRooms() throws Exception {
+        // 无法官房主只是普通玩家：不能指定谁出局、谁赢，也不能改系统定的发言顺序
+        Game game = joinedGame(2, 12);
+        game.finishNight();
+        game.skipPending();
+        Assertions.assertEquals(4000, game.advance(game.host, "{\"action\":\"start_speech\",\"speechStartSeat\":5}").path("code").asInt());
+        Assertions.assertEquals(4000, game.advance(game.host, "{\"action\":\"start_speech\",\"speechDirection\":\"right\"}").path("code").asInt());
+        game.advance(game.host, "{\"action\":\"start_speech\"}");
+        game.advance(game.host, "{\"action\":\"start_vote\"}");
+        Assertions.assertEquals(4000, game.advance(game.host, "{\"action\":\"resolve_vote\",\"eliminatedSeatNo\":5}").path("code").asInt());
+        Assertions.assertEquals(4000, game.advance(game.host, "{\"action\":\"resolve_vote\",\"winnerCamp\":\"好人\"}").path("code").asInt());
+        Assertions.assertEquals(4000, game.advance(game.host, "{\"action\":\"finish\",\"winnerCamp\":\"好人\"}").path("code").asInt());
+        Assertions.assertEquals("exile_vote", game.snapshot(game.host).path("currentPhase").asText());
+    }
+
+    @Test
+    void renamedIdiotStillFlipsOnExile() throws Exception {
+        // 角色改了名字，机制还是白痴：被放逐照样翻牌免死
+        Game game = autoGame12(false);
+        int idiot = game.seatsByRole().get("白痴").get(0);
+        jdbcTemplate.update("UPDATE judge_room_players SET role_name = '傻子' WHERE room_id = ? AND seat_no = ?", game.roomId, idiot);
+        List<Integer> wolves = game.seatsByRole().get("狼人");
+        game.finishNight();
+        game.advance(game.host, "{\"action\":\"start_speech\"}");
+        game.advance(game.host, "{\"action\":\"start_vote\"}");
+        game.vote(wolves.get(0), idiot);
+        JsonNode revealed = game.advance(game.host, "{\"action\":\"resolve_vote\"}");
+        Assertions.assertTrue(game.player(revealed.path("data"), idiot).path("alive").asBoolean(), revealed.toString());
+    }
+
+    @Test
+    void concurrentPauseIsNeverLost() throws Exception {
+        // 暂停和关步骤的惰性推进同时发生：法官拿到「暂停成功」，房间就必须真的暂停
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            for (int round = 0; round < 25; round++) {
+                Game game = autoGame(false);
+                jdbcTemplate.update("UPDATE judge_rooms SET step_deadline = ? WHERE room_id = ?",
+                        java.sql.Timestamp.valueOf("2000-01-01 00:00:00"), game.roomId);
+                java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+                java.util.concurrent.Future<JsonNode> pause = pool.submit(() -> {
+                    go.await();
+                    return game.advance(game.host, "{\"action\":\"pause\"}");
+                });
+                java.util.concurrent.Future<JsonNode> poll = pool.submit(() -> {
+                    go.await();
+                    return game.snapshot(game.players.get(0));
+                });
+                go.countDown();
+                JsonNode paused = pause.get();
+                poll.get();
+                if (paused.path("code").asInt() == 0) {
+                    String phaseData = jdbcTemplate.queryForObject("SELECT phase_data FROM judge_rooms WHERE room_id = ?", String.class, game.roomId);
+                    Assertions.assertTrue(phaseData != null && phaseData.contains("pausedAt"), "第 " + round + " 轮暂停被覆盖：" + phaseData);
+                }
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
     void judgeCannotDriveTheAutoFlow() throws Exception {
         Game game = autoGame(false);
         int guard = game.seatsByRole().get("守卫").get(0);

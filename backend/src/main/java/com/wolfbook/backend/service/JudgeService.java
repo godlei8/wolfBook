@@ -146,6 +146,7 @@ public class JudgeService {
     ) {
         this.tickTransaction = new TransactionTemplate(transactionManager);
         this.tickTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.tickTransaction.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
         this.userService = userService;
         this.boardService = boardService;
         this.roleMapper = roleMapper;
@@ -364,10 +365,11 @@ public class JudgeService {
         return buildSnapshot(openid, roomId);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public WolfbookDtos.JudgeRoomSnapshotView startRoom(String authorization, String roomId) {
         roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
+        lockRoom(roomId);
         JudgeRoomEntity room = requireHost(roomId, openid);
         if (!ROOM_STATUS_LOBBY.equals(room.getRoomStatus())) {
             throw new ApiException(4002, "房间不在可开局状态");
@@ -430,10 +432,11 @@ public class JudgeService {
         return buildSnapshot(openid, roomId);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public WolfbookDtos.JudgeRoomSnapshotView advanceRoom(String authorization, String roomId, WolfbookDtos.JudgeRoomAdvanceRequest request) {
         roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
+        lockRoom(roomId);
         if ("next_speaker".equals(normalizeAction(request.action()))) {
             // 发言者自己点「结束发言」也走这里，不要求是法官
             return nextSpeaker(openid, roomId);
@@ -442,6 +445,7 @@ public class JudgeService {
         if (!ROOM_STATUS_PLAYING.equals(room.getRoomStatus())) {
             throw new ApiException(4002, ROOM_STATUS_FINISHED.equals(room.getRoomStatus()) ? "对局已结束" : "对局尚未开始");
         }
+        rejectDictatedResults(room, normalizeAction(request.action()), request);
 
         if (!Set.of("resume", "force_out").contains(normalizeAction(request.action()))) {
             requireNotPaused(room);
@@ -473,6 +477,7 @@ public class JudgeService {
         roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
         tick(roomId);
+        lockRoom(roomId);
         JudgeRoomEntity room = getRoom(roomId);
         requireNotPaused(room);
         if (!ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) || !PHASE_NIGHT_ACTION.equals(room.getCurrentPhase())) {
@@ -529,6 +534,7 @@ public class JudgeService {
         roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
         tick(roomId);
+        lockRoom(roomId);
         JudgeRoomEntity room = getRoom(roomId);
         requireNotPaused(room);
         boolean pk = PHASE_VOTE_PK.equals(room.getCurrentPhase());
@@ -1113,10 +1119,11 @@ public class JudgeService {
     }
 
     /** 大厅里改房间规则（节奏项）；开局后锁定。 */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public WolfbookDtos.JudgeRoomSnapshotView updateRoomRules(String authorization, String roomId, WolfbookDtos.JudgeRoomRulesInput request) {
         roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
+        lockRoom(roomId);
         JudgeRoomEntity room = requireHost(roomId, openid);
         if (!ROOM_STATUS_LOBBY.equals(room.getRoomStatus())) {
             throw new ApiException(4002, "开局后规则已锁定");
@@ -1354,6 +1361,7 @@ public class JudgeService {
         roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
         tick(roomId);
+        lockRoom(roomId);
         JudgeRoomEntity room = getRoom(roomId);
         requireNotPaused(room);
         if (!ROOM_STATUS_PLAYING.equals(room.getRoomStatus())) {
@@ -1738,6 +1746,7 @@ public class JudgeService {
         roomId = resolveRoomId(roomId);
         String openid = requireOpenid(authorization);
         tick(roomId);
+        lockRoom(roomId);
         JudgeRoomEntity room = getRoom(roomId);
         requireNotPaused(room);
         if (!ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) || !PHASE_SKILL_PENDING.equals(room.getCurrentPhase())) {
@@ -1980,7 +1989,7 @@ public class JudgeService {
     /** 被放逐的是还没翻牌的白痴：翻牌免死，从此没有投票权。返回 true 表示翻了牌、不出局。 */
     private boolean revealIdiot(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players, Integer seat, LocalDateTime now) {
         JudgeRoomPlayerEntity player = seat == null ? null : findSeatPlayer(players, seat);
-        if (player == null || !"白痴".equals(player.getRoleName())) {
+        if (player == null || mechanicOf(player).filter(mechanic -> mechanic == Mechanic.IDIOT).isEmpty()) {
             return false;
         }
         Map<String, Object> status = new LinkedHashMap<>(readMap(player.getStatusJson()));
@@ -2010,7 +2019,7 @@ public class JudgeService {
     }
 
     private void tickInTransaction(String roomId) {
-        JudgeRoomEntity room = judgeRoomMapper.selectById(roomId);
+        JudgeRoomEntity room = lockRoom(roomId);
         if (room == null || !ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) || !Boolean.TRUE.equals(room.getAutoJudgeEnabled())
                 || isPaused(room)) {
             return;
@@ -2211,6 +2220,33 @@ public class JudgeService {
             throw new ApiException(4002, "目标玩家当前不可选");
         }
         return player;
+    }
+
+    /**
+     * 锁住房间这一行（SELECT … FOR UPDATE），同一间房的推进、提交、惰性推进排队执行。
+     * 必须在读房间、座位、事件之前调用，配合 READ COMMITTED，锁到之后读到的都是最新提交的数据，
+     * 不会出现「两个请求都读了旧房间，后写的把先写的覆盖掉」（比如暂停被关步骤的惰性推进冲掉）。
+     */
+    private JudgeRoomEntity lockRoom(String roomId) {
+        return judgeRoomMapper.selectOne(new LambdaQueryWrapper<JudgeRoomEntity>()
+                .eq(JudgeRoomEntity::getRoomId, roomId)
+                .last("FOR UPDATE"));
+    }
+
+    /** 新流程房间按票型和规则结算：不收房主指定的出局者、胜方、发言起点和方向（无法官房主只是普通玩家，有法官也不改判）。 */
+    private void rejectDictatedResults(JudgeRoomEntity room, String action, WolfbookDtos.JudgeRoomAdvanceRequest request) {
+        if (!Boolean.TRUE.equals(room.getAutoJudgeEnabled())) {
+            return;
+        }
+        if ("resolve_vote".equals(action) && (request.eliminatedSeatNo() != null || trimToNull(request.winnerCamp()) != null)) {
+            throw new ApiException(4000, "新流程按票型结算，不能指定结果");
+        }
+        if ("finish".equals(action) && trimToNull(request.winnerCamp()) != null) {
+            throw new ApiException(4000, "只能强制结束（记流局），胜负由系统判定");
+        }
+        if ("start_speech".equals(action) && (request.speechStartSeat() != null || trimToNull(request.speechDirection()) != null)) {
+            throw new ApiException(4000, "发言顺序由系统和警长决定");
+        }
     }
 
     private JudgeRoomEntity getRoom(String roomId) {
