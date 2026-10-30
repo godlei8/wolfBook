@@ -685,9 +685,22 @@ public class JudgeService {
         Integer knifeSeat = null;
         Integer checkedSeat = null;
         String checkResult = null;
+        Boolean antidote = null;
+        Boolean poison = null;
+        Integer lastGuardSeat = null;
+        String myAction = null;
+        Integer myTarget = null;
         boolean night = ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) && PHASE_NIGHT_ACTION.equals(room.getCurrentPhase())
                 && room.getNightStep() != null;
         if (night && alive) {
+            Map<String, Object> status = readMap(self.getStatusJson());
+            if (mechanic == Mechanic.WITCH) {
+                antidote = !Boolean.FALSE.equals(status.get("antidote"));
+                poison = !Boolean.FALSE.equals(status.get("poison"));
+            }
+            if (mechanic == Mechanic.GUARD) {
+                lastGuardSeat = asPositiveInteger(status.get("lastGuardSeat"));
+            }
             List<NightPlan.NightStep> steps = nightSteps(room, safeInt(room.getCurrentDay(), 1));
             NightPlan.NightStep step = room.getNightStep() < steps.size() ? steps.get(room.getNightStep()) : null;
             List<NightResolver.Submission> submissions = tonightSubmissions(room, players);
@@ -709,6 +722,14 @@ public class JudgeService {
                 Map<String, Object> phaseData = readMap(room.getPhaseData());
                 knifeSeat = Boolean.TRUE.equals(phaseData.get("knifeDecided")) ? asPositiveInteger(phaseData.get("knifeSeat")) : null;
             }
+            NightResolver.Submission mine = submissions.stream()
+                    .filter(submission -> submission.actorSeat() == self.getSeatNo())
+                    .reduce((left, right) -> right)
+                    .orElse(null);
+            if (mine != null) {
+                myAction = mine.action();
+                myTarget = mine.targetSeat();
+            }
             if (mechanic == Mechanic.SEER) {
                 NightResolver.Submission check = submissions.stream()
                         .filter(submission -> submission.actorSeat() == self.getSeatNo() && NightResolver.CHECK.equals(submission.action()))
@@ -720,10 +741,12 @@ public class JudgeService {
                 }
             }
         }
-        if (teammates.isEmpty() && picks.isEmpty() && knifeSeat == null && checkedSeat == null) {
+        if (teammates.isEmpty() && picks.isEmpty() && knifeSeat == null && checkedSeat == null
+                && antidote == null && lastGuardSeat == null && myAction == null) {
             return null;
         }
-        return new WolfbookDtos.JudgeNightInfoView(teammates, picks, knifeSeat, checkedSeat, checkResult);
+        return new WolfbookDtos.JudgeNightInfoView(teammates, picks, knifeSeat, checkedSeat, checkResult,
+                antidote, poison, lastGuardSeat, myAction, myTarget);
     }
 
     private WolfbookDtos.JudgeSpeechView speechView(JudgeRoomEntity room) {

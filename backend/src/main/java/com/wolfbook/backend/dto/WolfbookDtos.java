@@ -651,7 +651,13 @@ public final class WolfbookDtos {
      * knifeSeat 女巫那一步的刀口（空刀为 null）；checkedSeat / checkResult 预言家今晚查验的人和结果（提交后立刻可见）。
      */
     public record JudgeNightInfoView(List<Integer> teammateSeats, List<JudgeWolfPickView> wolfPicks, Integer knifeSeat,
-                                     Integer checkedSeat, String checkResult) {
+                                     Integer checkedSeat, String checkResult,
+                                     /** 女巫自己的解药 / 毒药还在不在（其他人为 null）。 */
+                                     Boolean antidote, Boolean poison,
+                                     /** 守卫上一夜守的座位（不能连守；其他人为 null）。 */
+                                     Integer lastGuardSeat,
+                                     /** 本人今晚最后一次提交的行动（英文 kill / guard / save / poison / check / confirm / none）和目标。 */
+                                     String myAction, Integer myTarget) {
     }
 
     /** decided：这只狼今晚交过刀人或空刀；targetSeatNo 为 null 且 decided 为 true 即空刀，decided 为 false 是还没选。 */

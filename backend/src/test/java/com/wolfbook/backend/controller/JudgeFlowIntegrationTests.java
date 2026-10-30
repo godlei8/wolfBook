@@ -995,6 +995,42 @@ class JudgeFlowIntegrationTests {
     }
 
     @Test
+    void witchSeesHerPotionsAndGuardSeesLastNight() throws Exception {
+        Game game = autoGame(false);
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int guard = seats.get("守卫").get(0);
+        int witch = seats.get("女巫").get(0);
+        int villager = seats.get("平民").get(0);
+        jdbcTemplate.update("UPDATE judge_room_players SET status_json = ? WHERE room_id = ? AND seat_no = ?",
+                "{\"lastGuardSeat\":" + villager + "}", game.roomId, guard);
+        jdbcTemplate.update("UPDATE judge_room_players SET status_json = ? WHERE room_id = ? AND seat_no = ?",
+                "{\"antidote\":false}", game.roomId, witch);
+        JsonNode guardInfo = game.snapshot(game.players.get(guard - 1)).path("nightInfo");
+        Assertions.assertEquals(villager, guardInfo.path("lastGuardSeat").asInt(), guardInfo.toString());
+        Assertions.assertTrue(guardInfo.path("antidote").isNull() || guardInfo.path("antidote").isMissingNode(), "守卫没有药");
+        JsonNode witchInfo = game.snapshot(game.players.get(witch - 1)).path("nightInfo");
+        Assertions.assertFalse(witchInfo.path("antidote").asBoolean(true), witchInfo.toString());
+        Assertions.assertTrue(witchInfo.path("poison").asBoolean(false), witchInfo.toString());
+        JsonNode villagerInfo = game.snapshot(game.players.get(villager - 1)).path("nightInfo");
+        Assertions.assertTrue(villagerInfo.isNull() || villagerInfo.isMissingNode(), "平民没有私密信息");
+    }
+
+    @Test
+    void holdersSeeWhatTheySubmittedTonight() throws Exception {
+        Game game = autoGame(false);
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int guard = seats.get("守卫").get(0);
+        int target = seats.get("平民").get(0);
+        Assertions.assertEquals("guard", game.snapshot(game.host).path("currentStep").path("kind").asText(), "守卫九人局第一步是守卫");
+        JsonNode before = game.snapshot(game.players.get(guard - 1)).path("nightInfo");
+        Assertions.assertTrue(before.path("myAction").isNull() || before.path("myAction").isMissingNode(), before.toString());
+        game.act(guard, "guard", target);
+        JsonNode after = game.snapshot(game.players.get(guard - 1)).path("nightInfo");
+        Assertions.assertEquals("guard", after.path("myAction").asText(), after.toString());
+        Assertions.assertEquals(target, after.path("myTarget").asInt(), after.toString());
+    }
+
+    @Test
     void witchSeesTheKnifeOnlyOnHerStep() throws Exception {
         Game game = autoGame12(false);
         Map<String, List<Integer>> seats = game.seatsByRole();
