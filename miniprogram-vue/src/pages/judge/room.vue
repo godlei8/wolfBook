@@ -6,6 +6,7 @@ import { computed, ref } from 'vue'
 import { onHide, onLoad, onShareAppMessage, onShow, onUnload } from '@dcloudio/uni-app'
 import NavBar from '../../components/NavBar.vue'
 import LobbyView from './views/LobbyView.vue'
+import NightView from './views/NightView.vue'
 import api from '../../services/api'
 import storage from '../../services/storage'
 import { mergePollResult, pollInterval } from '../../utils/judge/room-poll.js'
@@ -20,7 +21,11 @@ const board = ref(null)
 const pollError = ref('')
 const actionLoading = ref(false)
 
+// 倒计时用的本地时钟，每秒走一下（只是重画，不发请求）
+const now = ref(Date.now())
+
 let pollTimer = null
+let clockTimer = null
 let active = false
 let redirected = false
 
@@ -115,6 +120,21 @@ function stopPolling() {
   }
 }
 
+function startClock() {
+  stopClock()
+  now.value = Date.now()
+  clockTimer = setInterval(() => {
+    now.value = Date.now()
+  }, 1000)
+}
+
+function stopClock() {
+  if (clockTimer) {
+    clearInterval(clockTimer)
+    clockTimer = null
+  }
+}
+
 function keepScreenOn(on) {
   try {
     uni.setKeepScreenOn({ keepScreenOn: on })
@@ -151,6 +171,7 @@ function onAct(event) {
     unready: () => api.toggleJudgeReady(id),
     start: () => api.startJudgeRoom(id),
     rules: () => api.updateJudgeRoomRules(id, event.rules),
+    night: () => api.submitJudgeNightAction(id, { actionType: event.actionType, targetSeatNo: event.targetSeatNo }),
   }
   const task = tasks[event?.kind]
   if (task) runAction(task)
@@ -185,6 +206,7 @@ onShareAppMessage(() => judgeSharePayload())
 onShow(async () => {
   active = true
   keepScreenOn(true)
+  startClock()
   await refresh()
   schedulePoll()
 })
@@ -192,12 +214,14 @@ onShow(async () => {
 onHide(() => {
   active = false
   stopPolling()
+  stopClock()
   keepScreenOn(false)
 })
 
 onUnload(() => {
   active = false
   stopPolling()
+  stopClock()
   keepScreenOn(false)
 })
 </script>
@@ -210,6 +234,7 @@ onUnload(() => {
     </view>
     <view v-if="!snapshot" class="jr-loading">正在进入房间…</view>
     <LobbyView v-else-if="view === 'lobby'" :snapshot="snapshot" :board="board" :busy="actionLoading" @act="onAct" />
+    <NightView v-else-if="view === 'night'" :snapshot="snapshot" :board="board" :now="now" :busy="actionLoading" @act="onAct" />
     <view v-else class="nt-gutter">
       <view class="nt-panel jr-placeholder">
         <text class="jr-placeholder__title">{{ snapshot.boardName }}</text>
