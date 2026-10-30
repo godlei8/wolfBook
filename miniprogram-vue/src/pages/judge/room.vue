@@ -12,6 +12,8 @@ import SheriffView from './views/SheriffView.vue'
 import AnnounceView from './views/AnnounceView.vue'
 import SpeechView from './views/SpeechView.vue'
 import VoteView from './views/VoteView.vue'
+import ResultView from './views/ResultView.vue'
+import LogSheet from './views/LogSheet.vue'
 import api from '../../services/api'
 import storage from '../../services/storage'
 import { mergePollResult, pollInterval } from '../../utils/judge/room-poll.js'
@@ -46,6 +48,8 @@ const hostItems = computed(() => hostActions(snapshot.value))
 const hasBar = computed(() => view.value === 'lobby' || hasJudgeBar.value || hostItems.value.length > 0)
 // 点杀：先打开座位面板选人，再二次确认
 const forceOutOpen = ref(false)
+// 对局记录面板（右上角常驻入口，白天夜里都能开）
+const logOpen = ref(false)
 const forceOutSeats = computed(() => (snapshot.value?.players || []).filter((player) => player.seatNo && player.alive !== false))
 
 function safeDecode(value) {
@@ -280,7 +284,11 @@ onUnload(() => {
 
 <template>
   <view class="nt-page" :class="{ 'nt-page--bar': hasBar }">
-    <NavBar back :title="title" />
+    <NavBar back :title="title">
+      <template #side>
+        <text v-if="snapshot && view !== 'lobby'" class="jr-logbtn" @tap="logOpen = true">记录</text>
+      </template>
+    </NavBar>
     <view v-if="pollError" class="nt-gutter">
       <view class="jr-warn">{{ pollError }}</view>
     </view>
@@ -292,6 +300,7 @@ onUnload(() => {
     <AnnounceView v-else-if="view === 'announce'" :snapshot="snapshot" :busy="actionLoading" @act="onAct" />
     <SpeechView v-else-if="view === 'speech'" :snapshot="snapshot" :now="now" :busy="actionLoading" @act="onAct" />
     <VoteView v-else-if="view === 'vote' || view === 'voteResult'" :snapshot="snapshot" :now="now" :busy="actionLoading" @act="onAct" />
+    <ResultView v-else-if="view === 'result'" :snapshot="snapshot" :board="board" @open-log="logOpen = true" />
     <view v-else class="nt-gutter">
       <view class="nt-panel jr-placeholder">
         <text class="jr-placeholder__title">{{ snapshot.boardName }}</text>
@@ -322,6 +331,8 @@ onUnload(() => {
       >{{ judgeBar.resume ? '继续计时' : '暂停计时' }}</view>
       <view v-if="judgeBar.forceOut" class="nt-btn nt-btn--ghost jr-judgebar__btn" @tap="forceOutOpen = true">点杀</view>
     </view>
+
+    <LogSheet v-if="logOpen && snapshot" :snapshot="snapshot" @close="logOpen = false" />
 
     <view v-if="forceOutOpen" class="jr-sheet" @tap="forceOutOpen = false">
       <view class="nt-panel jr-sheet__body" @tap.stop>
@@ -463,6 +474,14 @@ onUnload(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.jr-logbtn {
+  padding: 8rpx 20rpx;
+  border-radius: 24rpx;
+  background: var(--panel-raised);
+  color: var(--text);
+  font-size: 24rpx;
 }
 
 .jr-loading {
