@@ -20,6 +20,7 @@ import com.wolfbook.backend.mapper.JudgeRoomPlayerMapper;
 import com.wolfbook.backend.mapper.RoleMapper;
 import com.wolfbook.backend.service.judge.JudgeDayFlow;
 import com.wolfbook.backend.service.judge.JudgeNightFlow;
+import com.wolfbook.backend.service.judge.Mechanic;
 import com.wolfbook.backend.service.judge.NightKind;
 import com.wolfbook.backend.service.judge.NightPlan;
 import com.wolfbook.backend.service.judge.NightResolver;
@@ -993,12 +994,11 @@ public class JudgeService {
     }
 
     private NightKind nightKindOf(JudgeRoomPlayerEntity player) {
-        if (RoleSkillRegistry.isWolfTeam(player.getRoleName(), player.getFaction())) {
+        Mechanic mechanic = RoleSkillRegistry.legacyMechanic(player.getRoleName()).orElse(null);
+        if (RoleSkillRegistry.isWolfTeam(mechanic, player.getRoleName(), player.getFaction())) {
             return NightKind.WOLF;
         }
-        return RoleSkillRegistry.forRole(player.getRoleName(), player.getFaction())
-                .map(RoleSkillRegistry.RoleSkill::nightKind)
-                .orElse(NightKind.GENERIC);
+        return mechanic == null ? NightKind.GENERIC : mechanic.nightKind();
     }
 
     /** 今晚的夜间提交（每个座位最后一条），旧事件没有 action 字段时按中文 actionType 换算。 */
@@ -1100,8 +1100,8 @@ public class JudgeService {
             }
             boolean allowed = kind == NightKind.WOLF
                     ? Set.of(NightResolver.KILL, NightResolver.NONE).contains(action)
-                    : RoleSkillRegistry.forRole(actor.getRoleName(), actor.getFaction())
-                            .map(skill -> skill.actions().contains(action))
+                    : RoleSkillRegistry.legacyMechanic(actor.getRoleName())
+                            .map(mechanic -> mechanic.actions().contains(action))
                             .orElse(true);
             if (!allowed) {
                 throw new ApiException(4000, "这个角色不能这样行动");
@@ -1700,8 +1700,8 @@ public class JudgeService {
         if (player == null) {
             return List.of("skip");
         }
-        boolean hunter = RoleSkillRegistry.forRole(player.getRoleName(), player.getFaction())
-                .map(skill -> skill.nightKind() == NightKind.HUNTER).orElse(false);
+        boolean hunter = RoleSkillRegistry.legacyMechanic(player.getRoleName())
+                .map(mechanic -> mechanic == Mechanic.HUNTER).orElse(false);
         boolean canShoot = !Boolean.FALSE.equals(readMap(player.getStatusJson()).get("canShoot"));
         return hunter && canShoot ? List.of("use", "skip") : List.of("skip");
     }

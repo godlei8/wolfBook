@@ -121,8 +121,8 @@ public final class NightResolver {
         Set<Integer> cannotShoot = new TreeSet<>();
         if (poisoned != null) {
             SeatState target = seats.get(poisoned);
-            if (target != null && RoleSkillRegistry.forRole(target.roleName(), target.faction())
-                    .map(skill -> skill.nightKind() == NightKind.HUNTER).orElse(false)) {
+            if (target != null && RoleSkillRegistry.legacyMechanic(target.roleName())
+                    .map(mechanic -> mechanic == Mechanic.HUNTER).orElse(false)) {
                 cannotShoot.add(poisoned);
             }
         }
@@ -134,8 +134,8 @@ public final class NightResolver {
             }
         }
         for (SeatState seat : seats.values()) {
-            if (seat.alive() && RoleSkillRegistry.forRole(seat.roleName(), seat.faction())
-                    .map(skill -> skill.nightKind() == NightKind.WITCH).orElse(false)) {
+            if (seat.alive() && RoleSkillRegistry.legacyMechanic(seat.roleName())
+                    .map(mechanic -> mechanic == Mechanic.WITCH).orElse(false)) {
                 feedback.put(seat.seat(), knife == null ? "平安夜" : knife + " 号");
             }
         }

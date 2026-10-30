@@ -48,7 +48,7 @@ public final class NightPlan {
                 .filter(Objects::nonNull)
                 .toList();
         List<Integer> wolfTeamIds = lineupRoles.stream()
-                .filter(role -> RoleSkillRegistry.isWolfTeam(role.getName(), role.getFaction()))
+                .filter(role -> RoleSkillRegistry.isWolfTeam(Mechanic.fromCode(role.getMechanic()).orElse(null), role.getName(), role.getFaction()))
                 .map(RoleEntity::getId)
                 .distinct()
                 .toList();
@@ -86,8 +86,9 @@ public final class NightPlan {
                 steps.add(step(steps.size(), NightKind.WOLF, wolfTeamIds, "狼人", true, dayNo));
                 continue;
             }
-            NightKind kind = RoleSkillRegistry.forRole(role.getName(), role.getFaction())
-                    .map(RoleSkillRegistry.RoleSkill::nightKind)
+            NightKind kind = Mechanic.fromCode(role.getMechanic())
+                    .or(() -> RoleSkillRegistry.legacyMechanic(role.getName()))
+                    .map(Mechanic::nightKind)
                     .orElse(NightKind.GENERIC);
             if (kind == NightKind.NONE) {
                 continue;

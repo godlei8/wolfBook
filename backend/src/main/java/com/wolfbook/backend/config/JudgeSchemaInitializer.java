@@ -93,6 +93,7 @@ public class JudgeSchemaInitializer implements ApplicationRunner {
                   role_id INT,
                   role_name VARCHAR(50),
                   faction VARCHAR(30),
+                  mechanic VARCHAR(40),
                   death_day TINYINT,
                   death_phase VARCHAR(30),
                   is_sheriff TINYINT DEFAULT 0,
