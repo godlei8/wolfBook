@@ -82,6 +82,17 @@ export interface Role {
   portrait: string
   fullIllustration: string
   themeColor: string | null
+  /** 电子法官技能机制（后端 service/judge/Mechanic 的 code），null = 不设置 */
+  mechanic: string | null
+}
+
+/** 后台「技能机制」下拉的一项（GET /admin/roles/mechanics）。 */
+export interface Mechanic {
+  code: string
+  label: string
+  brief: string
+  nightPriority: number | null
+  wolfTeam: boolean
 }
 
 /** 夜间行动顺序里的一步，roleId 必须在本板子的阵容里。 */

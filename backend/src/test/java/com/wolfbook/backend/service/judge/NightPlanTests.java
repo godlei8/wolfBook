@@ -16,16 +16,47 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class NightPlanTests {
 
     private static final Map<Integer, RoleEntity> ROLES = Map.of(
-            1, role(1, "预言家", "好人"),
-            2, role(2, "女巫", "好人"),
-            3, role(3, "猎人", "好人"),
-            4, role(4, "守卫", "好人"),
-            6, role(6, "狼人", "狼人"),
-            8, role(8, "白痴", "好人"),
-            9, role(9, "平民", "好人"),
-            10, role(10, "白狼王", "狼人"),
-            15, role(15, "织梦人", "好人")
+            1, role(1, "预言家", "好人", "seer"),
+            2, role(2, "女巫", "好人", "witch"),
+            3, role(3, "猎人", "好人", "hunter"),
+            4, role(4, "守卫", "好人", "guard"),
+            6, role(6, "狼人", "狼人", "wolf"),
+            8, role(8, "白痴", "好人", "idiot"),
+            9, role(9, "平民", "好人", "villager"),
+            10, role(10, "白狼王", "狼人", null),
+            15, role(15, "织梦人", "好人", null)
     );
+
+    /** 改了名字的角色：引擎只看机制。 */
+    private static final Map<Integer, RoleEntity> RENAMED = Map.of(
+            31, role(31, "预见者", "好人", "seer"),
+            32, role(32, "夜行者", "狼人", "wolf"),
+            33, role(33, "配药人", "好人", "witch"),
+            34, role(34, "看门人", "好人", "guard"),
+            35, role(35, "无名客", "好人", null),
+            36, role(36, "枪手", "好人", "hunter")
+    );
+
+    @Test
+    void autoOrderFollowsMechanicPriority() {
+        List<NightPlan.NightStep> steps = NightPlan.build(BoardRuleDetail.empty(),
+                List.of(new BoardRoleRef(31, 1), new BoardRoleRef(35, 1), new BoardRoleRef(32, 2), new BoardRoleRef(36, 1),
+                        new BoardRoleRef(33, 1), new BoardRoleRef(34, 1)),
+                RENAMED, 1);
+        assertEquals(List.of(NightKind.GUARD, NightKind.WOLF, NightKind.WITCH, NightKind.SEER, NightKind.HUNTER, NightKind.GENERIC),
+                steps.stream().map(NightPlan.NightStep::kind).toList());
+        assertEquals("看门人", steps.get(0).roleName());
+        assertEquals("无名客", steps.get(5).roleName());
+    }
+
+    @Test
+    void wolfVariantWithoutMechanicJoinsTheWolfStepByFaction() {
+        // 白狼王还没有机制：夜里照样跟狼队一起刀人（一期规则），不另起一步
+        List<NightPlan.NightStep> steps = NightPlan.build(BoardRuleDetail.empty(),
+                List.of(new BoardRoleRef(6, 2), new BoardRoleRef(10, 1), new BoardRoleRef(1, 1)), ROLES, 1);
+        assertEquals(List.of(NightKind.WOLF, NightKind.SEER), steps.stream().map(NightPlan.NightStep::kind).toList());
+        assertEquals(List.of(6, 10), steps.get(0).roleIds());
+    }
 
     @Test
     void defaultOrderOnlyIncludesRolesInTheLineup() {
@@ -66,6 +97,17 @@ class NightPlanTests {
     }
 
     @Test
+    void durationsComeFromTheRoomRules() {
+        com.wolfbook.backend.domain.JudgeRules rules = new com.wolfbook.backend.domain.JudgeRules(
+                null, null, null, null, null, null, 40, 20);
+        List<BoardRoleRef> lineup = List.of(new BoardRoleRef(4, 1), new BoardRoleRef(6, 2), new BoardRoleRef(9, 2));
+        List<NightPlan.NightStep> first = NightPlan.build(BoardRuleDetail.empty(), lineup, ROLES, 1, rules);
+        assertEquals(20, first.get(0).durationSeconds(), "守卫用单人时长");
+        assertEquals(70, first.get(1).durationSeconds(), "首夜狼队多 30 秒互认队友");
+        assertEquals(40, NightPlan.build(BoardRuleDetail.empty(), lineup, ROLES, 2, rules).get(1).durationSeconds());
+    }
+
+    @Test
     void lineStartsWithTheRoleName() {
         List<NightPlan.NightStep> steps = NightPlan.build(BoardRuleDetail.empty(),
                 List.of(new BoardRoleRef(6, 2), new BoardRoleRef(3, 1)), ROLES, 1);
@@ -94,11 +136,12 @@ class NightPlanTests {
         assertThrows(ApiException.class, () -> NightPlan.validateOrder(steps));
     }
 
-    private static RoleEntity role(int id, String name, String faction) {
+    private static RoleEntity role(int id, String name, String faction, String mechanic) {
         RoleEntity role = new RoleEntity();
         role.setId(id);
         role.setName(name);
         role.setFaction(faction);
+        role.setMechanic(mechanic);
         return role;
     }
 }

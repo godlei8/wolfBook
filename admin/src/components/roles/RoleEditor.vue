@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import ImageField from '../ui/ImageField.vue'
 import RoleToken from '../ui/RoleToken.vue'
 import { api } from '../../services/api'
-import type { Board, Role, WorldEvent } from '../../types'
+import type { Board, Mechanic, Role, WorldEvent } from '../../types'
 import { CAMP_META, campOf } from '../../utils/board'
 import { resolveMediaUrl } from '../../utils/media'
 import { cropPortrait } from '../../utils/portrait'
@@ -66,6 +66,7 @@ const form = reactive({
   portrait: props.role?.portrait || '',
   fullIllustration: props.role?.fullIllustration || '',
   themeColor: props.role?.themeColor || '',
+  mechanic: props.role?.mechanic || '',
   faqs: (props.role?.faqs || []).map((faq) => ({ ...faq })),
 })
 
@@ -84,6 +85,18 @@ const check = computed(() => checkRole(form, rolesById.value, castIds.value))
 if (props.prefillRelationTo && props.prefillRelationTo !== form.id && !form.relations.some((relation) => relation.roleId === props.prefillRelationTo)) {
   form.relations.push({ roleId: props.prefillRelationTo, label: '' })
 }
+
+// 技能机制下拉：引擎认识的机制，后端给（GET /admin/roles/mechanics）
+const mechanics = ref<Mechanic[]>([])
+const currentMechanic = computed(() => mechanics.value.find((item) => item.code === form.mechanic) || null)
+
+onMounted(async () => {
+  try {
+    mechanics.value = await api.listMechanics()
+  } catch {
+    mechanics.value = []
+  }
+})
 
 onMounted(async () => {
   if (!props.prefillRelationTo) return
@@ -232,6 +245,7 @@ async function save() {
     portrait: form.portrait,
     fullIllustration: form.fullIllustration,
     themeColor: form.themeColor || null,
+    mechanic: form.mechanic || null,
   }
   saving.value = true
   try {
@@ -365,6 +379,18 @@ async function remove() {
       </div>
 
       <div class="nt-field">
+        <label class="nt-label" for="role-mechanic">技能机制 <small>· 电子法官按它结算，不看名字</small></label>
+        <select id="role-mechanic" v-model="form.mechanic" class="nt-input">
+          <option value="">不设置（只播报、不结算）</option>
+          <option v-for="item in mechanics" :key="item.code" :value="item.code">{{ item.label }} · {{ item.brief }}</option>
+        </select>
+        <p class="nt-muted mech-hint">
+          {{ currentMechanic ? `夜里：${currentMechanic.nightPriority ? `第 ${currentMechanic.nightPriority} 顺位醒来` : '不用睁眼'}${currentMechanic.wolfTeam ? '，和狼队一起刀人' : ''}。` : '带没有机制的角色的板子只能开有法官。' }}
+          阵营决定算谁赢，类型决定屠边时算神职还是平民，机制决定夜里做什么、出局有没有技能，三者各管各的。
+        </p>
+      </div>
+
+      <div class="nt-field">
         <label class="nt-label" for="role-skill">技能</label>
         <textarea id="role-skill" v-model="form.skill" class="nt-input" rows="4" placeholder="夜里能做什么、白天有什么能力"></textarea>
       </div>
@@ -424,6 +450,11 @@ async function remove() {
 </template>
 
 <style scoped>
+.mech-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+}
+
 .editor {
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);

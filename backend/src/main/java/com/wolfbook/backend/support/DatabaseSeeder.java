@@ -87,6 +87,7 @@ public class DatabaseSeeder {
         }
         if (roleMapper.selectCount(null) == 0) {
             seedRoles();
+            seedRoleMechanics();
         }
         if (boardMapper.selectCount(null) == 0) {
             seedBoards();
@@ -123,6 +124,19 @@ public class DatabaseSeeder {
         saveRole(15, "织梦人", null, "好人", "神职", "可在夜间连接玩家关系，改变信息与生死联动。", "极具策略性的高配神职。", faq("织梦人连线失败会怎样？", "通常不会公开失败结果，但会影响后续判断链。"), "https://picsum.photos/seed/dreamweaver/300/300", "https://picsum.photos/seed/dreamweaverfull/700/900");
         saveRole(16, "爱神", null, "第三方", "第三方", "可在开局指定情侣关系，部分局中情侣拥有独立胜利条件。", "常见的第三方机制角色，改变基础阵营博弈。", faq("情侣一定是第三方吗？", "取决于具体板规，有些板型中情侣会形成独立目标。"), "https://picsum.photos/seed/cupid/300/300", "https://picsum.photos/seed/cupidfull/700/900");
         saveRole(17, "老酒鬼", null, "好人", "平民", "拥有较强抗伤或延迟结算能力，常见于功能板。", "属于能扰动刀口节奏的特殊民职。", faq("老酒鬼是否算神职？", "通常不算，会归为好人阵营的平民类。"), "https://picsum.photos/seed/drunk/300/300", "https://picsum.photos/seed/drunkfull/700/900");
+    }
+
+    /** 种子角色里引擎认识的 7 个写上技能机制（骑士、狼美人这些还没有机制）。 */
+    private void seedRoleMechanics() {
+        Map<String, String> mechanics = Map.of("守卫", "guard", "狼人", "wolf", "女巫", "witch", "预言家", "seer",
+                "猎人", "hunter", "白痴", "idiot", "平民", "villager");
+        for (RoleEntity role : roleMapper.selectList(null)) {
+            String mechanic = mechanics.get(role.getName());
+            if (mechanic != null) {
+                role.setMechanic(mechanic);
+                roleMapper.updateById(role);
+            }
+        }
     }
 
     private void seedBoards() {

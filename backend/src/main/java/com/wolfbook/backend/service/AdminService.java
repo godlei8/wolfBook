@@ -9,6 +9,7 @@ import com.wolfbook.backend.domain.BoardRuleDetail;
 import com.wolfbook.backend.domain.FaqItem;
 import com.wolfbook.backend.domain.JudgeRules;
 import com.wolfbook.backend.service.judge.NightPlan;
+import com.wolfbook.backend.service.judge.Mechanic;
 import com.wolfbook.backend.domain.Report;
 import com.wolfbook.backend.domain.RoleRelation;
 import com.wolfbook.backend.dto.WolfbookDtos;
@@ -25,6 +26,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -242,6 +244,7 @@ public class AdminService {
         entity.setFullIllustration(request.fullIllustration());
         String themeColor = normalizeText(request.themeColor());
         entity.setThemeColor(themeColor == null ? null : themeColor.toUpperCase(Locale.ROOT));
+        entity.setMechanic(normalizeMechanic(request.mechanic()));
         entity.setCreateTime(id == null ? LocalDateTime.now() : entity.getCreateTime());
 
         if (id == null) {
@@ -251,6 +254,23 @@ public class AdminService {
         }
         assistantKnowledgeService.requestStructuredKnowledgeRebuild();
         return toAdminRoleView(entity);
+    }
+
+    public List<WolfbookDtos.MechanicView> listMechanics() {
+        return Arrays.stream(Mechanic.values())
+                .map(mechanic -> new WolfbookDtos.MechanicView(mechanic.code(), mechanic.label(), mechanic.brief(),
+                        mechanic.nightPriority(), mechanic.wolfTeam()))
+                .toList();
+    }
+
+    /** 空 = 不设置（引擎只播报不结算）；非空必须是引擎认识的机制。 */
+    private String normalizeMechanic(String mechanic) {
+        if (normalizeText(mechanic) == null) {
+            return null;
+        }
+        return Mechanic.fromCode(mechanic)
+                .map(Mechanic::code)
+                .orElseThrow(() -> new ApiException(4000, "未知的技能机制：" + mechanic.trim()));
     }
 
     public void deleteRole(Integer id) {
@@ -395,7 +415,8 @@ public class AdminService {
                         .toList(),
                 role.getPortrait(),
                 role.getFullIllustration(),
-                role.getThemeColor()
+                role.getThemeColor(),
+                role.getMechanic()
         );
     }
 
@@ -495,11 +516,16 @@ public class AdminService {
                 throw new ApiException(4000, "法官规则取值不合法");
             }
         }
+        if ((input.wolfSeconds() != null && (input.wolfSeconds() < 30 || input.wolfSeconds() > 120))
+                || (input.roleSeconds() != null && (input.roleSeconds() < 15 || input.roleSeconds() > 60))) {
+            throw new ApiException(4000, "法官规则取值不合法");
+        }
         JudgeRules normalized = new JudgeRules(null, input.sheriffDefault(), selfSave, input.witchOnePotionPerNight(),
-                input.speechSeconds(), input.sheriffSpeechSeconds());
+                input.speechSeconds(), input.sheriffSpeechSeconds(), input.wolfSeconds(), input.roleSeconds());
         boolean empty = normalized.sheriffDefault() == null && normalized.witchSelfSave() == null
                 && normalized.witchOnePotionPerNight() == null && normalized.speechSeconds() == null
-                && normalized.sheriffSpeechSeconds() == null;
+                && normalized.sheriffSpeechSeconds() == null && normalized.wolfSeconds() == null
+                && normalized.roleSeconds() == null;
         return empty ? null : normalized;
     }
 

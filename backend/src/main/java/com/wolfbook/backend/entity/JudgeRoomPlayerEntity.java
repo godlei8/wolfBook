@@ -29,6 +29,8 @@ public class JudgeRoomPlayerEntity {
     private Integer roleId;
     private String roleName;
     private String faction;
+    /** 发身份时从角色拷过来的技能机制；升级前开局的座位为空，按角色名兜底。 */
+    private String mechanic;
     private Integer deathDay;
     private String deathPhase;
     // 警长 / 上警 / 退水、能否投票（白痴翻牌后不能）、角色状态 JSON（女巫剩余药、守卫上一夜、猎人能否开枪…）
@@ -152,6 +154,14 @@ public class JudgeRoomPlayerEntity {
 
     public void setFaction(String faction) {
         this.faction = faction;
+    }
+
+    public String getMechanic() {
+        return mechanic;
+    }
+
+    public void setMechanic(String mechanic) {
+        this.mechanic = mechanic;
     }
 
     public Integer getDeathDay() {

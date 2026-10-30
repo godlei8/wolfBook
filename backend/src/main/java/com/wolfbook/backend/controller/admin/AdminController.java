@@ -102,6 +102,12 @@ public class AdminController {
         return ApiResponse.success(roleDraftService.draft(request));
     }
 
+    @GetMapping("/roles/mechanics")
+    public ApiResponse<List<WolfbookDtos.MechanicView>> mechanics(@RequestHeader("Authorization") String authorization) {
+        adminService.requireAdmin(authorization);
+        return ApiResponse.success(adminService.listMechanics());
+    }
+
     @GetMapping("/roles")
     public ApiResponse<List<WolfbookDtos.AdminRoleView>> roles(@RequestHeader("Authorization") String authorization) {
         adminService.requireAdmin(authorization);

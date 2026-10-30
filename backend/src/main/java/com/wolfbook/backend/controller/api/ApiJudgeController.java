@@ -8,6 +8,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -68,6 +69,15 @@ public class ApiJudgeController {
             @PathVariable String roomId
     ) {
         return ApiResponse.success(judgeService.toggleReady(authorization, roomId));
+    }
+
+    @PutMapping("/rooms/{roomId}/rules")
+    public ApiResponse<WolfbookDtos.JudgeRoomSnapshotView> updateRules(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable String roomId,
+            @RequestBody WolfbookDtos.JudgeRoomRulesInput request
+    ) {
+        return ApiResponse.success(judgeService.updateRoomRules(authorization, roomId, request));
     }
 
     @PostMapping("/rooms/{roomId}/start")

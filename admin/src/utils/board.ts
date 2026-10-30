@@ -95,8 +95,18 @@ export function featuredBoards(boards: Board[]) {
   return withBackground.concat(rest).slice(0, FEATURED_LIMIT)
 }
 
-// 夜间顺序的通用兜底，和小程序 utils/judge/night-order.js 一致
-const DEFAULT_NIGHT_ORDER = ['丘比特', '盗贼', '混血儿', '守卫', '摄梦人', '狼人', '石像鬼', '女巫', '预言家', '通灵师', '守墓人', '猎人', '乌鸦', '魔术师']
+// 电子法官按角色的技能机制编排夜晚，和后端 service/judge/Mechanic、NightPlan 同口径：
+// 没配夜间顺序时按机制优先级排（守卫 → 狼队 → 女巫 → 预言家 → 猎人），没有机制的角色排在最后、只播报
+export const MECHANIC_LABELS: Record<string, string> = {
+  villager: '平民',
+  wolf: '狼人',
+  guard: '守卫',
+  witch: '女巫',
+  seer: '预言家',
+  hunter: '猎人',
+  idiot: '白痴',
+}
+const MECHANIC_PRIORITY: Record<string, number> = { guard: 1, wolf: 2, witch: 3, seer: 4, hunter: 5 }
 const SOLO_WOLVES = ['石像鬼', '机械狼']
 const DEFAULT_ACTIONS: Record<string, string> = {
   狼人: '狼人请睁眼，今晚要刀谁？',
@@ -107,27 +117,68 @@ const DEFAULT_ACTIONS: Record<string, string> = {
   猎人: '猎人请睁眼，确认你今晚的开枪状态。',
 }
 
-/** 跟狼队一起睁眼刀人的角色（法官主持台会把它们合成一步）。 */
+/** 跟狼队一起睁眼刀人的角色（法官主持台会把它们合成一步）：有机制看机制，没有机制按阵营（排除石像鬼、机械狼）。 */
 export function isWolfTeam(role?: Role | null) {
-  return Boolean(role && role.faction === '狼人' && !SOLO_WOLVES.includes(role.name))
+  if (!role) return false
+  if (role.mechanic) return role.mechanic === 'wolf'
+  return role.faction === '狼人' && !SOLO_WOLVES.includes(role.name)
 }
 
-/** 按通用顺序从阵容里生成夜间步骤，狼队合成「狼人」一步。 */
+/** 机制对应的那一句台词（角色换了名字也用角色名开头）。 */
+function stepLine(role: Role) {
+  const byMechanic: Record<string, string> = {
+    wolf: DEFAULT_ACTIONS['狼人'],
+    witch: DEFAULT_ACTIONS['女巫'],
+    seer: DEFAULT_ACTIONS['预言家'],
+    guard: DEFAULT_ACTIONS['守卫'],
+    hunter: DEFAULT_ACTIONS['猎人'],
+  }
+  const line = role.mechanic ? byMechanic[role.mechanic] : undefined
+  if (!line) return `${role.name}请睁眼，请行动。`
+  const original = Object.keys(DEFAULT_ACTIONS).find((name) => DEFAULT_ACTIONS[name] === line) || ''
+  return original ? line.replace(original, role.name) : line
+}
+
+/** 按角色的技能机制从阵容里生成夜间步骤（狼队合成一步，没有机制的角色排最后、只播报），和后端 NightPlan 一致。 */
 export function defaultNightOrder(lineup: BoardRoleItem[], rolesById: Map<number, Role>): NightStep[] {
   const roles = lineup.map((item) => rolesById.get(item.roleId)).filter((role): role is Role => Boolean(role))
+  const priority = (role: Role) => (isWolfTeam(role) ? MECHANIC_PRIORITY.wolf : role.mechanic ? MECHANIC_PRIORITY[role.mechanic] : undefined)
+  const ranked = roles.filter((role) => priority(role) !== undefined).sort((a, b) => (priority(a) || 0) - (priority(b) || 0))
+  const unknown = roles.filter((role) => priority(role) === undefined && !role.mechanic)
   const steps: NightStep[] = []
-  DEFAULT_NIGHT_ORDER.forEach((name) => {
-    if (name === '狼人') {
+  let wolvesDone = false
+  for (const role of ranked) {
+    if (isWolfTeam(role)) {
+      if (wolvesDone) continue
+      wolvesDone = true
       const wolves = roles.filter(isWolfTeam)
-      if (!wolves.length) return
-      const lead = wolves.find((role) => role.name === '狼人') || wolves[0]
+      const lead = wolves.find((item) => item.mechanic === 'wolf') || wolves[0]
       steps.push({ roleId: lead.id, action: DEFAULT_ACTIONS['狼人'] })
-      return
+      continue
     }
-    const role = roles.find((item) => item.name === name)
-    if (role) steps.push({ roleId: role.id, action: DEFAULT_ACTIONS[name] || `${name}请睁眼，请行动。` })
-  })
+    steps.push({ roleId: role.id, action: stepLine(role) })
+  }
+  unknown.forEach((role) => steps.push({ roleId: role.id, action: `${role.name}请睁眼，请行动。` }))
   return steps
+}
+
+export type JudgeSupportLevel = 'full' | 'partial' | 'manual_only'
+
+export const JUDGE_SUPPORT_META: Record<JudgeSupportLevel, { label: string; tone: 'ok' | 'warn' | 'off' }> = {
+  full: { label: '两种模式都能开', tone: 'ok' },
+  partial: { label: '只能开有法官', tone: 'warn' },
+  manual_only: { label: '电子法官只能手动', tone: 'off' },
+}
+
+/** 板子的电子法官支持级别（和后端 RoleSkillRegistry.supportLevel 同口径），missing 是没有机制的角色名。 */
+export function judgeSupport(lineup: BoardRoleItem[], rolesById: Map<number, Role>) {
+  const roles = lineup.map((item) => rolesById.get(item.roleId)).filter((role): role is Role => Boolean(role))
+  const missing = roles.filter((role) => !role.mechanic).map((role) => role.name)
+  const third = roles.some((role) => role.faction === '第三方')
+  let level: JudgeSupportLevel = 'partial'
+  if (!roles.length || missing.length === roles.length) level = 'manual_only'
+  else if (!missing.length && !third) level = 'full'
+  return { level, missing, third }
 }
 
 export function formatTime(value?: string | null) {

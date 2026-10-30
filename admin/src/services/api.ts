@@ -17,6 +17,7 @@ import type {
   PageResponse,
   PostSummary,
   ReportItem,
+  Mechanic,
   Role,
   RoleDraft,
   RoleDraftRequest,
@@ -120,6 +121,9 @@ export const api = {
   },
   async getRoles() {
     return unwrap<Role[]>(http.get('/admin/roles'))
+  },
+  async listMechanics() {
+    return unwrap<Mechanic[]>(http.get('/admin/roles/mechanics'))
   },
   async draftRole(payload: RoleDraftRequest) {
     return unwrap<RoleDraft>(http.post('/admin/roles/draft', payload, { timeout: ROLE_DRAFT_TIMEOUT }))

@@ -4,9 +4,11 @@ import com.wolfbook.backend.common.ApiException;
 import com.wolfbook.backend.domain.Board;
 import com.wolfbook.backend.domain.BoardRoleRef;
 import com.wolfbook.backend.domain.BoardRuleDetail;
+import com.wolfbook.backend.domain.JudgeRules;
 import com.wolfbook.backend.entity.RoleEntity;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -14,18 +16,14 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * 夜里按什么顺序叫谁：板子配了 ruleDetail.nightOrder 就按它走，没配按通用顺序从阵容里挑。
- * 狼队合并成一步；没有夜间行动的角色（平民、白痴）和阵容里没有的角色都不叫；没登记的角色只播报不结算。
+ * 夜里按什么顺序叫谁：板子配了 ruleDetail.nightOrder 就按它走，没配按角色技能机制的优先级排（守卫 → 狼队 → 女巫 → 预言家 → 猎人），
+ * 没有机制的角色排在最后、只播报不结算。狼队合并成一步；没有夜间行动的角色（平民、白痴）和阵容里没有的角色都不叫。
  * 小程序 utils/judge/night-order.js 是同一套规则，板子详情页还在用它展示顺序。
  */
 public final class NightPlan {
 
-    /** 通用夜间顺序（板子没配 nightOrder 时）。 */
-    static final List<String> DEFAULT_ORDER = List.of("守卫", "狼人", "女巫", "预言家", "猎人");
-
-    private static final int WOLF_FIRST_NIGHT_SECONDS = 90;
-    private static final int WOLF_SECONDS = 60;
-    private static final int ROLE_SECONDS = 30;
+    /** 首夜狼队多给 30 秒互认队友（默认 60 + 30 = 90，和官方手册一致）。 */
+    private static final int WOLF_FIRST_NIGHT_EXTRA_SECONDS = 30;
     private static final int HUNTER_SECONDS = 10;
     private static final int GENERIC_SECONDS = 25;
 
@@ -39,16 +37,27 @@ public final class NightPlan {
     }
 
     public static List<NightStep> build(Board board, Map<Integer, RoleEntity> rolesById, int dayNo) {
-        return build(board.ruleDetail(), board.roles(), rolesById, dayNo);
+        return build(board.ruleDetail(), board.roles(), rolesById, dayNo, JudgeRules.defaults());
+    }
+
+    /** 按本局规则的行动时长算每一步（房间规则里配的狼队 / 单人时长）。 */
+    public static List<NightStep> build(Board board, Map<Integer, RoleEntity> rolesById, int dayNo, JudgeRules rules) {
+        return build(board.ruleDetail(), board.roles(), rolesById, dayNo, rules);
     }
 
     public static List<NightStep> build(BoardRuleDetail detail, List<BoardRoleRef> lineup, Map<Integer, RoleEntity> rolesById, int dayNo) {
+        return build(detail, lineup, rolesById, dayNo, JudgeRules.defaults());
+    }
+
+    public static List<NightStep> build(BoardRuleDetail detail, List<BoardRoleRef> lineup, Map<Integer, RoleEntity> rolesById, int dayNo,
+                                        JudgeRules rules) {
+        JudgeRules timing = (rules == null ? JudgeRules.defaults() : rules).withDefaults();
         List<RoleEntity> lineupRoles = (lineup == null ? List.<BoardRoleRef>of() : lineup).stream()
                 .map(ref -> rolesById.get(ref.roleId()))
                 .filter(Objects::nonNull)
                 .toList();
         List<Integer> wolfTeamIds = lineupRoles.stream()
-                .filter(role -> RoleSkillRegistry.isWolfTeam(role.getName(), role.getFaction()))
+                .filter(role -> RoleSkillRegistry.isWolfTeam(Mechanic.fromCode(role.getMechanic()).orElse(null), role.getName(), role.getFaction()))
                 .map(RoleEntity::getId)
                 .distinct()
                 .toList();
@@ -64,15 +73,15 @@ public final class NightPlan {
                 }
             }
         } else {
-            for (String name : DEFAULT_ORDER) {
-                lineupRoles.stream().filter(role -> name.equals(role.getName())).findFirst().ifPresent(ordered::add);
-            }
-            // 阵容里没有叫「狼人」的角色但有别的狼队角色（全是狼王之类），也要叫狼队
-            if (!wolfTeamIds.isEmpty() && ordered.stream().noneMatch(role -> wolfTeamIds.contains(role.getId()))) {
-                RoleEntity lead = rolesById.get(wolfTeamIds.get(0));
-                int at = ordered.stream().anyMatch(role -> "守卫".equals(role.getName())) ? 1 : 0;
-                ordered.add(at, lead);
-            }
+            // 有机制的按优先级（同优先级保持阵容顺序），狼队按狼人的优先级排；没有机制、也不是狼队的排在最后
+            List<RoleEntity> distinct = lineupRoles.stream().distinct().toList();
+            distinct.stream()
+                    .filter(role -> priority(role, wolfTeamIds) != null)
+                    .sorted(Comparator.comparing(role -> priority(role, wolfTeamIds)))
+                    .forEach(ordered::add);
+            distinct.stream()
+                    .filter(role -> priority(role, wolfTeamIds) == null && Mechanic.fromCode(role.getMechanic()).isEmpty())
+                    .forEach(ordered::add);
         }
 
         List<NightStep> steps = new ArrayList<>();
@@ -83,18 +92,26 @@ public final class NightPlan {
                     continue;
                 }
                 wolvesDone = true;
-                steps.add(step(steps.size(), NightKind.WOLF, wolfTeamIds, "狼人", true, dayNo));
+                steps.add(step(steps.size(), NightKind.WOLF, wolfTeamIds, "狼人", true, dayNo, timing));
                 continue;
             }
-            NightKind kind = RoleSkillRegistry.forRole(role.getName(), role.getFaction())
-                    .map(RoleSkillRegistry.RoleSkill::nightKind)
+            NightKind kind = Mechanic.fromCode(role.getMechanic())
+                    .map(Mechanic::nightKind)
                     .orElse(NightKind.GENERIC);
             if (kind == NightKind.NONE) {
                 continue;
             }
-            steps.add(step(steps.size(), kind, List.of(role.getId()), role.getName(), false, dayNo));
+            steps.add(step(steps.size(), kind, List.of(role.getId()), role.getName(), false, dayNo, timing));
         }
         return List.copyOf(steps);
+    }
+
+    /** 没配夜间顺序时的排序：狼队取狼人的优先级，其余取机制的；没有夜间行动或没有机制为 null。 */
+    private static Integer priority(RoleEntity role, List<Integer> wolfTeamIds) {
+        if (wolfTeamIds.contains(role.getId())) {
+            return Mechanic.WOLF.nightPriority();
+        }
+        return Mechanic.fromCode(role.getMechanic()).map(Mechanic::nightPriority).orElse(null);
     }
 
     /** 女巫要看到刀口，必须在狼队之后；守卫要在刀之前守，必须在狼队之前。 */
@@ -119,8 +136,10 @@ public final class NightPlan {
         return -1;
     }
 
-    private static NightStep step(int index, NightKind kind, List<Integer> roleIds, String roleName, boolean team, int dayNo) {
-        return new NightStep(index, kind, List.copyOf(roleIds), roleName, team, roleName + "请睁眼，" + hint(kind), duration(kind, dayNo));
+    private static NightStep step(int index, NightKind kind, List<Integer> roleIds, String roleName, boolean team, int dayNo,
+                                  JudgeRules timing) {
+        return new NightStep(index, kind, List.copyOf(roleIds), roleName, team, roleName + "请睁眼，" + hint(kind),
+                duration(kind, dayNo, timing));
     }
 
     private static String hint(NightKind kind) {
@@ -134,10 +153,10 @@ public final class NightPlan {
         };
     }
 
-    private static int duration(NightKind kind, int dayNo) {
+    private static int duration(NightKind kind, int dayNo, JudgeRules timing) {
         return switch (kind) {
-            case WOLF -> dayNo <= 1 ? WOLF_FIRST_NIGHT_SECONDS : WOLF_SECONDS;
-            case GUARD, WITCH, SEER -> ROLE_SECONDS;
+            case WOLF -> timing.wolfSeconds() + (dayNo <= 1 ? WOLF_FIRST_NIGHT_EXTRA_SECONDS : 0);
+            case GUARD, WITCH, SEER -> timing.roleSeconds();
             case HUNTER -> HUNTER_SECONDS;
             default -> GENERIC_SECONDS;
         };

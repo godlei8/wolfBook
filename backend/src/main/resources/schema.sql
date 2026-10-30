@@ -34,6 +34,7 @@ CREATE TABLE `roles` (
   `portrait` VARCHAR(500),
   `full_illustration` VARCHAR(500),
   `theme_color` VARCHAR(16),
+  `mechanic` VARCHAR(40),
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -271,6 +272,7 @@ CREATE TABLE `judge_room_players` (
   `role_id` INT,
   `role_name` VARCHAR(50),
   `faction` VARCHAR(30),
+  `mechanic` VARCHAR(40),
   `death_day` TINYINT,
   `death_phase` VARCHAR(30),
   `is_sheriff` TINYINT DEFAULT 0,

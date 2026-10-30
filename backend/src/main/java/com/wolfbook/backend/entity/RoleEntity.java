@@ -36,6 +36,9 @@ public class RoleEntity {
     private String fullIllustration;
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String themeColor;
+    /** 电子法官的技能机制（service/judge/Mechanic 的 code），为空表示引擎不认识、只播报不结算。 */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String mechanic;
     private LocalDateTime createTime;
 
     public Integer getId() {
@@ -148,6 +151,14 @@ public class RoleEntity {
 
     public void setThemeColor(String themeColor) {
         this.themeColor = themeColor;
+    }
+
+    public String getMechanic() {
+        return mechanic;
+    }
+
+    public void setMechanic(String mechanic) {
+        this.mechanic = mechanic;
     }
 
     public LocalDateTime getCreateTime() {

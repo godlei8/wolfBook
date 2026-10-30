@@ -6,7 +6,7 @@ import RoleToken from '../ui/RoleToken.vue'
 import CampBar from '../ui/CampBar.vue'
 import { api } from '../../services/api'
 import type { Board, Role } from '../../types'
-import { campSegments, featuredBoards, lineupSize, pickLineupArt, roleImage, sortLineup } from '../../utils/board'
+import { campSegments, featuredBoards, lineupSize, pickLineupArt, roleImage, sortLineup, JUDGE_SUPPORT_META, judgeSupport } from '../../utils/board'
 import { resolveMediaUrl } from '../../utils/media'
 import { clampPage, paginate } from '../../utils/pagination'
 import { go } from '../../utils/route'
@@ -67,6 +67,7 @@ const cards = computed(() =>
       background: resolveMediaUrl(board.backgroundImage),
       fan: board.backgroundImage ? [] : fanCards(board),
       segments: campSegments(board.roles, rolesById.value),
+      support: judgeSupport(board.roles, rolesById.value),
       lineup: lineup.map((item) => ({ role: rolesById.value.get(item.roleId), count: item.count, key: item.roleId })),
       size: lineupSize(board.roles),
       featuredAt: featuredIds.value.indexOf(board.id) + 1,
@@ -232,6 +233,9 @@ onMounted(load)
         </div>
         <CampBar :segments="card.segments" />
         <p v-if="card.size !== card.board.playerCount" class="card__warn">阵容 {{ card.size }} 人，和玩家人数 {{ card.board.playerCount }} 不一致</p>
+        <p class="card__judge" :class="`card__judge--${JUDGE_SUPPORT_META[card.support.level].tone}`">
+          电子法官：{{ JUDGE_SUPPORT_META[card.support.level].label }}<template v-if="card.support.missing.length">（{{ card.support.missing.join('、') }} 没有机制）</template>
+        </p>
         <div class="card__lineup">
           <RoleToken v-for="item in card.lineup" :key="item.key" :role="item.role" :count="item.count" ring />
         </div>
@@ -502,6 +506,23 @@ onMounted(load)
 .card__meta i {
   font-style: normal;
   color: var(--line);
+}
+
+.card__judge {
+  margin: 0;
+  font-size: 12px;
+}
+
+.card__judge--ok {
+  color: var(--moon);
+}
+
+.card__judge--warn {
+  color: var(--gold);
+}
+
+.card__judge--off {
+  color: var(--text-3);
 }
 
 .card__warn {

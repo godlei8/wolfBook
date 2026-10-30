@@ -22,6 +22,15 @@ class JudgeRulesTests {
     }
 
     @Test
+    void defaultsIncludeActionSeconds() {
+        JudgeRules rules = JudgeRules.defaults();
+        assertEquals(60, rules.wolfSeconds());
+        assertEquals(30, rules.roleSeconds());
+        // 旧的 6 参构造器照旧能用，新字段补默认值
+        assertEquals(60, new JudgeRules(null, true, null, true, null, null).withDefaults().wolfSeconds());
+    }
+
+    @Test
     void cityIsReadFromTheBoardsWinConditionText() {
         assertEquals("city", JudgeRules.fromBoard(board("屠城", BoardRuleDetail.empty())).winCondition());
         assertEquals("side", JudgeRules.fromBoard(board("屠边", BoardRuleDetail.empty())).winCondition());

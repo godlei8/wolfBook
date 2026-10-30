@@ -124,7 +124,9 @@ public final class WolfbookDtos {
             @Valid List<RoleRelationInput> relations,
             String portrait,
             String fullIllustration,
-            @Pattern(regexp = "^#[0-9A-Fa-f]{6}$", message = "主题色格式应为 #RRGGBB") String themeColor
+            @Pattern(regexp = "^#[0-9A-Fa-f]{6}$", message = "主题色格式应为 #RRGGBB") String themeColor,
+            /** 电子法官技能机制（service/judge/Mechanic 的 code），空 = 不设置。 */
+            String mechanic
     ) {
     }
 
@@ -348,8 +350,13 @@ public final class WolfbookDtos {
             List<RoleRelationInput> relations,
             String portrait,
             String fullIllustration,
-            String themeColor
+            String themeColor,
+            String mechanic
     ) {
+    }
+
+    /** 后台角色编辑页的「技能机制」下拉：引擎认识的机制，按声明顺序。 */
+    public record MechanicView(String code, String label, String brief, Integer nightPriority, boolean wolfTeam) {
     }
 
     /** 角色详情里「出现在这些板子」：wakeOrder 是该角色在这个板子夜间顺序里第几个醒来（没写夜间顺序时为 null），lineup 是板子里另外几个角色。 */
@@ -457,7 +464,19 @@ public final class WolfbookDtos {
             @NotNull(message = "boardId is required") Integer boardId,
             @NotBlank(message = "judgeMode is required") String judgeMode,
             Boolean autoJudge,
-            Boolean sheriffEnabled
+            Boolean sheriffEnabled,
+            /** 房间规则（节奏项），缺省取板子规则；胜负、女巫这些玩法规则跟板子走，不在这里。 */
+            JudgeRoomRulesInput rules
+    ) {
+    }
+
+    /** 房间规则：只有节奏。为空的项保持原值（建房时 = 板子规则）。范围：发言 30–300、狼队 30–120、单人 15–60 秒。 */
+    public record JudgeRoomRulesInput(
+            Boolean sheriffEnabled,
+            Integer speechSeconds,
+            Integer sheriffSpeechSeconds,
+            Integer wolfSeconds,
+            Integer roleSeconds
     ) {
     }
 
@@ -613,8 +632,25 @@ public final class WolfbookDtos {
             JudgeSpeechView speech,
             List<Integer> pkSeats,
             List<JudgeRoundView> rounds,
-            JudgePendingView pending
+            JudgePendingView pending,
+            /** 法官暂停中：所有人显示同一张「法官暂停」画面，倒计时停表。 */
+            boolean paused,
+            /** 当前阶段的截止时间（夜间步骤、出局技能询问、投票、发言），给客户端倒计时；没有为 null。 */
+            LocalDateTime phaseDeadline,
+            /** 只发给查看者本人的夜间私密信息（狼队、女巫、预言家）；法官和没有可给的人为 null。 */
+            JudgeNightInfoView nightInfo
     ) {
+    }
+
+    /**
+     * 夜间私密信息：teammateSeats 狼队队友（整局可见）；wolfPicks 狼队那一步每只活狼当前选的目标；
+     * knifeSeat 女巫那一步的刀口（空刀为 null）；checkedSeat / checkResult 预言家今晚查验的人和结果（提交后立刻可见）。
+     */
+    public record JudgeNightInfoView(List<Integer> teammateSeats, List<JudgeWolfPickView> wolfPicks, Integer knifeSeat,
+                                     Integer checkedSeat, String checkResult) {
+    }
+
+    public record JudgeWolfPickView(int seatNo, Integer targetSeatNo) {
     }
 
     /** 出局待办（只发给当事人和法官）：skill_ask 技能询问 / hunter_shot 开枪选人 / badge 移交警徽；options 是 use / skip。 */

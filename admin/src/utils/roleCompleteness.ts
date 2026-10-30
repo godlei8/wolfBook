@@ -16,6 +16,7 @@ export interface RoleDraftShape {
   portrait: string | null
   fullIllustration: string | null
   relations: RoleRelation[]
+  mechanic?: string | null
 }
 
 export interface CheckItem {
@@ -71,6 +72,12 @@ export function checkRole(role: RoleDraftShape, rolesById: Map<number, Role>, ca
   })
   const suggestions: CheckItem[] = [
     { key: 'cross', label: '有一条跨阵营的关系', ok: crossFaction, hint: '和另一个阵营的人有点恩怨，故事才有张力' },
+    {
+      key: 'mechanic',
+      label: '设了技能机制',
+      ok: Boolean(role.mechanic),
+      hint: '不设置的话电子法官只播报不结算，带它的板子只能开有法官',
+    },
     {
       key: 'chronicle',
       label: '在编年史里出场',
