@@ -7,6 +7,7 @@ import { onHide, onLoad, onShareAppMessage, onShow, onUnload } from '@dcloudio/u
 import NavBar from '../../components/NavBar.vue'
 import LobbyView from './views/LobbyView.vue'
 import NightView from './views/NightView.vue'
+import PendingView from './views/PendingView.vue'
 import api from '../../services/api'
 import storage from '../../services/storage'
 import { mergePollResult, pollInterval } from '../../utils/judge/room-poll.js'
@@ -180,6 +181,7 @@ function onAct(event) {
     rules: () => api.updateJudgeRoomRules(id, event.rules),
     night: () => api.submitJudgeNightAction(id, { actionType: event.actionType, targetSeatNo: event.targetSeatNo }),
     advance: () => api.advanceJudgeRoom(id, event.payload),
+    skill: () => api.submitJudgeSkill(id, { decision: event.decision, targetSeatNo: event.targetSeatNo }),
   }
   const task = tasks[event?.kind]
   if (task) runAction(task)
@@ -259,6 +261,7 @@ onUnload(() => {
     <view v-if="!snapshot" class="jr-loading">正在进入房间…</view>
     <LobbyView v-else-if="view === 'lobby'" :snapshot="snapshot" :board="board" :busy="actionLoading" @act="onAct" />
     <NightView v-else-if="view === 'night'" :snapshot="snapshot" :board="board" :now="now" :busy="actionLoading" @act="onAct" />
+    <PendingView v-else-if="view === 'pending'" :snapshot="snapshot" :now="now" :busy="actionLoading" @act="onAct" />
     <view v-else class="nt-gutter">
       <view class="nt-panel jr-placeholder">
         <text class="jr-placeholder__title">{{ snapshot.boardName }}</text>
