@@ -43,6 +43,11 @@ public class ContentSchemaInitializer implements ApplicationRunner {
         // 世界观：角色称号、人物关系，以及整份编年史
         addColumnIfMissing("roles", "title", "ALTER TABLE roles ADD COLUMN title VARCHAR(40) NULL");
         addColumnIfMissing("roles", "relations", "ALTER TABLE roles ADD COLUMN relations JSON NULL");
+        // 电子法官二期：角色的技能机制，引擎按它结算（补列时顺带按名字回填）
+        if (addColumnIfMissing("roles", "mechanic", "ALTER TABLE roles ADD COLUMN mechanic VARCHAR(40) NULL")) {
+            backfillRoleMechanics();
+        }
+        addColumnIfMissing("judge_room_players", "mechanic", "ALTER TABLE judge_room_players ADD COLUMN mechanic VARCHAR(40) NULL");
         // AI 助手可切换的对话模型
         createTableIfMissing("assistant_models", "CREATE TABLE assistant_models (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(60) NOT NULL, "
                 + "base_url VARCHAR(300) NOT NULL, model VARCHAR(120) NOT NULL, api_key VARCHAR(500), enabled TINYINT DEFAULT 1, active TINYINT DEFAULT 0, "
@@ -69,19 +74,31 @@ public class ContentSchemaInitializer implements ApplicationRunner {
         addColumnIfMissing("judge_room_players", "status_json", "ALTER TABLE judge_room_players ADD COLUMN status_json JSON NULL");
     }
 
-    private void addColumnIfMissing(String table, String column, String ddl) {
+    /** 补列；真的补了返回 true（调用方可以接着回填）。 */
+    private boolean addColumnIfMissing(String table, String column, String ddl) {
         Set<String> columns;
         try {
             columns = existingColumns(table);
         } catch (RuntimeException missingTable) {
             // 表还没建（全新库），建表语句自己会带上这一列
-            return;
+            return false;
         }
         if (columns.contains(column)) {
-            return;
+            return false;
         }
         log.info("Adding missing column {}.{}", table, column);
         jdbcTemplate.execute(ddl);
+        return true;
+    }
+
+    /** 给已有角色按名字回填技能机制（和 deploy/sql/2026-10-30-role-mechanic.sql 同一份映射）。 */
+    private void backfillRoleMechanics() {
+        String[][] names = {{"守卫", "guard"}, {"狼人", "wolf"}, {"女巫", "witch"}, {"预言家", "seer"},
+                {"猎人", "hunter"}, {"白痴", "idiot"}, {"平民", "villager"}};
+        for (String[] pair : names) {
+            jdbcTemplate.update("UPDATE roles SET mechanic = ? WHERE name = ? AND mechanic IS NULL", pair[1], pair[0]);
+        }
+        log.info("Backfilled roles.mechanic by role name");
     }
 
     private void createTableIfMissing(String table, String ddl) {

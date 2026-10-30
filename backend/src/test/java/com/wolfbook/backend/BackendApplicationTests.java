@@ -1017,6 +1017,69 @@ class BackendApplicationTests {
         }
     }
 
+    @Test
+    void adminCanSetAndClearARoleMechanic() throws Exception {
+        String adminToken = loginAndGetAdminToken();
+        String created = mockMvc.perform(post("/admin/roles")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "看门人", "faction": "好人", "roleType": "神职", "skill": "测试", "mechanic": "guard"}
+                                """))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.mechanic").value("guard"))
+                .andReturn().getResponse().getContentAsString();
+        int roleId = objectMapper.readTree(created).path("data").path("id").asInt();
+        try {
+            mockMvc.perform(put("/admin/roles/{id}", roleId)
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"name": "看门人", "faction": "好人", "roleType": "神职", "skill": "测试", "mechanic": null}
+                                    """))
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.mechanic").doesNotExist());
+            Assertions.assertNull(jdbcTemplate.queryForObject("SELECT mechanic FROM roles WHERE id = ?", String.class, roleId));
+        } finally {
+            mockMvc.perform(delete("/admin/roles/{id}", roleId).header("Authorization", "Bearer " + adminToken))
+                    .andExpect(jsonPath("$.code").value(0));
+        }
+    }
+
+    @Test
+    void adminRejectsAnUnknownMechanic() throws Exception {
+        String adminToken = loginAndGetAdminToken();
+        mockMvc.perform(post("/admin/roles")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "猎魔人", "faction": "好人", "roleType": "神职", "skill": "测试", "mechanic": "demon_hunter"}
+                                """))
+                .andExpect(jsonPath("$.code").value(4000))
+                .andExpect(jsonPath("$.msg").value(containsString("技能机制")));
+    }
+
+    @Test
+    void mechanicsEndpointListsTheSevenMechanics() throws Exception {
+        String adminToken = loginAndGetAdminToken();
+        mockMvc.perform(get("/admin/roles/mechanics").header("Authorization", "Bearer " + adminToken))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.length()").value(7))
+                .andExpect(jsonPath("$.data[0].code").value("villager"))
+                .andExpect(jsonPath("$.data[?(@.code == 'guard')].nightPriority").value(1))
+                .andExpect(jsonPath("$.data[?(@.code == 'wolf')].wolfTeam").value(true));
+    }
+
+    @Test
+    void seededRolesCarryTheirMechanic() throws Exception {
+        String adminToken = loginAndGetAdminToken();
+        mockMvc.perform(get("/admin/roles").header("Authorization", "Bearer " + adminToken))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data[?(@.name == '守卫')].mechanic").value("guard"))
+                .andExpect(jsonPath("$.data[?(@.name == '白痴')].mechanic").value("idiot"))
+                .andExpect(jsonPath("$.data[?(@.name == '骑士')].mechanic").value(org.hamcrest.Matchers.contains((Object) null)));
+    }
+
     private String loginAndGetToken() throws Exception {
         String loginBody = """
                 {"code":"mock-code"}
