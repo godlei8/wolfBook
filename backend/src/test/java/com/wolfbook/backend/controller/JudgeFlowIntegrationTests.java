@@ -806,6 +806,89 @@ class JudgeFlowIntegrationTests {
                 .isAfter(java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Shanghai"))), "夜间步骤照常倒计时");
     }
 
+    // ---- 投票、上警报名的超时与自动结算 ----
+
+    @Test
+    void voteClosesItselfWhenEveryoneVoted() throws Exception {
+        Game game = autoGame(false);
+        game.finishNight();
+        game.advance(game.host, "{\"action\":\"start_speech\"}");
+        game.advance(game.host, "{\"action\":\"start_vote\"}");
+        Assertions.assertTrue(secondsToDeadline(game) <= 30 && secondsToDeadline(game) >= 28, "投票 30 秒");
+        for (int seat = 1; seat <= PLAYER_COUNT; seat++) {
+            game.vote(seat, seat == 2 ? 3 : 2);
+        }
+        JsonNode result = game.snapshot(game.host);
+        Assertions.assertEquals("skill_pending", result.path("currentPhase").asText(), "全员投完自动结算，2 号出局先问技能");
+        Assertions.assertFalse(game.player(result, 2).path("alive").asBoolean());
+    }
+
+    @Test
+    void missingVotesCountAsAbstainOnTimeout() throws Exception {
+        Game game = autoGame(false);
+        game.finishNight();
+        game.advance(game.host, "{\"action\":\"start_speech\"}");
+        game.advance(game.host, "{\"action\":\"start_vote\"}");
+        game.vote(1, 2);
+        game.vote(3, 2);
+        JsonNode result = game.expireDeadline();
+        Assertions.assertNotEquals("exile_vote", result.path("currentPhase").asText(), result.toString());
+        JsonNode exile = result.path("rounds").get(0).path("exile").get(0);
+        Assertions.assertEquals(7, exile.path("abstainSeatNos").size(), exile.toString());
+        Assertions.assertEquals(2, exile.path("eliminatedSeatNo").asInt());
+    }
+
+    @Test
+    void sheriffSignupClosesAfterTwentySeconds() throws Exception {
+        Game game = autoGame(true);
+        Assertions.assertEquals("sheriff_signup", game.finishNight().path("currentPhase").asText());
+        long seconds = secondsToDeadline(game);
+        Assertions.assertTrue(seconds >= 18 && seconds <= 20, "上警报名 20 秒，实际 " + seconds);
+        game.sheriff(4, "{\"candidate\":true}");
+        JsonNode elected = game.expireDeadline();
+        Assertions.assertEquals("day_announce", elected.path("currentPhase").asText(), elected.toString());
+        Assertions.assertEquals(4, elected.path("sheriffSeatNo").asInt(), "只有一人上警直接当选");
+    }
+
+    @Test
+    void sheriffVoteClosesOnTime() throws Exception {
+        Game game = autoGame(true);
+        game.finishNight();
+        game.sheriff(1, "{\"candidate\":true}");
+        game.sheriff(2, "{\"candidate\":true}");
+        game.advance(game.host, "{\"action\":\"close_sheriff_signup\"}");
+        game.advance(game.host, "{\"action\":\"start_sheriff_vote\"}");
+        game.sheriff(3, "{\"targetSeatNo\":1}");
+        JsonNode elected = game.expireDeadline();
+        Assertions.assertEquals(1, elected.path("sheriffSeatNo").asInt(), elected.toString());
+    }
+
+    @Test
+    void autoAndManualVoteResolveOnlyOnce() throws Exception {
+        Game game = autoGame(false);
+        game.finishNight();
+        game.advance(game.host, "{\"action\":\"start_speech\"}");
+        game.advance(game.host, "{\"action\":\"start_vote\"}");
+        for (int seat = 1; seat <= PLAYER_COUNT; seat++) {
+            game.vote(seat, seat == 2 ? 3 : 2);
+        }
+        game.snapshot(game.host);
+        Assertions.assertEquals(4002, game.advance(game.host, "{\"action\":\"resolve_vote\"}").path("code").asInt());
+        Assertions.assertEquals(1, game.snapshot(game.host).path("rounds").get(0).path("exile").size(), "只结算了一轮");
+    }
+
+    @Test
+    void speechClockIsShownButNotForced() throws Exception {
+        Game game = autoGame(false);
+        game.finishNight();
+        game.advance(game.host, "{\"action\":\"start_speech\"}");
+        long seconds = secondsToDeadline(game);
+        Assertions.assertTrue(seconds >= 118 && seconds <= 120, "每人发言 120 秒，实际 " + seconds);
+        JsonNode after = game.expireDeadline();
+        Assertions.assertEquals("day_speech", after.path("currentPhase").asText());
+        Assertions.assertEquals(0, after.path("speech").path("index").asInt(), "到点不强制切下一位");
+    }
+
     // ---- 惰性推进（autoJudge）----
 
     @Test
