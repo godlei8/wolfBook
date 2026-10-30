@@ -901,6 +901,34 @@ class JudgeFlowIntegrationTests {
     }
 
     @Test
+    void playersSeeTheirOwnSignupAndVoteOnly() throws Exception {
+        Game game = autoGame(true);
+        Assertions.assertEquals("sheriff_signup", game.finishNight().path("currentPhase").asText());
+        game.sheriff(4, "{\"candidate\":true}");
+        Assertions.assertTrue(game.snapshot(game.players.get(3)).path("dayInfo").path("sheriffCandidate").asBoolean(false));
+        Assertions.assertFalse(game.snapshot(game.players.get(4)).path("dayInfo").path("sheriffCandidate").asBoolean(true),
+                "别人只知道自己没上警，看不到 4 号");
+
+        Game vote = autoGame(false);
+        vote.finishNight();
+        vote.advance(vote.host, "{\"action\":\"start_speech\"}");
+        vote.advance(vote.host, "{\"action\":\"start_vote\"}");
+        JsonNode before = vote.snapshot(vote.players.get(0)).path("dayInfo");
+        Assertions.assertTrue(before.path("canVote").asBoolean(), before.toString());
+        Assertions.assertFalse(before.path("voted").asBoolean(true), before.toString());
+        Assertions.assertEquals(0, before.path("votedCount").asInt());
+        Assertions.assertEquals(PLAYER_COUNT, before.path("voterCount").asInt());
+        vote.vote(1, 2);
+        JsonNode mine = vote.snapshot(vote.players.get(0)).path("dayInfo");
+        Assertions.assertTrue(mine.path("voted").asBoolean(), mine.toString());
+        Assertions.assertEquals(2, mine.path("myVote").asInt());
+        JsonNode other = vote.snapshot(vote.players.get(2)).path("dayInfo");
+        Assertions.assertEquals(1, other.path("votedCount").asInt(), other.toString());
+        Assertions.assertFalse(other.path("voted").asBoolean(true));
+        Assertions.assertTrue(other.path("myVote").isNull() || other.path("myVote").isMissingNode(), "看不到别人投给谁");
+    }
+
+    @Test
     void sheriffSignupClosesAfterTwentySeconds() throws Exception {
         Game game = autoGame(true);
         Assertions.assertEquals("sheriff_signup", game.finishNight().path("currentPhase").asText());

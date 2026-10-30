@@ -660,8 +660,38 @@ public class JudgeService {
                 isPaused(room),
                 room.getStepDeadline(),
                 buildNightInfo(room, players, self, judgeViewer),
-                Boolean.TRUE.equals(room.getAutoJudgeEnabled())
+                Boolean.TRUE.equals(room.getAutoJudgeEnabled()),
+                buildDayInfo(room, players, self, events)
         );
+    }
+
+    /** 查看者本人白天的上警报名和投票状态（只在新流程房间）。 */
+    private WolfbookDtos.JudgeDayInfoView buildDayInfo(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players,
+                                                      JudgeRoomPlayerEntity self, List<JudgeActionEventEntity> events) {
+        if (self == null || !Boolean.TRUE.equals(room.getAutoJudgeEnabled()) || !ROOM_STATUS_PLAYING.equals(room.getRoomStatus())) {
+            return null;
+        }
+        String phase = safeText(room.getCurrentPhase(), "");
+        Integer selfSeat = Boolean.TRUE.equals(self.getPlaying()) ? self.getSeatNo() : null;
+        if (PHASE_SHERIFF_SIGNUP.equals(phase)) {
+            return new WolfbookDtos.JudgeDayInfoView(selfSeat != null && Boolean.TRUE.equals(self.getSheriffCandidate()), false, false, null, 0, 0);
+        }
+        if (!Set.of(PHASE_EXILE_VOTE, PHASE_VOTE_PK, PHASE_SHERIFF_VOTE, PHASE_SHERIFF_PK).contains(phase)) {
+            return null;
+        }
+        Set<Integer> eligible = eligibleVoters(room, players, phase);
+        Set<Integer> voted = votedSeats(room, players, phase);
+        String type = PHASE_SHERIFF_VOTE.equals(phase) || PHASE_SHERIFF_PK.equals(phase) ? EVENT_SHERIFF_VOTE_SUBMIT : EVENT_VOTE_SUBMIT;
+        Integer myVote = events.stream()
+                .filter(event -> type.equals(event.getActionType()) && phase.equals(event.getPhase())
+                        && Objects.equals(safeInt(event.getDayNo(), 1), safeInt(room.getCurrentDay(), 1))
+                        && Objects.equals(event.getActorPlayerId(), self.getPlayerId()))
+                .reduce((left, right) -> right)
+                .map(event -> asPositiveInteger(readMap(event.getPayloadJson()).get("targetSeatNo")))
+                .orElse(null);
+        int votedCount = (int) voted.stream().filter(eligible::contains).count();
+        return new WolfbookDtos.JudgeDayInfoView(null, selfSeat != null && eligible.contains(selfSeat),
+                selfSeat != null && voted.contains(selfSeat), myVote, votedCount, eligible.size());
     }
 
     /** 查看者本人的夜间私密信息（只在新流程房间）。法官有 nightActions 全量，不给。 */

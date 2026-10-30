@@ -642,8 +642,19 @@ public final class WolfbookDtos {
             /** 只发给查看者本人的夜间私密信息（狼队、女巫、预言家）；法官和没有可给的人为 null。 */
             JudgeNightInfoView nightInfo,
             /** 新流程房间（建房时 autoJudge = true）；false 是线上旧版小程序建的房间，客户端走旧主持台。 */
-            boolean autoJudge
+            boolean autoJudge,
+            /** 白天只给查看者本人的信息（上警报名、投票）；不在这些阶段为 null。 */
+            JudgeDayInfoView dayInfo
     ) {
+    }
+
+    /**
+     * sheriffCandidate：上警报名阶段本人报没报（别人的不给）；
+     * 投票阶段（放逐、PK、警长投票）：canVote 本人能不能投，voted / myVote 本人投了没有、投给谁（null 是弃票），
+     * votedCount / voterCount 已投人数和能投人数（公开进度，不含投给谁）。
+     */
+    public record JudgeDayInfoView(Boolean sheriffCandidate, boolean canVote, boolean voted, Integer myVote,
+                                   int votedCount, int voterCount) {
     }
 
     /**
