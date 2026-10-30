@@ -57,7 +57,8 @@ export function boardRuleLine(board) {
   const hasWitch = (board?.roles || []).some((role) => role?.name === '女巫')
   if (hasWitch) {
     parts.push(SELF_SAVE_TEXT[rules.witchSelfSave || 'first_night'] || SELF_SAVE_TEXT.first_night)
-    parts.push(rules.witchOnePotionPerNight === false ? '一晚可用两瓶' : '一晚一瓶')
+    // 电子法官每人每晚只记最后一次行动，一晚两瓶实际用不了，统一写一晚一瓶
+    parts.push('一晚一瓶')
   }
   return parts.join(' · ')
 }

@@ -21,3 +21,11 @@ test('pollFailureKeepsTheLastSnapshot', () => {
   assert.equal(down.snapshot, previous)
   assert.equal(down.error, '服务器开小差')
 })
+
+test('aPollSentBeforeAnActionCannotOverwriteIt', () => {
+  const afterAction = { roomId: 'after' }
+  const stalePoll = { ok: true, snapshot: { roomId: 'before' } }
+  assert.equal(mergePollResult(afterAction, stalePoll, { requestedAt: 100, lastActionAt: 200 }).snapshot, afterAction)
+  assert.equal(mergePollResult(afterAction, stalePoll, { requestedAt: 300, lastActionAt: 200 }).snapshot, stalePoll.snapshot)
+  assert.equal(mergePollResult(afterAction, stalePoll).snapshot, stalePoll.snapshot)
+})

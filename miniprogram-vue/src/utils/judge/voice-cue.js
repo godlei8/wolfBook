@@ -61,7 +61,9 @@ function dayCue(snapshot, now) {
       const speaker = speakerOf(snapshot)
       const index = snapshot.speech?.index || 0
       const left = remaining(snapshot, now)
-      if (speaker && left !== null && left > 0 && left <= 30) return cue(snapshot, `speech:${index}:30`, ['发言还剩 30 秒'])
+      // 发言时长只有 30 秒时一开始就剩 30 秒，不提醒，免得把「请 X 号发言」顶掉
+      const long = Number(snapshot.rules?.speechSeconds || 120) > 30
+      if (speaker && long && left !== null && left > 0 && left <= 30) return cue(snapshot, `speech:${index}:30`, ['发言还剩 30 秒'])
       return cue(snapshot, `speech:${index}`, [speaker ? `请 ${speaker} 号发言` : ''])
     }
     case 'exile_vote':
@@ -74,10 +76,13 @@ function dayCue(snapshot, now) {
       if (result.revealedIdiot) line = `${result.revealedIdiot} 号翻牌是白痴，免于出局`
       else if (result.eliminatedSeat) line = `${result.eliminatedSeat} 号被放逐`
       else if (result.pkSeats.length) line = `${result.pkSeats.join('、')} 号平票`
-      return cue(snapshot, `${phase}:${(snapshot.rounds || []).length}`, [line])
+      // 同一天可能有放逐和 PK 两次票型，按当天第几轮区分
+      const today = (snapshot.rounds || []).find((item) => item.dayNo === (snapshot.currentDay || 1))
+      return cue(snapshot, `${phase}:${today?.exile?.length || 0}`, [line])
     }
     case 'skill_pending':
-      return cue(snapshot, `pending:${snapshot.pending?.kind || ''}:${snapshot.pending?.seatNo || ''}`, ['请出局的玩家在手机上确认'])
+      // 房主不是当事人时拿不到 pending；每条待办有自己的截止时间，用它区分同一天的几次待办
+      return cue(snapshot, `pending:${snapshot.phaseDeadline || ''}`, ['请出局的玩家在手机上确认'])
     default:
       return null
   }
@@ -91,6 +96,15 @@ export function voiceCue(snapshot, now = Date.now()) {
   }
   if (snapshot.roomStatus !== 'playing') return null
   return snapshot.currentPhase === 'night_action' ? nightCue(snapshot, now) : dayCue(snapshot, now)
+}
+
+/** 播放超时就放弃（来电、别的应用抢走音频时 onEnded 可能永远不来），不让播报整局卡住。 */
+export function withTimeout(promise, ms) {
+  let timer = null
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('timeout')), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
 }
 
 export function shouldPlay(next, playedKeys) {

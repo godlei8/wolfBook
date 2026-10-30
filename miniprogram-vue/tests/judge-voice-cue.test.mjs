@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { rememberCue, shouldPlay, voiceCue } from '../src/utils/judge/voice-cue.js'
+import { rememberCue, shouldPlay, voiceCue, withTimeout } from '../src/utils/judge/voice-cue.js'
 import { parseServerTime } from '../src/utils/judge/room-view.js'
 
 const NOW = parseServerTime('2026-10-30T20:00:00')
@@ -67,4 +67,30 @@ test('dayCues', () => {
   assert.deepEqual(day('sheriff_signup', { currentDay: 1 }).lines, ['天亮了', '现在开始上警，想竞选警长的请在手机上报名'])
   assert.deepEqual(day('day_announce', { currentDay: 1, sheriffSeatNo: 4, rounds: [{ dayNo: 1, nightDeaths: [], sheriff: { electedSeatNo: 4 } }] }).lines, ['4 号当选警长', '昨晚是平安夜'])
   assert.deepEqual(voiceCue({ roomId: 'r1', roomStatus: 'finished', host: true, winVerdict: { camp: '好人', reason: '狼人阵营全部出局，好人阵营胜利' }, winnerCamp: '好人' }, NOW).lines, ['游戏结束', '狼人阵营全部出局，好人阵营胜利'])
+})
+
+test('secondVoteResultAndSecondPendingOfTheDayAreStillSpoken', () => {
+  const base = { roomId: 'r1', roomStatus: 'playing', currentDay: 2, host: true, paused: false, pkSeats: [] }
+  const tie = { dayNo: 2, nightDeaths: [], exile: [{ tallies: [], abstainSeatNos: [], eliminatedSeatNo: null, pkSeatNos: [2, 4] }], skills: [] }
+  const out = { ...tie, exile: [...tie.exile, { tallies: [], abstainSeatNos: [], eliminatedSeatNo: 4, pkSeatNos: [] }] }
+  const first = voiceCue({ ...base, currentPhase: 'vote_result', rounds: [tie] }, NOW)
+  const second = voiceCue({ ...base, currentPhase: 'vote_result', rounds: [out] }, NOW)
+  assert.notEqual(first.key, second.key)
+  assert.deepEqual(second.lines, ['4 号被放逐'])
+  const pending = (deadline) => voiceCue({ ...base, currentPhase: 'skill_pending', pending: null, phaseDeadline: deadline, rounds: [] }, NOW)
+  assert.notEqual(pending('2026-10-30T20:00:10').key, pending('2026-10-30T20:03:10').key, '房主不是当事人时，两次待办也要各播一次')
+})
+
+test('shortSpeechesStillNameTheSpeaker', () => {
+  const speech = { roomId: 'r1', roomStatus: 'playing', currentPhase: 'day_speech', currentDay: 2, host: true, paused: false,
+    speech: { order: [3, 4], index: 0 }, phaseDeadline: '2026-10-30T20:00:29', rounds: [], rules: { speechSeconds: 30 } }
+  assert.deepEqual(voiceCue(speech, NOW).lines, ['请 3 号发言'], '发言时长只有 30 秒时不提醒还剩 30 秒')
+})
+
+test('stuckPlaybackIsGivenUp', async () => {
+  const never = new Promise(() => {})
+  const started = Date.now()
+  await assert.rejects(withTimeout(never, 30), /timeout/)
+  assert.ok(Date.now() - started < 1000)
+  assert.equal(await withTimeout(Promise.resolve(7), 30), 7)
 })

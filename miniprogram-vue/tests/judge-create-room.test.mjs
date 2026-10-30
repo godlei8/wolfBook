@@ -44,6 +44,7 @@ test('joinedOnlyForFullBoards', () => {
 test('boardRuleLineIsReadOnlyText', () => {
   const city = board({ winCondition: 'city', witchSelfSave: 'first_night', witchOnePotionPerNight: true })
   assert.equal(boardRuleLine(city), '屠城 · 女巫只首夜可自救 · 一晚一瓶')
-  assert.ok(boardRuleLine(board({ winCondition: 'side', witchSelfSave: 'never', witchOnePotionPerNight: false })).startsWith('屠边 · 女巫不能自救'))
+  assert.equal(boardRuleLine(board({ winCondition: 'side', witchSelfSave: 'never', witchOnePotionPerNight: false })), '屠边 · 女巫不能自救 · 一晚一瓶',
+    '电子法官每人每晚只记一次行动，一晚两瓶用不了，不写出来')
   assert.equal(boardRuleLine(board({ winCondition: 'side' }, { roles: [{ name: '狼人' }, { name: '平民' }] })), '屠边')
 })

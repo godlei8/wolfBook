@@ -20,7 +20,7 @@ import { mergePollResult, pollInterval } from '../../utils/judge/room-poll.js'
 import { phaseTitle, pickView } from '../../utils/judge/room-view.js'
 import { judgeActions, pausedOverlay } from '../../utils/judge/judge-bar.js'
 import { hostActions } from '../../utils/judge/day.js'
-import { rememberCue, shouldPlay, voiceCue } from '../../utils/judge/voice-cue.js'
+import { rememberCue, shouldPlay, voiceCue, withTimeout } from '../../utils/judge/voice-cue.js'
 import { createJudgeVoicePlayer } from '../../utils/judge/voice'
 import { goToUserTab, hasAuthToken } from '../../utils/auth'
 
@@ -44,6 +44,8 @@ let playedKeys = []
 
 let pollTimer = null
 let clockTimer = null
+// 最近一次提交成功的时刻；比它早发出的轮询结果不再覆盖页面
+let lastActionAt = 0
 let active = false
 let redirected = false
 
@@ -116,15 +118,16 @@ async function refresh() {
     return
   }
   let result
+  const requestedAt = Date.now()
   try {
     result = { ok: true, snapshot: await api.getJudgeRoom(roomId.value) }
   } catch (error) {
     result = { ok: false, code: error?.code, message: error?.message }
   }
-  const merged = mergePollResult(snapshot.value, result)
+  const merged = mergePollResult(snapshot.value, result, { requestedAt, lastActionAt })
   pollError.value = merged.error
   if (result.ok) {
-    applySnapshot(merged.snapshot)
+    if (merged.snapshot !== snapshot.value) applySnapshot(merged.snapshot)
   } else if (!snapshot.value && merged.error) {
     uni.showToast({ title: merged.error, icon: 'none' })
   }
@@ -138,8 +141,13 @@ function schedulePoll() {
   if (!delay) return
   pollTimer = setTimeout(async () => {
     pollTimer = null
-    await refresh()
-    schedulePoll()
+    try {
+      await refresh()
+    } catch (error) {
+      // 这一次出意外也照样排下一次，不能让轮询就此停掉
+    } finally {
+      schedulePoll()
+    }
   }, delay)
 }
 
@@ -175,9 +183,11 @@ function narrate() {
   }
   voicePlaying = true
   const run = ++voiceRun
-  voicePlayer
-    .playScript(next)
-    .catch(() => {})
+  // 每句最多等 10 秒：来电或别的应用抢走音频时播放回调可能永远不来，超时就放开，后面的照常播
+  withTimeout(voicePlayer.playScript(next), next.lines.length * 10000)
+    .catch(() => {
+      if (run === voiceRun) voicePlayer.stop()
+    })
     .finally(() => {
       if (run === voiceRun) voicePlaying = false
     })
@@ -224,7 +234,9 @@ async function runAction(task) {
   if (actionLoading.value) return false
   actionLoading.value = true
   try {
-    applySnapshot(await task())
+    const data = await task()
+    lastActionAt = Date.now()
+    applySnapshot(data)
     return true
   } catch (error) {
     if (error?.code === 4002) {
