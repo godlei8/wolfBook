@@ -34,7 +34,8 @@ public final class NightResolver {
     }
 
     /** 结算要用到的座位状态：女巫还剩什么药、守卫上一夜守了谁。 */
-    public record SeatState(int seat, String roleName, String faction, boolean alive, boolean antidoteLeft,
+    /** mechanic 是座位上的技能机制（可空：没有引擎认识的机制）。 */
+    public record SeatState(int seat, String roleName, String faction, Mechanic mechanic, boolean alive, boolean antidoteLeft,
                             boolean poisonLeft, Integer lastGuardSeat) {
     }
 
@@ -121,8 +122,7 @@ public final class NightResolver {
         Set<Integer> cannotShoot = new TreeSet<>();
         if (poisoned != null) {
             SeatState target = seats.get(poisoned);
-            if (target != null && RoleSkillRegistry.legacyMechanic(target.roleName())
-                    .map(mechanic -> mechanic == Mechanic.HUNTER).orElse(false)) {
+            if (target != null && target.mechanic() == Mechanic.HUNTER) {
                 cannotShoot.add(poisoned);
             }
         }
@@ -134,8 +134,7 @@ public final class NightResolver {
             }
         }
         for (SeatState seat : seats.values()) {
-            if (seat.alive() && RoleSkillRegistry.legacyMechanic(seat.roleName())
-                    .map(mechanic -> mechanic == Mechanic.WITCH).orElse(false)) {
+            if (seat.alive() && seat.mechanic() == Mechanic.WITCH) {
                 feedback.put(seat.seat(), knife == null ? "平安夜" : knife + " 号");
             }
         }

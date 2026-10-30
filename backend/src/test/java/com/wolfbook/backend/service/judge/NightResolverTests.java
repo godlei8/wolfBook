@@ -114,7 +114,7 @@ class NightResolverTests {
     @Test
     void usedPotionCannotBeUsedAgain() {
         Map<Integer, NightResolver.SeatState> seats = seats();
-        NightResolver.SeatState emptyWitch = new NightResolver.SeatState(2, "女巫", "好人", true, false, false, null);
+        NightResolver.SeatState emptyWitch = new NightResolver.SeatState(2, "女巫", "好人", mechanicOf("女巫"), true, false, false, null);
         assertThrows(ApiException.class, () -> NightResolver.validate(save(2, 7), emptyWitch, seats.get(7), RULES, 2, 7));
         assertThrows(ApiException.class, () -> NightResolver.validate(poison(2, 7), emptyWitch, seats.get(7), RULES, 2, 7));
     }
@@ -148,7 +148,7 @@ class NightResolverTests {
 
     @Test
     void consecutiveGuardIsRejected() {
-        NightResolver.SeatState guard = new NightResolver.SeatState(4, "守卫", "好人", true, false, false, 5);
+        NightResolver.SeatState guard = new NightResolver.SeatState(4, "守卫", "好人", mechanicOf("守卫"), true, false, false, 5);
         assertThrows(ApiException.class, () -> NightResolver.validate(guard(4, 5), guard, seats().get(5), RULES, 2, null));
     }
 
@@ -159,7 +159,7 @@ class NightResolverTests {
 
     @Test
     void deadTargetIsRejected() {
-        NightResolver.SeatState dead = new NightResolver.SeatState(7, "平民", "好人", false, false, false, null);
+        NightResolver.SeatState dead = new NightResolver.SeatState(7, "平民", "好人", mechanicOf("平民"), false, false, false, null);
         assertThrows(ApiException.class, () -> NightResolver.validate(check(1, 7), seats().get(1), dead, RULES, 2, null));
     }
 
@@ -175,9 +175,31 @@ class NightResolverTests {
                 {"狼人", "狼人"}, {"狼人", "狼人"}, {"平民", "好人"}, {"平民", "好人"}};
         for (int i = 0; i < roles.length; i++) {
             boolean witch = "女巫".equals(roles[i][0]);
-            seats.put(i + 1, new NightResolver.SeatState(i + 1, roles[i][0], roles[i][1], true, witch, witch, null));
+            seats.put(i + 1, new NightResolver.SeatState(i + 1, roles[i][0], roles[i][1], mechanicOf(roles[i][0]), true, witch, witch, null));
         }
         return seats;
+    }
+
+    @Test
+    void poisonedHunterIsFoundByMechanic() {
+        // 3 号叫「枪手」，名字不在一期的表里，机制是猎人：被毒照样不能开枪
+        Map<Integer, NightResolver.SeatState> seats = seats();
+        seats.put(3, new NightResolver.SeatState(3, "枪手", "好人", Mechanic.HUNTER, true, false, false, null));
+        NightResolver.Outcome outcome = NightResolver.resolve(List.of(poison(2, 3)), seats, RULES, 2, RANDOM);
+        assertEquals(Set.of(3), outcome.cannotShoot());
+    }
+
+    @Test
+    void witchFeedbackFollowsTheMechanic() {
+        // 2 号叫「配药人」：照样收到刀口
+        Map<Integer, NightResolver.SeatState> seats = seats();
+        seats.put(2, new NightResolver.SeatState(2, "配药人", "好人", Mechanic.WITCH, true, true, true, null));
+        NightResolver.Outcome outcome = NightResolver.resolve(List.of(kill(5, 7), kill(6, 7)), seats, RULES, 1, RANDOM);
+        assertEquals("7 号", outcome.feedback().get(2));
+    }
+
+    private static Mechanic mechanicOf(String roleName) {
+        return RoleSkillRegistry.legacyMechanic(roleName).orElse(null);
     }
 
     private static NightResolver.Submission kill(int actor, int target) {

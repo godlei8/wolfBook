@@ -391,6 +391,7 @@ public class JudgeService {
             player.setRoleId(role.getId());
             player.setRoleName(role.getName());
             player.setFaction(role.getFaction());
+            player.setMechanic(role.getMechanic());
             player.setDeathDay(null);
             player.setDeathPhase(null);
             player.setUpdateTime(now);
@@ -994,11 +995,16 @@ public class JudgeService {
     }
 
     private NightKind nightKindOf(JudgeRoomPlayerEntity player) {
-        Mechanic mechanic = RoleSkillRegistry.legacyMechanic(player.getRoleName()).orElse(null);
+        Mechanic mechanic = mechanicOf(player).orElse(null);
         if (RoleSkillRegistry.isWolfTeam(mechanic, player.getRoleName(), player.getFaction())) {
             return NightKind.WOLF;
         }
         return mechanic == null ? NightKind.GENERIC : mechanic.nightKind();
+    }
+
+    /** 座位上的技能机制：发身份时拷进来的；升级前开局的座位没有，按角色名兜底。 */
+    private Optional<Mechanic> mechanicOf(JudgeRoomPlayerEntity player) {
+        return Mechanic.fromCode(player.getMechanic()).or(() -> RoleSkillRegistry.legacyMechanic(player.getRoleName()));
     }
 
     /** 今晚的夜间提交（每个座位最后一条），旧事件没有 action 字段时按中文 actionType 换算。 */
@@ -1036,6 +1042,7 @@ public class JudgeService {
                             player.getSeatNo(),
                             player.getRoleName(),
                             player.getFaction(),
+                            mechanicOf(player).orElse(null),
                             Boolean.TRUE.equals(player.getAlive()),
                             !Boolean.FALSE.equals(status.get("antidote")),
                             !Boolean.FALSE.equals(status.get("poison")),
@@ -1100,7 +1107,7 @@ public class JudgeService {
             }
             boolean allowed = kind == NightKind.WOLF
                     ? Set.of(NightResolver.KILL, NightResolver.NONE).contains(action)
-                    : RoleSkillRegistry.legacyMechanic(actor.getRoleName())
+                    : mechanicOf(actor)
                             .map(mechanic -> mechanic.actions().contains(action))
                             .orElse(true);
             if (!allowed) {
@@ -1700,8 +1707,7 @@ public class JudgeService {
         if (player == null) {
             return List.of("skip");
         }
-        boolean hunter = RoleSkillRegistry.legacyMechanic(player.getRoleName())
-                .map(mechanic -> mechanic == Mechanic.HUNTER).orElse(false);
+        boolean hunter = mechanicOf(player).map(mechanic -> mechanic == Mechanic.HUNTER).orElse(false);
         boolean canShoot = !Boolean.FALSE.equals(readMap(player.getStatusJson()).get("canShoot"));
         return hunter && canShoot ? List.of("use", "skip") : List.of("skip");
     }

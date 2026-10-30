@@ -672,6 +672,41 @@ class JudgeFlowIntegrationTests {
     }
 
     @Test
+    void dealCopiesTheMechanicToTheSeat() throws Exception {
+        Game game = autoGame(false);
+        int guard = game.seatsByRole().get("守卫").get(0);
+        Assertions.assertEquals("guard", jdbcTemplate.queryForObject(
+                "SELECT mechanic FROM judge_room_players WHERE room_id = ? AND seat_no = ?", String.class, game.roomId, guard));
+    }
+
+    @Test
+    void roomsDealtBeforeMechanicsStillResolve() throws Exception {
+        // 升级前开局的房间：座位上没有机制，按角色名兜底照样结算
+        Game game = autoGame(false);
+        jdbcTemplate.update("UPDATE judge_room_players SET mechanic = NULL WHERE room_id = ?", game.roomId);
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int target = seats.get("平民").get(0);
+        expire(game);
+        for (int wolf : seats.get("狼人")) {
+            JsonNode kill = game.call(game.players.get(wolf - 1), "/night-action", "{\"actionType\":\"kill\",\"targetSeatNo\":" + target + "}");
+            Assertions.assertEquals(0, kill.path("code").asInt(), kill.toString());
+        }
+        JsonNode day = game.snapshot(game.host);
+        for (int i = 0; i < 10 && "night_action".equals(day.path("currentPhase").asText()); i++) {
+            expire(game);
+            day = game.snapshot(game.host);
+        }
+        Assertions.assertNotEquals("night_action", day.path("currentPhase").asText(), day.toString());
+        Assertions.assertFalse(game.player(day, target).path("alive").asBoolean(), "被刀的平民天亮出局");
+    }
+
+    private void expire(Game game) throws Exception {
+        jdbcTemplate.update("UPDATE judge_rooms SET step_deadline = ? WHERE room_id = ?",
+                java.sql.Timestamp.valueOf("2000-01-01 00:00:00"), game.roomId);
+        game.snapshot(game.host);
+    }
+
+    @Test
     void wolvesSubmittingAllAdvancesImmediately() throws Exception {
         Game game = autoGame(false);
         Map<String, List<Integer>> seats = game.seatsByRole();
