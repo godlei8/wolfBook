@@ -11,6 +11,7 @@ import api from '../../services/api'
 import storage from '../../services/storage'
 import { mergePollResult, pollInterval } from '../../utils/judge/room-poll.js'
 import { phaseTitle, pickView } from '../../utils/judge/room-view.js'
+import { judgeActions, pausedOverlay } from '../../utils/judge/judge-bar.js'
 import { goToUserTab, hasAuthToken } from '../../utils/auth'
 
 const roomId = ref('')
@@ -31,6 +32,12 @@ let redirected = false
 
 const view = computed(() => pickView(snapshot.value))
 const title = computed(() => phaseTitle(snapshot.value) || '法官房间')
+const judgeBar = computed(() => judgeActions(snapshot.value))
+const overlay = computed(() => pausedOverlay(snapshot.value))
+const hasJudgeBar = computed(() => judgeBar.value.pause || judgeBar.value.resume || judgeBar.value.forceOut)
+// 点杀：先打开座位面板选人，再二次确认
+const forceOutOpen = ref(false)
+const forceOutSeats = computed(() => (snapshot.value?.players || []).filter((player) => player.seatNo && player.alive !== false))
 
 function safeDecode(value) {
   if (!value) return ''
@@ -172,9 +179,26 @@ function onAct(event) {
     start: () => api.startJudgeRoom(id),
     rules: () => api.updateJudgeRoomRules(id, event.rules),
     night: () => api.submitJudgeNightAction(id, { actionType: event.actionType, targetSeatNo: event.targetSeatNo }),
+    advance: () => api.advanceJudgeRoom(id, event.payload),
   }
   const task = tasks[event?.kind]
   if (task) runAction(task)
+}
+
+function pauseOrResume() {
+  onAct({ kind: 'advance', payload: { action: judgeBar.value.resume ? 'resume' : 'pause' } })
+}
+
+function confirmForceOut(player) {
+  forceOutOpen.value = false
+  uni.showModal({
+    title: '点杀',
+    content: `确定让 ${player.seatNo} 号 ${player.nickname || ''} 直接出局？`,
+    confirmText: '点杀',
+    success: (result) => {
+      if (result.confirm) onAct({ kind: 'advance', payload: { action: 'force_out', forceOutSeatNo: player.seatNo } })
+    },
+  })
 }
 
 function judgeSharePayload() {
@@ -227,7 +251,7 @@ onUnload(() => {
 </script>
 
 <template>
-  <view class="nt-page" :class="{ 'nt-page--bar': view === 'lobby' }">
+  <view class="nt-page" :class="{ 'nt-page--bar': view === 'lobby' || hasJudgeBar }">
     <NavBar back :title="title" />
     <view v-if="pollError" class="nt-gutter">
       <view class="jr-warn">{{ pollError }}</view>
@@ -239,6 +263,35 @@ onUnload(() => {
       <view class="nt-panel jr-placeholder">
         <text class="jr-placeholder__title">{{ snapshot.boardName }}</text>
         <text class="jr-placeholder__phase">{{ title }}</text>
+      </view>
+    </view>
+
+    <!-- 法官暂停：所有人同一张遮罩，倒计时停表；法官的操作栏浮在遮罩上面 -->
+    <view v-if="overlay" class="jr-pause">
+      <text class="jr-pause__moon">☾</text>
+      <text class="jr-pause__title serif">{{ overlay.title }}</text>
+      <text class="jr-pause__hint">{{ overlay.hint }}</text>
+    </view>
+
+    <view v-if="hasJudgeBar" class="nt-bar jr-judgebar">
+      <view
+        class="nt-btn jr-judgebar__btn"
+        :class="[judgeBar.resume ? 'nt-btn--gold' : 'nt-btn--ghost', { 'nt-btn--disabled': actionLoading }]"
+        @tap="pauseOrResume"
+      >{{ judgeBar.resume ? '继续计时' : '暂停计时' }}</view>
+      <view v-if="judgeBar.forceOut" class="nt-btn nt-btn--ghost jr-judgebar__btn" @tap="forceOutOpen = true">点杀</view>
+    </view>
+
+    <view v-if="forceOutOpen" class="jr-sheet" @tap="forceOutOpen = false">
+      <view class="nt-panel jr-sheet__body" @tap.stop>
+        <text class="nt-h2">点杀谁？</text>
+        <view class="jr-sheet__seats">
+          <view v-for="player in forceOutSeats" :key="player.seatNo" class="jr-sheet__seat" @tap="confirmForceOut(player)">
+            <text class="jr-sheet__no serif">{{ player.seatNo }}</text>
+            <text class="jr-sheet__name">{{ player.nickname }}</text>
+          </view>
+        </view>
+        <view class="nt-btn nt-btn--ghost" @tap="forceOutOpen = false">取消</view>
       </view>
     </view>
   </view>
@@ -271,6 +324,99 @@ onUnload(() => {
 .jr-placeholder__phase {
   font-size: 26rpx;
   color: var(--text-2);
+}
+
+.jr-pause {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  background: rgba(7, 6, 10, 0.86);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+}
+
+.jr-pause__moon {
+  color: var(--gold);
+  font-size: 96rpx;
+}
+
+.jr-pause__title {
+  color: var(--text);
+  font-size: 48rpx;
+  font-weight: 900;
+}
+
+.jr-pause__hint {
+  color: var(--text-2);
+  font-size: 26rpx;
+}
+
+.jr-judgebar {
+  z-index: 50;
+  gap: 20rpx;
+}
+
+.jr-judgebar__btn {
+  flex: 1;
+}
+
+.jr-sheet {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  background: rgba(7, 6, 10, 0.6);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.jr-sheet__body {
+  margin: 0 var(--page-gutter) calc(env(safe-area-inset-bottom) + 32rpx);
+  padding: 32rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+}
+
+.jr-sheet__seats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
+.jr-sheet__seat {
+  width: 128rpx;
+  padding: 12rpx 0;
+  border-radius: 20rpx;
+  background: var(--panel-raised);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4rpx;
+}
+
+.jr-sheet__no {
+  color: var(--gold);
+  font-size: 36rpx;
+  font-weight: 900;
+}
+
+.jr-sheet__name {
+  max-width: 112rpx;
+  color: var(--text-2);
+  font-size: 20rpx;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .jr-loading {

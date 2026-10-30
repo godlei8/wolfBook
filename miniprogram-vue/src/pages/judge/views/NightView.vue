@@ -5,6 +5,7 @@
 import { computed, ref, watch } from 'vue'
 import { countdown, phaseTitle, seatColumns } from '../../../utils/judge/room-view.js'
 import { isStepHolder, nightArt, nightPanel, panelHeight, seatBadges } from '../../../utils/judge/night-panel.js'
+import { godSeats, tonightRows } from '../../../utils/judge/judge-bar.js'
 
 const props = defineProps({
   snapshot: { type: Object, required: true },
@@ -28,6 +29,13 @@ const title = computed(() => phaseTitle(props.snapshot))
 const clock = computed(() => countdown(props.snapshot.phaseDeadline, props.now, props.snapshot.paused))
 const art = computed(() => nightArt(props.snapshot, props.board))
 const areaHeight = computed(() => panelHeight(props.snapshot.currentStep?.kind))
+// 法官的上帝视角：座位上的身份角标、今晚汇总（法官手机不在零场外的约束里，大家都知道谁是法官）
+const god = computed(() => godSeats(props.snapshot))
+const rows = computed(() => tonightRows(props.snapshot))
+
+function godOf(seatNo) {
+  return god.value.get(seatNo) || null
+}
 
 function badgeOf(seatNo) {
   return badges.value.get(seatNo) || { mate: false, votes: 0, selected: false, disabled: true, dead: false }
@@ -61,8 +69,9 @@ function tapButton(button) {
             <view v-else class="nt-token__text jn-token__text">{{ seat.player ? (seat.player.nickname || '').slice(0, 1) : '' }}</view>
           </view>
           <text class="jn-seat__no">{{ seat.seatNo }}</text>
+          <text v-if="godOf(seat.seatNo)" class="jn-seat__role" :style="{ backgroundColor: godOf(seat.seatNo).roleColor }">{{ godOf(seat.seatNo).roleShort }}</text>
           <view v-if="badgeOf(seat.seatNo).mate" class="jn-seat__mate" />
-          <text v-if="badgeOf(seat.seatNo).votes" class="jn-seat__votes">{{ badgeOf(seat.seatNo).votes }}</text>
+          <text v-if="badgeOf(seat.seatNo).votes || (godOf(seat.seatNo) && godOf(seat.seatNo).votes)" class="jn-seat__votes">{{ badgeOf(seat.seatNo).votes || godOf(seat.seatNo).votes }}</text>
         </view>
       </view>
 
@@ -88,8 +97,9 @@ function tapButton(button) {
             <view v-else class="nt-token__text jn-token__text">{{ seat.player ? (seat.player.nickname || '').slice(0, 1) : '' }}</view>
           </view>
           <text class="jn-seat__no">{{ seat.seatNo }}</text>
+          <text v-if="godOf(seat.seatNo)" class="jn-seat__role" :style="{ backgroundColor: godOf(seat.seatNo).roleColor }">{{ godOf(seat.seatNo).roleShort }}</text>
           <view v-if="badgeOf(seat.seatNo).mate" class="jn-seat__mate" />
-          <text v-if="badgeOf(seat.seatNo).votes" class="jn-seat__votes">{{ badgeOf(seat.seatNo).votes }}</text>
+          <text v-if="badgeOf(seat.seatNo).votes || (godOf(seat.seatNo) && godOf(seat.seatNo).votes)" class="jn-seat__votes">{{ badgeOf(seat.seatNo).votes || godOf(seat.seatNo).votes }}</text>
         </view>
       </view>
     </view>
@@ -100,7 +110,17 @@ function tapButton(button) {
       <text class="jn-head__step">{{ snapshot.currentStep ? `${snapshot.currentStep.index + 1} / ${snapshot.currentStep.total}` : '' }}</text>
     </view>
 
-    <view class="jn-area nt-gutter" :style="{ height: `${areaHeight}rpx` }">
+    <view v-if="snapshot.judgeViewer" class="nt-gutter">
+      <view class="nt-panel jn-panel jn-tonight">
+        <text class="jn-panel__label">今晚</text>
+        <view v-for="row in rows" :key="row.role" class="jn-tonight__row">
+          <text class="jn-tonight__role">{{ row.role }}</text>
+          <text class="jn-tonight__seats">{{ row.seats.join(' ') }} 号</text>
+          <text class="jn-tonight__state">{{ row.state }}</text>
+        </view>
+      </view>
+    </view>
+    <view v-else class="jn-area nt-gutter" :style="{ height: `${areaHeight}rpx` }">
       <view v-if="panel" class="nt-panel jn-panel">
         <block v-if="panel.kind === 'wolf'">
           <view class="jn-panel__row">
@@ -213,6 +233,52 @@ function tapButton(button) {
   border-radius: 10rpx;
   border: 3rpx solid var(--ink);
   background: var(--camp-wolf);
+}
+
+.jn-seat__role {
+  position: absolute;
+  right: -6rpx;
+  top: -6rpx;
+  width: 34rpx;
+  height: 34rpx;
+  border-radius: 17rpx;
+  border: 3rpx solid var(--ink);
+  color: var(--ink);
+  font-size: 20rpx;
+  font-weight: 900;
+  line-height: 34rpx;
+  text-align: center;
+}
+
+.jn-tonight {
+  gap: 12rpx;
+}
+
+.jn-tonight__row {
+  display: flex;
+  align-items: baseline;
+  gap: 16rpx;
+}
+
+.jn-tonight__role {
+  width: 96rpx;
+  flex-shrink: 0;
+  font-size: 26rpx;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.jn-tonight__seats {
+  width: 120rpx;
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: var(--text-3);
+}
+
+.jn-tonight__state {
+  flex: 1;
+  font-size: 24rpx;
+  color: var(--text-soft);
 }
 
 .jn-seat__votes {
