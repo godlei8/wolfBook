@@ -166,7 +166,7 @@ function copyRoomCode() {
   height: 240rpx;
   border-bottom: 4rpx solid var(--ink);
   overflow: hidden;
-  background: #1b1724;
+  background: var(--panel-sunk);
 }
 
 .jr-room__bg {
@@ -181,7 +181,7 @@ function copyRoomCode() {
   width: 260rpx;
   height: 260rpx;
   border-radius: 50%;
-  background: #2e2740;
+  background: var(--panel-raised);
 }
 
 .jr-room__body {
@@ -297,7 +297,7 @@ function copyRoomCode() {
 
 .jr-seat--empty {
   background: transparent;
-  border: 3rpx dashed #4a4060;
+  border: 3rpx dashed var(--line-strong);
   box-shadow: none;
 }
 
@@ -313,7 +313,7 @@ function copyRoomCode() {
 
 .jr-seat--empty .jr-seat__no {
   position: static;
-  color: #6b6280;
+  color: var(--text-4);
   font-size: 32rpx;
 }
 

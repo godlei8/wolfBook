@@ -117,3 +117,14 @@ export function rememberCue(playedKeys, played) {
   list.push(played.key)
   return list.slice(-MAX_REMEMBERED)
 }
+
+/**
+ * 播报失败（合成出错、音频被抢）：第一次失败把 key 放开，下一秒重播一次；再失败就算了，免得每秒刷一次。
+ * failures 是 { key: 失败次数 }，只放内存。
+ */
+export function retryCue(playedKeys, failed, failures = {}) {
+  const count = (failures[failed.key] || 0) + 1
+  const next = { ...failures, [failed.key]: count }
+  if (count > 1) return { playedKeys, failures: next }
+  return { playedKeys: (playedKeys || []).filter((key) => key !== failed.key), failures: next }
+}

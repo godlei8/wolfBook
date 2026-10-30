@@ -21,7 +21,7 @@ import { navTitle, pickView } from '../../utils/judge/room-view.js'
 import { identityCard } from '../../utils/judge/identity.js'
 import { judgeActions, pausedOverlay } from '../../utils/judge/judge-bar.js'
 import { hostActions } from '../../utils/judge/day.js'
-import { rememberCue, shouldPlay, voiceCue, withTimeout } from '../../utils/judge/voice-cue.js'
+import { rememberCue, retryCue, shouldPlay, voiceCue, withTimeout } from '../../utils/judge/voice-cue.js'
 import { createJudgeVoicePlayer } from '../../utils/judge/voice'
 import { goToUserTab, hasAuthToken } from '../../utils/auth'
 
@@ -42,6 +42,8 @@ const voiceOn = ref(true)
 let voicePlaying = false
 let voiceRun = 0
 let playedKeys = []
+// 每句播报失败了几次（失败一次会重播一次）
+let voiceFailures = {}
 
 let pollTimer = null
 let clockTimer = null
@@ -182,22 +184,29 @@ function loadPlayedKeys() {
   }
 }
 
-function narrate() {
-  if (!voicePlayer.supported || !voiceOn.value || voicePlaying || !active) return
-  const next = voiceCue(snapshot.value, now.value)
-  if (!shouldPlay(next, playedKeys)) return
-  playedKeys = rememberCue(playedKeys, next)
+function savePlayedKeys() {
   try {
     uni.setStorageSync(voiceStorageKey(), playedKeys)
   } catch (error) {
     // 存不了就只在内存里记
   }
+}
+
+function narrate() {
+  if (!voicePlayer.supported || !voiceOn.value || voicePlaying || !active) return
+  const next = voiceCue(snapshot.value, now.value)
+  if (!shouldPlay(next, playedKeys)) return
+  playedKeys = rememberCue(playedKeys, next)
+  savePlayedKeys()
   voicePlaying = true
   const run = ++voiceRun
   // 每句最多等 10 秒：来电或别的应用抢走音频时播放回调可能永远不来，超时就放开，后面的照常播
   withTimeout(voicePlayer.playScript(next), next.lines.length * 10000)
     .catch(() => {
-      if (run === voiceRun) voicePlayer.stop()
+      if (run !== voiceRun) return
+      voicePlayer.stop()
+      ;({ playedKeys, failures: voiceFailures } = retryCue(playedKeys, next, voiceFailures))
+      savePlayedKeys()
     })
     .finally(() => {
       if (run === voiceRun) voicePlaying = false
@@ -457,7 +466,7 @@ onUnload(() => {
   margin: 16rpx 0;
   padding: 16rpx 24rpx;
   border-radius: 16rpx;
-  background: rgba(214, 92, 92, 0.16);
+  background: var(--warn-bg);
   color: var(--text);
   font-size: 24rpx;
 }
@@ -488,7 +497,7 @@ onUnload(() => {
   right: 0;
   bottom: 0;
   z-index: 15;
-  background: rgba(7, 6, 10, 0.86);
+  background: var(--scrim-strong);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -533,7 +542,7 @@ onUnload(() => {
   right: 0;
   bottom: 0;
   z-index: 60;
-  background: rgba(7, 6, 10, 0.6);
+  background: var(--scrim);
   display: flex;
   flex-direction: column;
   justify-content: flex-end;

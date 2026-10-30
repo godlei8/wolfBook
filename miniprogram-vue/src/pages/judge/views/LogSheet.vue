@@ -46,7 +46,7 @@ const rows = computed(() => roundRows(props.snapshot))
   right: 0;
   bottom: 0;
   z-index: 70;
-  background: rgba(7, 6, 10, 0.6);
+  background: var(--scrim);
   display: flex;
   flex-direction: column;
   justify-content: flex-end;

@@ -659,7 +659,7 @@ public class JudgeService {
                 pendingView(room, players, self, judgeViewer),
                 isPaused(room),
                 room.getStepDeadline(),
-                buildNightInfo(room, players, self, judgeViewer),
+                buildNightInfo(room, players, self, judgeViewer, events),
                 Boolean.TRUE.equals(room.getAutoJudgeEnabled()),
                 buildDayInfo(room, players, self, events)
         );
@@ -680,7 +680,7 @@ public class JudgeService {
             return null;
         }
         Set<Integer> eligible = eligibleVoters(room, players, phase);
-        Set<Integer> voted = votedSeats(room, players, phase);
+        Set<Integer> voted = votedSeats(room, players, phase, events);
         String type = PHASE_SHERIFF_VOTE.equals(phase) || PHASE_SHERIFF_PK.equals(phase) ? EVENT_SHERIFF_VOTE_SUBMIT : EVENT_VOTE_SUBMIT;
         Integer myVote = events.stream()
                 .filter(event -> type.equals(event.getActionType()) && phase.equals(event.getPhase())
@@ -696,7 +696,8 @@ public class JudgeService {
 
     /** 查看者本人的夜间私密信息（只在新流程房间）。法官有 nightActions 全量，不给。 */
     private WolfbookDtos.JudgeNightInfoView buildNightInfo(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players,
-                                                          JudgeRoomPlayerEntity self, boolean judgeViewer) {
+                                                          JudgeRoomPlayerEntity self, boolean judgeViewer,
+                                                          List<JudgeActionEventEntity> events) {
         if (judgeViewer || self == null || !Boolean.TRUE.equals(self.getPlaying()) || self.getSeatNo() == null
                 || !Boolean.TRUE.equals(room.getAutoJudgeEnabled()) || ROOM_STATUS_LOBBY.equals(room.getRoomStatus())) {
             return null;
@@ -733,7 +734,7 @@ public class JudgeService {
             }
             List<NightPlan.NightStep> steps = nightSteps(room, safeInt(room.getCurrentDay(), 1));
             NightPlan.NightStep step = room.getNightStep() < steps.size() ? steps.get(room.getNightStep()) : null;
-            List<NightResolver.Submission> submissions = tonightSubmissions(room, players);
+            List<NightResolver.Submission> submissions = tonightSubmissions(room, players, events);
             if (step != null && step.kind() == NightKind.WOLF && wolf) {
                 Map<Integer, Integer> chosen = new HashMap<>();
                 submissions.stream()
@@ -1219,10 +1220,16 @@ public class JudgeService {
 
     /** 今晚的夜间提交（每个座位最后一条），旧事件没有 action 字段时按中文 actionType 换算。 */
     private List<NightResolver.Submission> tonightSubmissions(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players) {
+        return tonightSubmissions(room, players, loadEvents(room.getRoomId()));
+    }
+
+    /** 同上，用已经读出来的事件（拼快照时整间房只读一次）。 */
+    private List<NightResolver.Submission> tonightSubmissions(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players,
+                                                              List<JudgeActionEventEntity> events) {
         Map<String, JudgeRoomPlayerEntity> playersById = players.stream()
                 .collect(Collectors.toMap(JudgeRoomPlayerEntity::getPlayerId, player -> player));
         Map<Integer, NightResolver.Submission> bySeat = new LinkedHashMap<>();
-        for (JudgeActionEventEntity event : loadEvents(room.getRoomId())) {
+        for (JudgeActionEventEntity event : events) {
             if (!EVENT_NIGHT_SUBMIT.equals(event.getActionType())
                     || !Objects.equals(safeInt(event.getDayNo(), 1), safeInt(room.getCurrentDay(), 1))
                     || !PHASE_NIGHT_ACTION.equals(event.getPhase())) {
@@ -2180,10 +2187,16 @@ public class JudgeService {
 
     /** 这一轮已经投了的座位（弃票也算）。 */
     private Set<Integer> votedSeats(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players, String phase) {
+        return votedSeats(room, players, phase, loadEvents(room.getRoomId()));
+    }
+
+    /** 同上，用已经读出来的事件。 */
+    private Set<Integer> votedSeats(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players, String phase,
+                                    List<JudgeActionEventEntity> events) {
         String type = PHASE_SHERIFF_VOTE.equals(phase) || PHASE_SHERIFF_PK.equals(phase) ? EVENT_SHERIFF_VOTE_SUBMIT : EVENT_VOTE_SUBMIT;
         Map<String, Integer> seatById = new HashMap<>();
         players.stream().filter(player -> player.getSeatNo() != null).forEach(player -> seatById.put(player.getPlayerId(), player.getSeatNo()));
-        return loadEvents(room.getRoomId()).stream()
+        return events.stream()
                 .filter(event -> type.equals(event.getActionType()) && phase.equals(event.getPhase())
                         && Objects.equals(safeInt(event.getDayNo(), 1), safeInt(room.getCurrentDay(), 1)))
                 .map(event -> seatById.get(event.getActorPlayerId()))

@@ -1111,6 +1111,24 @@ class JudgeFlowIntegrationTests {
         Assertions.assertTrue(game.snapshot(game.host).path("nightInfo").isNull(), "法官已经有全量 nightActions");
     }
 
+    @Test
+    void othersNeverSeeAHoldersSubmission() throws Exception {
+        Game game = autoGame(false);
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int guard = seats.get("守卫").get(0);
+        Assertions.assertEquals("guard", game.snapshot(game.host).path("currentStep").path("kind").asText());
+        game.act(guard, "guard", seats.get("平民").get(0));
+        for (int seat = 1; seat <= game.players.size(); seat++) {
+            if (seat == guard) {
+                continue;
+            }
+            JsonNode info = game.snapshot(game.players.get(seat - 1)).path("nightInfo");
+            Assertions.assertTrue(info.isNull() || info.isMissingNode()
+                    || (info.path("myAction").isNull() && info.path("myTarget").isNull() && info.path("lastGuardSeat").isNull()),
+                    seat + " 号看到了守卫的提交：" + info);
+        }
+    }
+
     // ---- 惰性推进（autoJudge）----
 
     @Test

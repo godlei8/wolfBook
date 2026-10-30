@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { rememberCue, shouldPlay, voiceCue, withTimeout } from '../src/utils/judge/voice-cue.js'
+import { rememberCue, retryCue, shouldPlay, voiceCue, withTimeout } from '../src/utils/judge/voice-cue.js'
 import { parseServerTime } from '../src/utils/judge/room-view.js'
 
 const NOW = parseServerTime('2026-10-30T20:00:00')
@@ -93,4 +93,16 @@ test('stuckPlaybackIsGivenUp', async () => {
   await assert.rejects(withTimeout(never, 30), /timeout/)
   assert.ok(Date.now() - started < 1000)
   assert.equal(await withTimeout(Promise.resolve(7), 30), 7)
+})
+
+test('aFailedCueIsRetriedOnce', () => {
+  const cue = { key: 'night:1:0', lines: ['天黑请闭眼'] }
+  let played = rememberCue([], cue)
+  let failures = {}
+  ;({ playedKeys: played, failures } = retryCue(played, cue, failures))
+  assert.equal(shouldPlay(cue, played), true, '第一次失败后放开，下一秒重播')
+  played = rememberCue(played, cue)
+  ;({ playedKeys: played, failures } = retryCue(played, cue, failures))
+  assert.equal(shouldPlay(cue, played), false, '重播也失败就不再播，免得每秒刷一次')
+  assert.equal(failures[cue.key], 2)
 })

@@ -329,7 +329,7 @@ onLoad((options) => {
   height: 400rpx;
   border-radius: 40rpx;
   overflow: hidden;
-  background: #1b1724;
+  background: var(--panel-sunk);
 }
 
 .jc-preview__bg {

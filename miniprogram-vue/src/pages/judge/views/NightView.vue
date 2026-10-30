@@ -337,13 +337,16 @@ function tapButton(button) {
   color: var(--text-3);
 }
 
+/* 面板高度只看步骤类型（零场外）；内容放不下时在面板里滚，不撑出去也不裁掉按钮 */
 .jn-area {
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .jn-panel {
   height: 100%;
   box-sizing: border-box;
+  overflow-y: auto;
   padding: 24rpx 28rpx;
   display: flex;
   flex-direction: column;

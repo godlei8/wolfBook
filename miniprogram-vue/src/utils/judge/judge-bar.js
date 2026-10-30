@@ -3,7 +3,8 @@
 
 import { isWolfTeam } from './night-order.js'
 
-const CAMP_COLORS = { wolf: '#ff7468', god: '#e9c46a', villager: '#8fd0a6', third: '#f7a8cb' }
+// 用 App.vue 里的阵营色变量（视图把它写进 style，小程序和 H5 都认 var()）
+const CAMP_COLORS = { wolf: 'var(--camp-wolf)', god: 'var(--camp-god)', villager: 'var(--camp-villager)', third: 'var(--camp-third)' }
 
 function campOf(player) {
   if (player?.faction === '狼人') return 'wolf'

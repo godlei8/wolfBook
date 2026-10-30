@@ -58,7 +58,7 @@ function playAgain() {
   height: 360rpx;
   border-radius: 40rpx;
   overflow: hidden;
-  background: #1b1724;
+  background: var(--panel-sunk);
 }
 
 .jx-hero__bg {
