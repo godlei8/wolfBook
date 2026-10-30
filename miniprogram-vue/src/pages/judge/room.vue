@@ -20,6 +20,8 @@ import { mergePollResult, pollInterval } from '../../utils/judge/room-poll.js'
 import { phaseTitle, pickView } from '../../utils/judge/room-view.js'
 import { judgeActions, pausedOverlay } from '../../utils/judge/judge-bar.js'
 import { hostActions } from '../../utils/judge/day.js'
+import { rememberCue, shouldPlay, voiceCue } from '../../utils/judge/voice-cue.js'
+import { createJudgeVoicePlayer } from '../../utils/judge/voice'
 import { goToUserTab, hasAuthToken } from '../../utils/auth'
 
 const roomId = ref('')
@@ -32,6 +34,13 @@ const actionLoading = ref(false)
 
 // 倒计时用的本地时钟，每秒走一下（只是重画，不发请求）
 const now = ref(Date.now())
+
+// 房主手机播报：同一个 key 只播一次，播过的 key 存本地（切后台、断网重连回来不重播）
+const voicePlayer = createJudgeVoicePlayer()
+const voiceOn = ref(true)
+let voicePlaying = false
+let voiceRun = 0
+let playedKeys = []
 
 let pollTimer = null
 let clockTimer = null
@@ -87,6 +96,7 @@ function applySnapshot(data) {
   snapshot.value = data
   storage.clearPendingJudgeInvite()
   loadBoard(data.boardId)
+  narrate()
 }
 
 async function loadBoard(boardId) {
@@ -140,11 +150,57 @@ function stopPolling() {
   }
 }
 
+function voiceStorageKey() {
+  return `wolfbook:judgeVoice:${roomId.value}`
+}
+
+function loadPlayedKeys() {
+  try {
+    const saved = uni.getStorageSync(voiceStorageKey())
+    playedKeys = Array.isArray(saved) ? saved : []
+  } catch (error) {
+    playedKeys = []
+  }
+}
+
+function narrate() {
+  if (!voicePlayer.supported || !voiceOn.value || voicePlaying || !active) return
+  const next = voiceCue(snapshot.value, now.value)
+  if (!shouldPlay(next, playedKeys)) return
+  playedKeys = rememberCue(playedKeys, next)
+  try {
+    uni.setStorageSync(voiceStorageKey(), playedKeys)
+  } catch (error) {
+    // 存不了就只在内存里记
+  }
+  voicePlaying = true
+  const run = ++voiceRun
+  voicePlayer
+    .playScript(next)
+    .catch(() => {})
+    .finally(() => {
+      if (run === voiceRun) voicePlaying = false
+    })
+}
+
+function toggleVoice() {
+  voiceOn.value = !voiceOn.value
+  if (!voiceOn.value) stopVoice()
+}
+
+// 停播时当前那句的播放回调可能不再回来，直接放开「正在播」
+function stopVoice() {
+  voicePlayer.stop()
+  voiceRun += 1
+  voicePlaying = false
+}
+
 function startClock() {
   stopClock()
   now.value = Date.now()
   clockTimer = setInterval(() => {
     now.value = Date.now()
+    narrate()
   }, 1000)
 }
 
@@ -255,6 +311,7 @@ onLoad((options) => {
   if (boardName) {
     storage.setPendingJudgeInvite({ roomId: roomId.value, boardName })
   }
+  loadPlayedKeys()
 })
 
 onShareAppMessage(() => judgeSharePayload())
@@ -271,6 +328,7 @@ onHide(() => {
   active = false
   stopPolling()
   stopClock()
+  stopVoice()
   keepScreenOn(false)
 })
 
@@ -278,6 +336,7 @@ onUnload(() => {
   active = false
   stopPolling()
   stopClock()
+  voicePlayer.destroy()
   keepScreenOn(false)
 })
 </script>
@@ -287,6 +346,7 @@ onUnload(() => {
     <NavBar back :title="title">
       <template #side>
         <text v-if="snapshot && view !== 'lobby'" class="jr-logbtn" @tap="logOpen = true">记录</text>
+        <text v-if="snapshot && snapshot.host && voicePlayer.supported" class="jr-logbtn" @tap="toggleVoice">{{ voiceOn ? '播报开' : '播报关' }}</text>
       </template>
     </NavBar>
     <view v-if="pollError" class="nt-gutter">
@@ -477,6 +537,7 @@ onUnload(() => {
 }
 
 .jr-logbtn {
+  margin-left: 12rpx;
   padding: 8rpx 20rpx;
   border-radius: 24rpx;
   background: var(--panel-raised);
