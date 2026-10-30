@@ -659,7 +659,8 @@ public class JudgeService {
                 pendingView(room, players, self, judgeViewer),
                 isPaused(room),
                 room.getStepDeadline(),
-                buildNightInfo(room, players, self, judgeViewer)
+                buildNightInfo(room, players, self, judgeViewer),
+                Boolean.TRUE.equals(room.getAutoJudgeEnabled())
         );
     }
 
@@ -693,13 +694,15 @@ public class JudgeService {
             if (step != null && step.kind() == NightKind.WOLF && wolf) {
                 Map<Integer, Integer> chosen = new HashMap<>();
                 submissions.stream()
-                        .filter(submission -> submission.kind() == NightKind.WOLF && NightResolver.KILL.equals(submission.action()))
+                        .filter(submission -> submission.kind() == NightKind.WOLF
+                                && (NightResolver.KILL.equals(submission.action()) || NightResolver.NONE.equals(submission.action())))
                         .forEach(submission -> chosen.put(submission.actorSeat(), submission.targetSeat()));
                 picks = players.stream()
                         .filter(player -> Boolean.TRUE.equals(player.getPlaying()) && Boolean.TRUE.equals(player.getAlive())
                                 && player.getSeatNo() != null && nightKindOf(player) == NightKind.WOLF)
                         .sorted(Comparator.comparing(JudgeRoomPlayerEntity::getSeatNo))
-                        .map(player -> new WolfbookDtos.JudgeWolfPickView(player.getSeatNo(), chosen.get(player.getSeatNo())))
+                        .map(player -> new WolfbookDtos.JudgeWolfPickView(player.getSeatNo(), chosen.get(player.getSeatNo()),
+                                chosen.containsKey(player.getSeatNo())))
                         .toList();
             }
             if (step != null && step.kind() == NightKind.WITCH && mechanic == Mechanic.WITCH) {

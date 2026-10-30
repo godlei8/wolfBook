@@ -638,7 +638,9 @@ public final class WolfbookDtos {
             /** 当前阶段的截止时间（夜间步骤、出局技能询问、投票、发言），给客户端倒计时；没有为 null。 */
             LocalDateTime phaseDeadline,
             /** 只发给查看者本人的夜间私密信息（狼队、女巫、预言家）；法官和没有可给的人为 null。 */
-            JudgeNightInfoView nightInfo
+            JudgeNightInfoView nightInfo,
+            /** 新流程房间（建房时 autoJudge = true）；false 是线上旧版小程序建的房间，客户端走旧主持台。 */
+            boolean autoJudge
     ) {
     }
 
@@ -650,7 +652,8 @@ public final class WolfbookDtos {
                                      Integer checkedSeat, String checkResult) {
     }
 
-    public record JudgeWolfPickView(int seatNo, Integer targetSeatNo) {
+    /** decided：这只狼今晚交过刀人或空刀；targetSeatNo 为 null 且 decided 为 true 即空刀，decided 为 false 是还没选。 */
+    public record JudgeWolfPickView(int seatNo, Integer targetSeatNo, boolean decided) {
     }
 
     /** 出局待办（只发给当事人和法官）：skill_ask 技能询问 / hunter_shot 开枪选人 / badge 移交警徽；options 是 use / skip。 */

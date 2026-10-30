@@ -974,6 +974,27 @@ class JudgeFlowIntegrationTests {
     }
 
     @Test
+    void snapshotSaysWhetherTheRoomIsNewFlow() throws Exception {
+        Assertions.assertTrue(autoGameHostSnapshot().path("autoJudge").asBoolean(false));
+        Game legacy = startedGame();
+        JsonNode snapshot = legacy.snapshot(legacy.host);
+        Assertions.assertTrue(snapshot.has("autoJudge"), snapshot.toString());
+        Assertions.assertFalse(snapshot.path("autoJudge").asBoolean(true));
+    }
+
+    @Test
+    void wolfPicksTellNoKillFromUndecided() throws Exception {
+        Game game = autoGame12(false);
+        List<Integer> wolves = game.seatsByRole().get("狼人");
+        game.act(wolves.get(0), "none", null);
+        JsonNode picks = game.snapshot(game.players.get(wolves.get(1) - 1)).path("nightInfo").path("wolfPicks");
+        for (JsonNode pick : picks) {
+            Assertions.assertTrue(pick.path("targetSeatNo").isNull(), pick.toString());
+            Assertions.assertEquals(pick.path("seatNo").asInt() == wolves.get(0), pick.path("decided").asBoolean(), pick.toString());
+        }
+    }
+
+    @Test
     void witchSeesTheKnifeOnlyOnHerStep() throws Exception {
         Game game = autoGame12(false);
         Map<String, List<Integer>> seats = game.seatsByRole();
@@ -1199,6 +1220,11 @@ class JudgeFlowIntegrationTests {
         game.readyAll();
         game.start();
         return game;
+    }
+
+    private JsonNode autoGameHostSnapshot() throws Exception {
+        Game game = autoGame(false);
+        return game.snapshot(game.host);
     }
 
     private Game autoGame(boolean sheriff) throws Exception {
