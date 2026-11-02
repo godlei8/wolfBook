@@ -1,6 +1,6 @@
 // 电子法官联调脚本：用多个 Mock 账号真打本地后端（start-backend-dev.ps1，test profile 任意 code 都能登录）跑完整局，
 // 每一轮把每个人的快照交给小程序的视图逻辑（utils/judge/*），检查零场外和请求格式。只对本地跑。
-// 用法：node scripts/judge-e2e.mjs [http://127.0.0.1:8088] [observer|joined|both]
+// 用法：node scripts/judge-e2e.mjs [http://127.0.0.1:8088] [observer|joined|wolfking|both]（both 三局都跑；狼王守卫要先在本地库跑 deploy/sql/2026-11-02-wolf-king-mechanic.sql）
 import { phaseTitle, pickView, countdown } from '../src/utils/judge/room-view.js'
 import { isStepHolder, nightArt, nightPanel, panelHeight, seatBadges } from '../src/utils/judge/night-panel.js'
 import { lobbyAction } from '../src/utils/judge/lobby.js'
@@ -228,8 +228,9 @@ async function hostDo(host, roomId, hostSnap, action) {
 }
 
 const games = []
-if (MODE !== 'joined') games.push({ mode: 'observer', keyword: '守卫', count: 9 })
-if (MODE !== 'observer') games.push({ mode: 'joined', keyword: '预女猎白', count: 12 })
+if (MODE === 'both' || MODE === 'observer') games.push({ mode: 'observer', keyword: '守卫九人局', count: 9 })
+if (MODE === 'both' || MODE === 'joined') games.push({ mode: 'joined', keyword: '预女猎白', count: 12 })
+if (MODE === 'both' || MODE === 'wolfking') games.push({ mode: 'joined', keyword: '狼王守卫', count: 12 })
 for (const game of games) await runGame(game)
 console.log(`\n走过的视图：${[...seen].join(' ')}；房主播报台词出现 ${narrations} 次`)
 console.log(problems.length ? `\n${problems.length} 个问题` : '\n没有发现问题')
