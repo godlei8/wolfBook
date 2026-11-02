@@ -659,13 +659,45 @@ public class JudgeService {
                 pendingView(room, players, self, judgeViewer),
                 isPaused(room),
                 room.getStepDeadline(),
-                buildNightInfo(room, players, self, judgeViewer)
+                buildNightInfo(room, players, self, judgeViewer, events),
+                Boolean.TRUE.equals(room.getAutoJudgeEnabled()),
+                buildDayInfo(room, players, self, events)
         );
+    }
+
+    /** 查看者本人白天的上警报名和投票状态（只在新流程房间）。 */
+    private WolfbookDtos.JudgeDayInfoView buildDayInfo(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players,
+                                                      JudgeRoomPlayerEntity self, List<JudgeActionEventEntity> events) {
+        if (self == null || !Boolean.TRUE.equals(room.getAutoJudgeEnabled()) || !ROOM_STATUS_PLAYING.equals(room.getRoomStatus())) {
+            return null;
+        }
+        String phase = safeText(room.getCurrentPhase(), "");
+        Integer selfSeat = Boolean.TRUE.equals(self.getPlaying()) ? self.getSeatNo() : null;
+        if (PHASE_SHERIFF_SIGNUP.equals(phase)) {
+            return new WolfbookDtos.JudgeDayInfoView(selfSeat != null && Boolean.TRUE.equals(self.getSheriffCandidate()), false, false, null, 0, 0);
+        }
+        if (!Set.of(PHASE_EXILE_VOTE, PHASE_VOTE_PK, PHASE_SHERIFF_VOTE, PHASE_SHERIFF_PK).contains(phase)) {
+            return null;
+        }
+        Set<Integer> eligible = eligibleVoters(room, players, phase);
+        Set<Integer> voted = votedSeats(room, players, phase, events);
+        String type = PHASE_SHERIFF_VOTE.equals(phase) || PHASE_SHERIFF_PK.equals(phase) ? EVENT_SHERIFF_VOTE_SUBMIT : EVENT_VOTE_SUBMIT;
+        Integer myVote = events.stream()
+                .filter(event -> type.equals(event.getActionType()) && phase.equals(event.getPhase())
+                        && Objects.equals(safeInt(event.getDayNo(), 1), safeInt(room.getCurrentDay(), 1))
+                        && Objects.equals(event.getActorPlayerId(), self.getPlayerId()))
+                .reduce((left, right) -> right)
+                .map(event -> asPositiveInteger(readMap(event.getPayloadJson()).get("targetSeatNo")))
+                .orElse(null);
+        int votedCount = (int) voted.stream().filter(eligible::contains).count();
+        return new WolfbookDtos.JudgeDayInfoView(null, selfSeat != null && eligible.contains(selfSeat),
+                selfSeat != null && voted.contains(selfSeat), myVote, votedCount, eligible.size());
     }
 
     /** 查看者本人的夜间私密信息（只在新流程房间）。法官有 nightActions 全量，不给。 */
     private WolfbookDtos.JudgeNightInfoView buildNightInfo(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players,
-                                                          JudgeRoomPlayerEntity self, boolean judgeViewer) {
+                                                          JudgeRoomPlayerEntity self, boolean judgeViewer,
+                                                          List<JudgeActionEventEntity> events) {
         if (judgeViewer || self == null || !Boolean.TRUE.equals(self.getPlaying()) || self.getSeatNo() == null
                 || !Boolean.TRUE.equals(room.getAutoJudgeEnabled()) || ROOM_STATUS_LOBBY.equals(room.getRoomStatus())) {
             return null;
@@ -684,27 +716,50 @@ public class JudgeService {
         Integer knifeSeat = null;
         Integer checkedSeat = null;
         String checkResult = null;
+        Boolean antidote = null;
+        Boolean poison = null;
+        Integer lastGuardSeat = null;
+        String myAction = null;
+        Integer myTarget = null;
         boolean night = ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) && PHASE_NIGHT_ACTION.equals(room.getCurrentPhase())
                 && room.getNightStep() != null;
         if (night && alive) {
+            Map<String, Object> status = readMap(self.getStatusJson());
+            if (mechanic == Mechanic.WITCH) {
+                antidote = !Boolean.FALSE.equals(status.get("antidote"));
+                poison = !Boolean.FALSE.equals(status.get("poison"));
+            }
+            if (mechanic == Mechanic.GUARD) {
+                lastGuardSeat = asPositiveInteger(status.get("lastGuardSeat"));
+            }
             List<NightPlan.NightStep> steps = nightSteps(room, safeInt(room.getCurrentDay(), 1));
             NightPlan.NightStep step = room.getNightStep() < steps.size() ? steps.get(room.getNightStep()) : null;
-            List<NightResolver.Submission> submissions = tonightSubmissions(room, players);
+            List<NightResolver.Submission> submissions = tonightSubmissions(room, players, events);
             if (step != null && step.kind() == NightKind.WOLF && wolf) {
                 Map<Integer, Integer> chosen = new HashMap<>();
                 submissions.stream()
-                        .filter(submission -> submission.kind() == NightKind.WOLF && NightResolver.KILL.equals(submission.action()))
+                        .filter(submission -> submission.kind() == NightKind.WOLF
+                                && (NightResolver.KILL.equals(submission.action()) || NightResolver.NONE.equals(submission.action())))
                         .forEach(submission -> chosen.put(submission.actorSeat(), submission.targetSeat()));
                 picks = players.stream()
                         .filter(player -> Boolean.TRUE.equals(player.getPlaying()) && Boolean.TRUE.equals(player.getAlive())
                                 && player.getSeatNo() != null && nightKindOf(player) == NightKind.WOLF)
                         .sorted(Comparator.comparing(JudgeRoomPlayerEntity::getSeatNo))
-                        .map(player -> new WolfbookDtos.JudgeWolfPickView(player.getSeatNo(), chosen.get(player.getSeatNo())))
+                        .map(player -> new WolfbookDtos.JudgeWolfPickView(player.getSeatNo(), chosen.get(player.getSeatNo()),
+                                chosen.containsKey(player.getSeatNo())))
                         .toList();
             }
             if (step != null && step.kind() == NightKind.WITCH && mechanic == Mechanic.WITCH) {
                 Map<String, Object> phaseData = readMap(room.getPhaseData());
                 knifeSeat = Boolean.TRUE.equals(phaseData.get("knifeDecided")) ? asPositiveInteger(phaseData.get("knifeSeat")) : null;
+            }
+            NightResolver.Submission mine = submissions.stream()
+                    .filter(submission -> submission.actorSeat() == self.getSeatNo())
+                    .reduce((left, right) -> right)
+                    .orElse(null);
+            if (mine != null) {
+                myAction = mine.action();
+                myTarget = mine.targetSeat();
             }
             if (mechanic == Mechanic.SEER) {
                 NightResolver.Submission check = submissions.stream()
@@ -717,10 +772,12 @@ public class JudgeService {
                 }
             }
         }
-        if (teammates.isEmpty() && picks.isEmpty() && knifeSeat == null && checkedSeat == null) {
+        if (teammates.isEmpty() && picks.isEmpty() && knifeSeat == null && checkedSeat == null
+                && antidote == null && lastGuardSeat == null && myAction == null) {
             return null;
         }
-        return new WolfbookDtos.JudgeNightInfoView(teammates, picks, knifeSeat, checkedSeat, checkResult);
+        return new WolfbookDtos.JudgeNightInfoView(teammates, picks, knifeSeat, checkedSeat, checkResult,
+                antidote, poison, lastGuardSeat, myAction, myTarget);
     }
 
     private WolfbookDtos.JudgeSpeechView speechView(JudgeRoomEntity room) {
@@ -1163,10 +1220,16 @@ public class JudgeService {
 
     /** 今晚的夜间提交（每个座位最后一条），旧事件没有 action 字段时按中文 actionType 换算。 */
     private List<NightResolver.Submission> tonightSubmissions(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players) {
+        return tonightSubmissions(room, players, loadEvents(room.getRoomId()));
+    }
+
+    /** 同上，用已经读出来的事件（拼快照时整间房只读一次）。 */
+    private List<NightResolver.Submission> tonightSubmissions(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players,
+                                                              List<JudgeActionEventEntity> events) {
         Map<String, JudgeRoomPlayerEntity> playersById = players.stream()
                 .collect(Collectors.toMap(JudgeRoomPlayerEntity::getPlayerId, player -> player));
         Map<Integer, NightResolver.Submission> bySeat = new LinkedHashMap<>();
-        for (JudgeActionEventEntity event : loadEvents(room.getRoomId())) {
+        for (JudgeActionEventEntity event : events) {
             if (!EVENT_NIGHT_SUBMIT.equals(event.getActionType())
                     || !Objects.equals(safeInt(event.getDayNo(), 1), safeInt(room.getCurrentDay(), 1))
                     || !PHASE_NIGHT_ACTION.equals(event.getPhase())) {
@@ -1700,7 +1763,7 @@ public class JudgeService {
 
     // ---------- 出局待办：技能询问、猎人开枪、移交警徽（只对 auto_judge_enabled 的房间）----------
 
-    private static final int SKILL_ASK_SECONDS = 10;
+    private static final int SKILL_ASK_SECONDS = 15;
     private static final int HUNTER_SHOT_SECONDS = 20;
     private static final int BADGE_SECONDS = 30;
     private static final String PENDING_SKILL_ASK = "skill_ask";
@@ -2124,10 +2187,16 @@ public class JudgeService {
 
     /** 这一轮已经投了的座位（弃票也算）。 */
     private Set<Integer> votedSeats(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players, String phase) {
+        return votedSeats(room, players, phase, loadEvents(room.getRoomId()));
+    }
+
+    /** 同上，用已经读出来的事件。 */
+    private Set<Integer> votedSeats(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players, String phase,
+                                    List<JudgeActionEventEntity> events) {
         String type = PHASE_SHERIFF_VOTE.equals(phase) || PHASE_SHERIFF_PK.equals(phase) ? EVENT_SHERIFF_VOTE_SUBMIT : EVENT_VOTE_SUBMIT;
         Map<String, Integer> seatById = new HashMap<>();
         players.stream().filter(player -> player.getSeatNo() != null).forEach(player -> seatById.put(player.getPlayerId(), player.getSeatNo()));
-        return loadEvents(room.getRoomId()).stream()
+        return events.stream()
                 .filter(event -> type.equals(event.getActionType()) && phase.equals(event.getPhase())
                         && Objects.equals(safeInt(event.getDayNo(), 1), safeInt(room.getCurrentDay(), 1)))
                 .map(event -> seatById.get(event.getActorPlayerId()))

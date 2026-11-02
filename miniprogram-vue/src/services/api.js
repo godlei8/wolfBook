@@ -172,6 +172,16 @@ function normalizeJudgeRoomSnapshot(snapshot) {
     nightActions: snapshot.nightActions || [],
     nightHistory: snapshot.nightHistory || [],
     pendingNightAction: snapshot.pendingNightAction || { submitted: false, targetSeatNo: null, note: '' },
+    rounds: snapshot.rounds || [],
+    pkSeats: snapshot.pkSeats || [],
+    sheriffCandidates: snapshot.sheriffCandidates || [],
+    nightInfo: snapshot.nightInfo || null,
+    pending: snapshot.pending || null,
+    speech: snapshot.speech || null,
+    currentStep: snapshot.currentStep || null,
+    paused: Boolean(snapshot.paused),
+    phaseDeadline: snapshot.phaseDeadline || null,
+    autoJudge: Boolean(snapshot.autoJudge),
   }
 }
 
@@ -318,6 +328,21 @@ export default {
         data: payload,
         header: createAuthHeader(),
       }),
+    )
+  },
+  async updateJudgeRoomRules(roomId, rules) {
+    return normalizeJudgeRoomSnapshot(
+      await request({ url: `/api/judge/rooms/${roomId}/rules`, method: 'PUT', data: rules, header: createAuthHeader() }),
+    )
+  },
+  async submitJudgeSheriff(roomId, payload) {
+    return normalizeJudgeRoomSnapshot(
+      await request({ url: `/api/judge/rooms/${roomId}/sheriff`, method: 'POST', data: payload, header: createAuthHeader() }),
+    )
+  },
+  async submitJudgeSkill(roomId, payload) {
+    return normalizeJudgeRoomSnapshot(
+      await request({ url: `/api/judge/rooms/${roomId}/skill`, method: 'POST', data: payload, header: createAuthHeader() }),
     )
   },
   async submitJudgeVote(roomId, payload) {

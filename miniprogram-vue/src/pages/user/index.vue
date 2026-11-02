@@ -108,6 +108,17 @@ async function refreshData() {
 }
 
 function requestWxLoginCode() {
+  // #ifdef H5
+  // H5 拿不到微信登录凭证：开发模式下给一个本浏览器固定的模拟 code（本地后端 test 配置接受任意 code），方便在浏览器里联调
+  if (import.meta.env.DEV) {
+    let code = uni.getStorageSync('h5_dev_login_code')
+    if (!code) {
+      code = `h5-dev-${Date.now().toString(36)}`
+      uni.setStorageSync('h5_dev_login_code', code)
+    }
+    return Promise.resolve(code)
+  }
+  // #endif
   return new Promise((resolve, reject) => {
     uni.login({
       provider: 'weixin',

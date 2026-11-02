@@ -27,6 +27,12 @@ page {
   --text-2: #b8adc9;
   --text-3: #9a90ae;
   --text-soft: #d9cfe6;
+  --text-4: #6b6280;
+  --panel-sunk: #1b1724;
+  --line-strong: #4a4060;
+  --scrim: rgba(7, 6, 10, 0.6);
+  --scrim-strong: rgba(7, 6, 10, 0.86);
+  --warn-bg: rgba(214, 92, 92, 0.16);
   --gold: #f2b33d;
   --moon: #5fe3e0;
   --camp-god: #e9c46a;

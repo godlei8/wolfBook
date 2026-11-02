@@ -309,7 +309,9 @@ public final class WolfbookDtos {
             String overview,
             List<NightStepView> nightOrder,
             List<RoleRuleView> roleRules,
-            List<RuleSectionView> sections
+            List<RuleSectionView> sections,
+            /** 板子的电子法官规则（没配的项已补默认值，胜负按胜利条件文字判断），建房页显示和预填房间规则用。 */
+            JudgeRules judgeRules
     ) {
     }
 
@@ -638,8 +640,21 @@ public final class WolfbookDtos {
             /** 当前阶段的截止时间（夜间步骤、出局技能询问、投票、发言），给客户端倒计时；没有为 null。 */
             LocalDateTime phaseDeadline,
             /** 只发给查看者本人的夜间私密信息（狼队、女巫、预言家）；法官和没有可给的人为 null。 */
-            JudgeNightInfoView nightInfo
+            JudgeNightInfoView nightInfo,
+            /** 新流程房间（建房时 autoJudge = true）；false 是线上旧版小程序建的房间，客户端走旧主持台。 */
+            boolean autoJudge,
+            /** 白天只给查看者本人的信息（上警报名、投票）；不在这些阶段为 null。 */
+            JudgeDayInfoView dayInfo
     ) {
+    }
+
+    /**
+     * sheriffCandidate：上警报名阶段本人报没报（别人的不给）；
+     * 投票阶段（放逐、PK、警长投票）：canVote 本人能不能投，voted / myVote 本人投了没有、投给谁（null 是弃票），
+     * votedCount / voterCount 已投人数和能投人数（公开进度，不含投给谁）。
+     */
+    public record JudgeDayInfoView(Boolean sheriffCandidate, boolean canVote, boolean voted, Integer myVote,
+                                   int votedCount, int voterCount) {
     }
 
     /**
@@ -647,10 +662,17 @@ public final class WolfbookDtos {
      * knifeSeat 女巫那一步的刀口（空刀为 null）；checkedSeat / checkResult 预言家今晚查验的人和结果（提交后立刻可见）。
      */
     public record JudgeNightInfoView(List<Integer> teammateSeats, List<JudgeWolfPickView> wolfPicks, Integer knifeSeat,
-                                     Integer checkedSeat, String checkResult) {
+                                     Integer checkedSeat, String checkResult,
+                                     /** 女巫自己的解药 / 毒药还在不在（其他人为 null）。 */
+                                     Boolean antidote, Boolean poison,
+                                     /** 守卫上一夜守的座位（不能连守；其他人为 null）。 */
+                                     Integer lastGuardSeat,
+                                     /** 本人今晚最后一次提交的行动（英文 kill / guard / save / poison / check / confirm / none）和目标。 */
+                                     String myAction, Integer myTarget) {
     }
 
-    public record JudgeWolfPickView(int seatNo, Integer targetSeatNo) {
+    /** decided：这只狼今晚交过刀人或空刀；targetSeatNo 为 null 且 decided 为 true 即空刀，decided 为 false 是还没选。 */
+    public record JudgeWolfPickView(int seatNo, Integer targetSeatNo, boolean decided) {
     }
 
     /** 出局待办（只发给当事人和法官）：skill_ask 技能询问 / hunter_shot 开枪选人 / badge 移交警徽；options 是 use / skip。 */

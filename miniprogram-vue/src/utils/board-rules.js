@@ -162,6 +162,7 @@ export function normalizeRuleDetail(detail, resolveUrl = (url) => url) {
     nightOrder,
     roleRules,
     sections,
+    judgeRules: source.judgeRules || null,
     hasContent: Boolean(overview || nightOrder.length || roleRules.length || sections.length),
   }
 }
