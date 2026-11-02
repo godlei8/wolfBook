@@ -4,6 +4,8 @@ package com.wolfbook.backend.domain;
  * 一局电子法官的规则：开局时从板子拷进房间（judge_rooms.rules_json），板子之后再改也不影响进行中的对局。
  * 胜负规则不在这里配，取板子表的 win_condition 列（含「屠城」按屠城，其余按屠边）。
  * 字段允许为空，表示「用默认值」，由 {@link #withDefaults()} 补齐。
+ * 女巫的两项（首夜可自救、一晚一瓶）是全局规则（三期 A）：补默认值时一律换成全局值，
+ * 板子、建房请求和旧房间 rules_json 里写的别的值都不算数，字段只为读旧 JSON 保留。
  */
 public record JudgeRules(
         String winCondition,
@@ -21,7 +23,6 @@ public record JudgeRules(
     public static final String WIN_SIDE = "side";
     public static final String WIN_CITY = "city";
     public static final String SELF_SAVE_FIRST_NIGHT = "first_night";
-    public static final String SELF_SAVE_NEVER = "never";
     public static final int DEFAULT_SPEECH_SECONDS = 120;
     public static final int DEFAULT_SHERIFF_SPEECH_SECONDS = 150;
     public static final int DEFAULT_WOLF_SECONDS = 60;
@@ -64,8 +65,8 @@ public record JudgeRules(
         return new JudgeRules(
                 winCondition == null ? fallback.winCondition() : winCondition,
                 sheriffDefault == null ? fallback.sheriffDefault() : sheriffDefault,
-                witchSelfSave == null ? fallback.witchSelfSave() : witchSelfSave,
-                witchOnePotionPerNight == null ? fallback.witchOnePotionPerNight() : witchOnePotionPerNight,
+                fallback.witchSelfSave(),
+                fallback.witchOnePotionPerNight(),
                 speechSeconds == null || speechSeconds <= 0 ? fallback.speechSeconds() : speechSeconds,
                 sheriffSpeechSeconds == null || sheriffSpeechSeconds <= 0 ? fallback.sheriffSpeechSeconds() : sheriffSpeechSeconds,
                 wolfSeconds == null || wolfSeconds <= 0 ? fallback.wolfSeconds() : wolfSeconds,

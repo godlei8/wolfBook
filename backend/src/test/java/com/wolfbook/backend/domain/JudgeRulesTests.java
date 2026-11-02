@@ -41,10 +41,11 @@ class JudgeRulesTests {
     void partialJudgeRulesFallBackPerField() {
         JudgeRules partial = new JudgeRules(null, false, "never", false, null, null);
         JudgeRules rules = partial.withDefaults();
-        assertEquals("never", rules.witchSelfSave());
+        // 女巫规则是全局规则：写了别的值也按首夜可自救、一晚一瓶
+        assertEquals("first_night", rules.witchSelfSave());
         assertEquals(120, rules.speechSeconds());
         assertFalse(rules.sheriffDefault());
-        assertFalse(rules.witchOnePotionPerNight());
+        assertTrue(rules.witchOnePotionPerNight());
     }
 
     @Test
@@ -53,7 +54,7 @@ class JudgeRulesTests {
                 new JudgeRules("side", true, "never", true, 90, null));
         JudgeRules rules = JudgeRules.fromBoard(board("屠城", detail));
         assertEquals("city", rules.winCondition());
-        assertEquals("never", rules.witchSelfSave());
+        assertEquals("first_night", rules.witchSelfSave());
         assertEquals(90, rules.speechSeconds());
         assertEquals(150, rules.sheriffSpeechSeconds());
     }

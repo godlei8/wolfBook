@@ -1215,6 +1215,21 @@ class JudgeFlowIntegrationTests {
     }
 
     @Test
+    void oldRoomWithNeverStillSelfSavesOnNightOne() throws Exception {
+        Game game = autoGame12(false);
+        jdbcTemplate.update("UPDATE judge_rooms SET rules_json = ? WHERE room_id = ?",
+                "{\"winCondition\":\"side\",\"witchSelfSave\":\"never\",\"witchOnePotionPerNight\":false}", game.roomId);
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int witch = seats.get("女巫").get(0);
+        for (int wolf : seats.get("狼人")) {
+            game.act(wolf, "kill", witch);
+        }
+        Assertions.assertEquals("witch", game.snapshot(game.host).path("currentStep").path("kind").asText());
+        game.act(witch, "save", witch);
+        Assertions.assertEquals("first_night", game.snapshot(game.host).path("rules").path("witchSelfSave").asText());
+    }
+
+    @Test
     void roomRulesNeverChangeTheWinCondition() throws Exception {
         Game game = lobbyGame("{\"boardId\":" + BOARD_ID + ",\"judgeMode\":\"observer\",\"autoJudge\":true,"
                 + "\"rules\":{\"winCondition\":\"city\",\"witchSelfSave\":\"never\"}}");

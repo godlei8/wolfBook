@@ -576,6 +576,37 @@ class BackendApplicationTests {
     }
 
     @Test
+    void boardWitchRulesAreGlobalAndOldValuesAreDropped() throws Exception {
+        String adminToken = loginAndGetAdminToken();
+        String body = """
+                {
+                  "name": "女巫全局规则板",
+                  "playerCount": 6,
+                  "difficulty": "入门",
+                  "roles": [{"roleId": 6, "count": 2}, {"roleId": 2, "count": 1}, {"roleId": 9, "count": 3}],
+                  "ruleDetail": {"judgeRules": {"witchSelfSave": "bogus", "witchOnePotionPerNight": false, "speechSeconds": 90}}
+                }
+                """;
+        String created = mockMvc.perform(post("/admin/boards")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        int boardId = objectMapper.readTree(created).path("data").path("id").asInt();
+        try {
+            mockMvc.perform(get("/api/boards/{id}", boardId))
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.ruleDetail.judgeRules.witchSelfSave").value("first_night"))
+                    .andExpect(jsonPath("$.data.ruleDetail.judgeRules.witchOnePotionPerNight").value(true))
+                    .andExpect(jsonPath("$.data.ruleDetail.judgeRules.speechSeconds").value(90));
+        } finally {
+            mockMvc.perform(delete("/admin/boards/{id}", boardId).header("Authorization", "Bearer " + adminToken))
+                    .andExpect(jsonPath("$.code").value(0));
+        }
+    }
+
+    @Test
     void adminBoardSaveRejectsAWitchWakingBeforeTheWolves() throws Exception {
         String adminToken = loginAndGetAdminToken();
         String witchFirst = """

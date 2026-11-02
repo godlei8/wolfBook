@@ -99,13 +99,6 @@ class NightResolverTests {
     }
 
     @Test
-    void witchNeverSelfSaveRuleBlocksNightOneToo() {
-        JudgeRules never = new JudgeRules("side", true, JudgeRules.SELF_SAVE_NEVER, true, 120, 150);
-        Map<Integer, NightResolver.SeatState> seats = seats();
-        assertThrows(ApiException.class, () -> NightResolver.validate(save(2, 2), seats.get(2), seats.get(2), never, 1, 2));
-    }
-
-    @Test
     void witchCanOnlySaveTheKnifedSeat() {
         Map<Integer, NightResolver.SeatState> seats = seats();
         assertThrows(ApiException.class, () -> NightResolver.validate(save(2, 8), seats.get(2), seats.get(8), RULES, 1, 7));
