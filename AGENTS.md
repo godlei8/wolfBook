@@ -33,6 +33,7 @@ npm install
 npm run dev       # Vite 开发服务器
 npm run build     # vue-tsc 类型检查 + vite 构建
 ```
+后台单测在 `admin/tests/*.test.mjs`（Node 内置测试运行器，Node 23+ 直接加载 `.ts`）：`node --test "tests/*.test.mjs"`，目前覆盖 `utils/board.ts` 里和后端同口径的狼队判断与通用夜间顺序（含狼王）。
 
 ### 小程序（在 `miniprogram-vue/` 下）
 ```powershell

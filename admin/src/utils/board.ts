@@ -100,6 +100,7 @@ export function featuredBoards(boards: Board[]) {
 export const MECHANIC_LABELS: Record<string, string> = {
   villager: '平民',
   wolf: '狼人',
+  wolf_king: '狼王',
   guard: '守卫',
   witch: '女巫',
   seer: '预言家',
@@ -108,6 +109,8 @@ export const MECHANIC_LABELS: Record<string, string> = {
 }
 const MECHANIC_PRIORITY: Record<string, number> = { guard: 1, wolf: 2, witch: 3, seer: 4, hunter: 5 }
 const SOLO_WOLVES = ['石像鬼', '机械狼']
+// 跟狼队一起睁眼刀人的机制（后端 Mechanic.wolfTeam 为真的那些）
+const WOLF_TEAM_MECHANICS = ['wolf', 'wolf_king']
 const DEFAULT_ACTIONS: Record<string, string> = {
   狼人: '狼人请睁眼，今晚要刀谁？',
   女巫: '女巫请睁眼，今晚他倒下了，你要用解药吗？你要用毒药吗？',
@@ -120,7 +123,7 @@ const DEFAULT_ACTIONS: Record<string, string> = {
 /** 跟狼队一起睁眼刀人的角色（法官主持台会把它们合成一步）：有机制看机制，没有机制按阵营（排除石像鬼、机械狼）。 */
 export function isWolfTeam(role?: Role | null) {
   if (!role) return false
-  if (role.mechanic) return role.mechanic === 'wolf'
+  if (role.mechanic) return WOLF_TEAM_MECHANICS.includes(role.mechanic)
   return role.faction === '狼人' && !SOLO_WOLVES.includes(role.name)
 }
 
