@@ -30,6 +30,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 class JudgeFlowIntegrationTests {
 
     private static final int BOARD_ID = 3;
+    private static final int WOLF_KING_BOARD_ID = 8;
     private static final int PLAYER_COUNT = 9;
     private static final AtomicInteger SEQUENCE = new AtomicInteger();
 
@@ -1129,6 +1130,157 @@ class JudgeFlowIntegrationTests {
         }
     }
 
+    // ---- 狼王（三期 A）----
+
+    @Test
+    void wolfKingBoardIsFullAndJoinable() throws Exception {
+        String board = mockMvc.perform(get("/api/boards/" + WOLF_KING_BOARD_ID)).andReturn().getResponse().getContentAsString();
+        Assertions.assertEquals("full", objectMapper.readTree(board).path("data").path("judgeSupportLevel").asText(), board);
+        Game game = joinedGame(WOLF_KING_BOARD_ID, 12);
+        Assertions.assertEquals("playing", game.snapshot(game.host).path("roomStatus").asText());
+    }
+
+    @Test
+    void knifedWolfKingShoots() throws Exception {
+        Game game = wolfKingGame();
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int wolfKing = seats.get("黑狼王").get(0);
+        int villager = seats.get("平民").get(0);
+        game.finishNight(wolfKing, null);
+        JsonNode ask = game.snapshot(game.players.get(wolfKing - 1)).path("pending");
+        Assertions.assertEquals("skill_ask", ask.path("kind").asText(), ask.toString());
+        Assertions.assertEquals("[\"use\",\"skip\"]", ask.path("options").toString(), "自刀的狼王照样能开枪");
+        game.skill(wolfKing, "{\"decision\":\"use\"}");
+        JsonNode shot = game.skill(wolfKing, "{\"decision\":\"use\",\"targetSeatNo\":" + villager + "}");
+        Assertions.assertFalse(game.player(shot, villager).path("alive").asBoolean());
+        Assertions.assertEquals(wolfKing + "号发动技能，带走了" + villager + "号", shot.path("latestAnnouncement").asText());
+    }
+
+    @Test
+    void exiledWolfKingShootsBeforeTheGameMovesOn() throws Exception {
+        Game game = wolfKingGame();
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int wolfKing = seats.get("黑狼王").get(0);
+        game.finishNight();
+        JsonNode out = exile(game, seats.get("平民"), wolfKing);
+        Assertions.assertEquals("skill_pending", out.path("currentPhase").asText(), out.toString());
+        Assertions.assertEquals("[\"use\",\"skip\"]", game.snapshot(game.players.get(wolfKing - 1)).path("pending").path("options").toString());
+    }
+
+    @Test
+    void poisonedWolfKingOnlyConfirms() throws Exception {
+        Game game = wolfKingGame();
+        int wolfKing = game.seatsByRole().get("黑狼王").get(0);
+        JsonNode day = game.finishNight(null, wolfKing);
+        Assertions.assertFalse(game.player(day, wolfKing).path("alive").asBoolean(), day.toString());
+        JsonNode ask = game.snapshot(game.players.get(wolfKing - 1)).path("pending");
+        Assertions.assertEquals("[\"skip\"]", ask.path("options").toString(), "被毒的狼王不能开枪");
+    }
+
+    @Test
+    void forcedOutWolfKingOnlyConfirms() throws Exception {
+        Game game = wolfKingGame();
+        int wolfKing = game.seatsByRole().get("黑狼王").get(0);
+        JsonNode out = game.advance(game.host, "{\"action\":\"force_out\",\"forceOutSeatNo\":" + wolfKing + "}");
+        Assertions.assertEquals(0, out.path("code").asInt(), out.toString());
+        Assertions.assertEquals("[\"skip\"]", game.snapshot(game.players.get(wolfKing - 1)).path("pending").path("options").toString(),
+                "被点杀的狼王不能开枪");
+    }
+
+    @Test
+    void wolfKingShotHunterShootsBack() throws Exception {
+        Game game = wolfKingGame();
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int wolfKing = seats.get("黑狼王").get(0);
+        int hunter = seats.get("猎人").get(0);
+        game.finishNight(wolfKing, null);
+        game.skill(wolfKing, "{\"decision\":\"use\"}");
+        game.skill(wolfKing, "{\"decision\":\"use\",\"targetSeatNo\":" + hunter + "}");
+        JsonNode ask = game.snapshot(game.players.get(hunter - 1)).path("pending");
+        Assertions.assertEquals("skill_ask", ask.path("kind").asText(), ask.toString());
+        Assertions.assertEquals("[\"use\",\"skip\"]", ask.path("options").toString(), "被狼王带走的猎人没中毒，可以接着开枪");
+    }
+
+    @Test
+    void hunterAndWolfKingAnnounceTheSameWay() throws Exception {
+        Game game = wolfKingGame();
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int hunter = seats.get("猎人").get(0);
+        int villager = seats.get("平民").get(0);
+        game.finishNight(hunter, null);
+        game.skill(hunter, "{\"decision\":\"use\"}");
+        String announcement = game.skill(hunter, "{\"decision\":\"use\",\"targetSeatNo\":" + villager + "}").path("latestAnnouncement").asText();
+        Assertions.assertTrue(announcement.matches("\\d+号发动技能，带走了\\d+号"), announcement);
+        Assertions.assertFalse(announcement.contains("开枪"), announcement);
+    }
+
+    @Test
+    void wolfKingAloneClosesTheWolfStep() throws Exception {
+        Game game = wolfKingGame();
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int wolfKing = seats.get("黑狼王").get(0);
+        Assertions.assertEquals("guard", game.snapshot(game.host).path("currentStep").path("kind").asText());
+        markDead(game, seats.get("狼人"));
+        Assertions.assertEquals("wolf", game.expireDeadline().path("currentStep").path("kind").asText());
+        game.act(wolfKing, "kill", seats.get("平民").get(0));
+        Assertions.assertNotEquals("wolf", game.snapshot(game.host).path("currentStep").path("kind").asText(),
+                "只剩狼王一只活狼：他交了就关步");
+    }
+
+    @Test
+    void lastWolfKingOrHunterOutEndsAtOnce() throws Exception {
+        Game good = wolfKingGame();
+        Map<String, List<Integer>> seats = good.seatsByRole();
+        markDead(good, seats.get("狼人"));
+        good.finishNight();
+        JsonNode goodWins = exile(good, seats.get("平民"), seats.get("黑狼王").get(0));
+        Assertions.assertEquals("finished", goodWins.path("roomStatus").asText(), goodWins.toString());
+        Assertions.assertEquals("好人", goodWins.path("winnerCamp").asText());
+        Assertions.assertTrue(goodWins.path("pending").isNull() || goodWins.path("pending").isMissingNode(), "最后一只狼是狼王也不能开枪");
+
+        Game wolves = wolfKingGame();
+        Map<String, List<Integer>> wolfSeats = wolves.seatsByRole();
+        markDead(wolves, List.of(wolfSeats.get("预言家").get(0), wolfSeats.get("女巫").get(0), wolfSeats.get("守卫").get(0)));
+        wolves.finishNight();
+        JsonNode wolvesWin = exile(wolves, wolfSeats.get("狼人"), wolfSeats.get("猎人").get(0));
+        Assertions.assertEquals("finished", wolvesWin.path("roomStatus").asText(), wolvesWin.toString());
+        Assertions.assertEquals("狼人", wolvesWin.path("winnerCamp").asText());
+        Assertions.assertTrue(wolvesWin.path("pending").isNull() || wolvesWin.path("pending").isMissingNode(), "最后一个神职是猎人也不能开枪");
+    }
+
+    @Test
+    void wolfKingGameRunsToTheEnd() throws Exception {
+        Game game = wolfKingGame();
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        List<Integer> wolfSide = new ArrayList<>(seats.get("狼人"));
+        wolfSide.addAll(seats.get("黑狼王"));
+        JsonNode view = game.snapshot(game.host);
+        for (int i = 0; i < 60 && !"finished".equals(view.path("roomStatus").asText()); i++) {
+            List<Integer> aliveGood = new ArrayList<>();
+            List<Integer> aliveWolves = new ArrayList<>();
+            for (JsonNode player : view.path("players")) {
+                if (player.path("seatNo").isInt() && player.path("alive").asBoolean()) {
+                    (wolfSide.contains(player.path("seatNo").asInt()) ? aliveWolves : aliveGood).add(player.path("seatNo").asInt());
+                }
+            }
+            switch (view.path("currentPhase").asText()) {
+                case "night_action" -> view = game.finishNight(aliveGood.get(0), null);
+                case "skill_pending" -> view = game.skipPending();
+                case "day_announce" -> view = game.advance(game.host, "{\"action\":\"start_speech\"}").path("data");
+                case "day_speech" -> view = game.advance(game.host, "{\"action\":\"start_vote\"}").path("data");
+                case "exile_vote", "vote_pk" -> {
+                    for (int voter : aliveGood) {
+                        game.vote(voter, aliveWolves.get(0));
+                    }
+                    view = game.advance(game.host, "{\"action\":\"resolve_vote\"}").path("data");
+                }
+                case "vote_result" -> view = game.advance(game.host, "{\"action\":\"continue\"}").path("data");
+                default -> Assertions.fail("没想到的阶段：" + view);
+            }
+        }
+        Assertions.assertEquals("finished", view.path("roomStatus").asText(), view.toString());
+    }
+
     // ---- 惰性推进（autoJudge）----
 
     @Test
@@ -1329,6 +1481,33 @@ class JudgeFlowIntegrationTests {
         return game;
     }
 
+    /** 狼王守卫（种子板子 8）有法官、不上警。 */
+    private Game wolfKingGame() throws Exception {
+        Game game = lobbyGame("{\"boardId\":" + WOLF_KING_BOARD_ID + ",\"judgeMode\":\"observer\",\"autoJudge\":true,\"sheriffEnabled\":false}", 12);
+        game.readyAll();
+        game.start();
+        return game;
+    }
+
+    /** 直接在库里把这些座位设成出局（造残局用）。 */
+    private void markDead(Game game, List<Integer> seats) {
+        for (int seat : seats) {
+            jdbcTemplate.update("UPDATE judge_room_players SET alive = 0 WHERE room_id = ? AND seat_no = ?", game.roomId, seat);
+        }
+    }
+
+    /** 天亮后直接发言、投票：voters 全投 target，然后结算。返回结算后的快照。 */
+    private JsonNode exile(Game game, List<Integer> voters, int target) throws Exception {
+        game.advance(game.host, "{\"action\":\"start_speech\"}");
+        game.advance(game.host, "{\"action\":\"start_vote\"}");
+        for (int voter : voters) {
+            game.vote(voter, target);
+        }
+        JsonNode resolved = game.advance(game.host, "{\"action\":\"resolve_vote\"}");
+        Assertions.assertEquals(0, resolved.path("code").asInt(), resolved.toString());
+        return resolved.path("data");
+    }
+
     private JsonNode autoGameHostSnapshot() throws Exception {
         Game game = autoGame(false);
         return game.snapshot(game.host);
@@ -1478,7 +1657,9 @@ class JudgeFlowIntegrationTests {
                 String kind = view.path("currentStep").path("kind").asText();
                 if ("wolf".equals(kind) && knife != null && !knifed) {
                     knifed = true;
-                    for (int wolf : roles.getOrDefault("狼人", List.of())) {
+                    List<Integer> wolves = new ArrayList<>(roles.getOrDefault("狼人", List.of()));
+                    wolves.addAll(roles.getOrDefault("黑狼王", List.of()));
+                    for (int wolf : wolves) {
                         if (player(view, wolf).path("alive").asBoolean()) {
                             act(wolf, "kill", knife);
                         }
