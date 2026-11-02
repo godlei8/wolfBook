@@ -8,3 +8,4 @@ UPDATE roles SET mechanic = 'seer' WHERE name = '预言家' AND mechanic IS NULL
 UPDATE roles SET mechanic = 'hunter' WHERE name = '猎人' AND mechanic IS NULL;
 UPDATE roles SET mechanic = 'idiot' WHERE name = '白痴' AND mechanic IS NULL;
 UPDATE roles SET mechanic = 'villager' WHERE name = '平民' AND mechanic IS NULL;
+UPDATE roles SET mechanic = 'wolf_king' WHERE name = '黑狼王' AND mechanic IS NULL;

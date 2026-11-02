@@ -91,10 +91,10 @@ public class ContentSchemaInitializer implements ApplicationRunner {
         return true;
     }
 
-    /** 给已有角色按名字回填技能机制（和 deploy/sql/2026-10-30-role-mechanic.sql 同一份映射）。 */
+    /** 给已有角色按名字回填技能机制（和 deploy/sql/2026-10-30-role-mechanic.sql、2026-11-02-wolf-king-mechanic.sql 同一份映射）。 */
     private void backfillRoleMechanics() {
         String[][] names = {{"守卫", "guard"}, {"狼人", "wolf"}, {"女巫", "witch"}, {"预言家", "seer"},
-                {"猎人", "hunter"}, {"白痴", "idiot"}, {"平民", "villager"}};
+                {"猎人", "hunter"}, {"白痴", "idiot"}, {"平民", "villager"}, {"黑狼王", "wolf_king"}};
         for (String[] pair : names) {
             jdbcTemplate.update("UPDATE roles SET mechanic = ? WHERE name = ? AND mechanic IS NULL", pair[1], pair[0]);
         }
