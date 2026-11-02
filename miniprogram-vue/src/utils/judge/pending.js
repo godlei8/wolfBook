@@ -1,7 +1,8 @@
-// 出局待办（纯函数，有单测）：技能询问、猎人开枪、移交警徽。
+// 出局待办（纯函数，有单测）：技能询问、开枪（猎人 / 狼王）、移交警徽。
 // 快照里的 pending 只发给当事人和法官；其他人只看到「等待出局玩家确认」，不知道是谁、什么技能。
 
-const KIND_LABELS = { skill_ask: '出局技能', hunter_shot: '猎人开枪', badge: '移交警徽' }
+// 猎人和狼王共用开枪待办，文字里不写是谁
+const KIND_LABELS = { skill_ask: '出局技能', hunter_shot: '开枪', badge: '移交警徽' }
 
 function waiting(detail = '') {
   return { kind: 'waiting', title: '等待出局玩家确认', detail, options: [], needsTarget: false, targets: [], buttons: [] }

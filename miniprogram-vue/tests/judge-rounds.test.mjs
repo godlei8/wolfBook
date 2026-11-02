@@ -37,7 +37,7 @@ test('roundsShowPublicInfoDuringTheGame', () => {
   assert.equal(day.exiles[1].out, '4 号出局')
   assert.equal(day.exiles[1].abstain, '弃票 1、7')
   assert.deepEqual(day.exiles[1].tallies, ['4 号 2.5 票 ← 2、3'])
-  assert.deepEqual(day.skills, ['4 号开枪带走 7 号'])
+  assert.deepEqual(day.skills, ['4 号发动技能，带走 7 号'])
   assert.deepEqual(day.nightActions, [], '对局中不放夜间行动')
 })
 

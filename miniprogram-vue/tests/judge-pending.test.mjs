@@ -39,5 +39,13 @@ test('othersOnlySeeWaiting', () => {
   const judge = pendingPanel(room({ seatNo: null, judgeObserver: true }, { kind: 'hunter_shot', seatNo: 2, options: ['use', 'skip'] }, { judgeViewer: true }))
   assert.equal(judge.kind, 'waiting')
   assert.deepEqual(judge.buttons, [])
-  assert.equal(judge.detail, '2 号 · 猎人开枪')
+  assert.equal(judge.detail, '2 号 · 开枪')
+})
+
+test('shotPanelNeverSaysHunter', () => {
+  // 狼王和猎人共用开枪待办：标题、说明、按钮里都不能写「猎人」
+  const shot = pendingPanel(room({ seatNo: 2 }, { kind: 'hunter_shot', seatNo: 2, options: ['use', 'skip'] }), 4)
+  const judge = pendingPanel(room({ seatNo: null, judgeObserver: true }, { kind: 'hunter_shot', seatNo: 2, options: ['use', 'skip'] }, { judgeViewer: true }))
+  const texts = [shot.title, shot.detail, judge.title, judge.detail, ...shot.buttons.map((button) => button.label)].filter(Boolean)
+  assert.equal(texts.some((text) => text.includes('猎人')), false, texts.join(' / '))
 })

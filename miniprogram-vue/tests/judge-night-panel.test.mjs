@@ -67,6 +67,19 @@ test('witchPanelHidesSaveWhenNoAntidote', () => {
   assert.deepEqual(used.buttons, [], '一晚一瓶：用过就没有按钮')
 })
 
+test('witchRulesAreGlobal', () => {
+  // 板子或房间里写了别的女巫规则也不算数：首夜可以自救，第二夜起不行
+  const rules = { witchSelfSave: 'never', witchOnePotionPerNight: false }
+  const firstNight = nightPanel(night('witch', '女巫', me(3), {
+    line: 'x', nightInfo: { knifeSeat: 3, antidote: true, poison: true }, extra: { rules },
+  }))
+  assert.equal(firstNight.buttons.some((button) => button.action === 'save'), true, '首夜可以自救')
+  const later = nightPanel(night('witch', '女巫', me(3), {
+    line: 'x', nightInfo: { knifeSeat: 3, antidote: true, poison: true }, extra: { rules, currentDay: 2 },
+  }))
+  assert.equal(later.buttons.some((button) => button.action === 'save'), false, '第二夜起不能自救')
+})
+
 test('seerPanelShowsTheResultAfterChecking', () => {
   const before = nightPanel(night('seer', '预言家', me(4), { line: 'x' }), 6)
   assert.deepEqual(before.buttons.map((button) => button.label), ['查验 6 号'])

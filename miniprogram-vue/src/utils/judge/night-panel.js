@@ -95,8 +95,8 @@ export function nightPanel(snapshot, selection = 0) {
     const knifeSeat = info.knifeSeat || null
     const antidote = info.antidote !== false
     const poison = info.poison !== false
-    const rules = snapshot.rules || {}
-    const selfSaveAllowed = (rules.witchSelfSave || 'first_night') === 'first_night' && (snapshot.currentDay || 1) === 1
+    // 女巫只有首夜可以自救（全局规则，不看板子和房间规则）
+    const selfSaveAllowed = (snapshot.currentDay || 1) === 1
     const canSave = antidote && Boolean(knifeSeat) && (knifeSeat !== self.seatNo || selfSaveAllowed)
     const buttons = []
     if (!done) {

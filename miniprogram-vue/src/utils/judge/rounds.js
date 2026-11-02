@@ -29,7 +29,8 @@ function exileRow(exile) {
 function skillText(skill) {
   switch (skill.kind) {
     case 'hunter_shot':
-      return `${skill.actorSeatNo} 号开枪带走 ${skill.targetSeatNo} 号`
+      // 猎人、狼王同一句，不暴露是谁开的枪
+      return `${skill.actorSeatNo} 号发动技能，带走 ${skill.targetSeatNo} 号`
     case 'badge_passed':
       return skill.targetSeatNo ? `${skill.actorSeatNo} 号把警徽交给 ${skill.targetSeatNo} 号` : `${skill.actorSeatNo} 号撕掉警徽`
     case 'idiot_revealed':
