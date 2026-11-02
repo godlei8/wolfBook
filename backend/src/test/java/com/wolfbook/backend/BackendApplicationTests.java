@@ -1095,11 +1095,13 @@ class BackendApplicationTests {
     }
 
     @Test
-    void mechanicsEndpointListsTheSevenMechanics() throws Exception {
+    void mechanicsEndpointListsTheEightMechanics() throws Exception {
         String adminToken = loginAndGetAdminToken();
         mockMvc.perform(get("/admin/roles/mechanics").header("Authorization", "Bearer " + adminToken))
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.length()").value(7))
+                .andExpect(jsonPath("$.data.length()").value(8))
+                .andExpect(jsonPath("$.data[?(@.code == 'wolf_king')].label").value("狼王"))
+                .andExpect(jsonPath("$.data[?(@.code == 'wolf_king')].wolfTeam").value(true))
                 .andExpect(jsonPath("$.data[0].code").value("villager"))
                 .andExpect(jsonPath("$.data[?(@.code == 'guard')].nightPriority").value(1))
                 .andExpect(jsonPath("$.data[?(@.code == 'wolf')].wolfTeam").value(true));
