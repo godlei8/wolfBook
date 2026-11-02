@@ -35,6 +35,7 @@ public final class RoleSkillRegistry {
             "女巫", Mechanic.WITCH,
             "预言家", Mechanic.SEER,
             "猎人", Mechanic.HUNTER,
+            "黑狼王", Mechanic.WOLF_KING,
             "白痴", Mechanic.IDIOT,
             "平民", Mechanic.VILLAGER
     );

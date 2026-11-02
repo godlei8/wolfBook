@@ -183,6 +183,23 @@ class NightResolverTests {
     }
 
     @Test
+    void poisonedWolfKingCannotShoot() {
+        Map<Integer, NightResolver.SeatState> seats = seats();
+        seats.put(6, new NightResolver.SeatState(6, "黑狼王", "狼人", Mechanic.WOLF_KING, true, false, false, null));
+        NightResolver.Outcome outcome = NightResolver.resolve(List.of(poison(2, 6)), seats, RULES, 2, RANDOM);
+        assertEquals(Set.of(6), outcome.cannotShoot());
+    }
+
+    @Test
+    void knifedWolfKingCanShoot() {
+        Map<Integer, NightResolver.SeatState> seats = seats();
+        seats.put(6, new NightResolver.SeatState(6, "黑狼王", "狼人", Mechanic.WOLF_KING, true, false, false, null));
+        NightResolver.Outcome outcome = NightResolver.resolve(List.of(kill(5, 6)), seats, RULES, 2, RANDOM);
+        assertTrue(outcome.deadSeats().contains(6));
+        assertTrue(outcome.cannotShoot().isEmpty());
+    }
+
+    @Test
     void witchFeedbackFollowsTheMechanic() {
         // 2 号叫「配药人」：照样收到刀口
         Map<Integer, NightResolver.SeatState> seats = seats();
