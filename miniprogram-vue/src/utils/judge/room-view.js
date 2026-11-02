@@ -22,7 +22,7 @@ export function pickView(snapshot) {
  * 座位分两列：左 1..⌈N/2⌉，右其余。每侧 ≤ 6 人用 92rpx 头像，再多用 68rpx。
  * cardHeight 是中间立绘的高度，正好和一侧座位列对齐。空座位也占位。
  */
-export function seatColumns(players, playerCount) {
+export function seatColumns(players, playerCount, stageHeight = 0) {
   const total = Math.max(0, Number(playerCount) || 0)
   const bySeat = new Map()
   for (const player of players || []) {
@@ -34,14 +34,24 @@ export function seatColumns(players, playerCount) {
   })
   const perSide = Math.ceil(total / 2)
   const compact = perSide > 6
-  const size = compact ? 68 : 92
-  const gap = compact ? 16 : 20
+  let size = compact ? 68 : 92
+  let gap = compact ? 16 : 20
+  const columnHeight = () => (perSide > 0 ? perSide * size + (perSide - 1) * gap : 0)
+  const baseHeight = columnHeight()
+  // 屏幕比默认布局高时（stageHeight 是页面量出来的可用高度）：座位先放大，再拉开间距，都有上限
+  if (perSide > 1 && stageHeight > baseHeight) {
+    const maxSize = compact ? 84 : 112
+    const maxGap = compact ? 40 : 60
+    size = Math.min(maxSize, Math.max(size, Math.floor((stageHeight - (perSide - 1) * gap) / perSide)))
+    gap = Math.min(maxGap, Math.max(gap, Math.floor((stageHeight - perSide * size) / (perSide - 1))))
+  }
   return {
     left: seats.slice(0, perSide),
     right: seats.slice(perSide),
     size,
     gap,
-    cardHeight: perSide > 0 ? perSide * size + (perSide - 1) * gap : 0,
+    baseHeight,
+    cardHeight: columnHeight(),
   }
 }
 

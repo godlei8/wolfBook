@@ -48,6 +48,27 @@ test('compactSeatsForLargeBoards', () => {
   assert.equal(eighteen.size, 68)
 })
 
+test('seatsGrowToFillATallScreen', () => {
+  // 手机比默认布局高：座位放大、间距拉开，填满给的高度
+  const tall = seatColumns(seated(12), 12, 900)
+  assert.equal(tall.baseHeight, 6 * 92 + 5 * 20)
+  assert.ok(tall.size > 92 && tall.size <= 112, String(tall.size))
+  assert.equal(tall.cardHeight, 6 * tall.size + 5 * tall.gap, '立绘和两列一样高')
+  assert.ok(tall.cardHeight <= 900 && tall.cardHeight > 900 - 6, `两列基本填满：${tall.cardHeight}`)
+  // 比默认还矮：保持默认尺寸（页面滚动），不缩小
+  const short = seatColumns(seated(12), 12, 500)
+  assert.equal(short.size, 92)
+  assert.equal(short.cardHeight, short.baseHeight)
+  // 特别高的屏幕：座位和间距都有上限，立绘不无限拉长
+  const huge = seatColumns(seated(12), 12, 2000)
+  assert.equal(huge.size, 112)
+  assert.equal(huge.cardHeight, 6 * 112 + 5 * huge.gap)
+  assert.ok(huge.cardHeight < 1000, String(huge.cardHeight))
+  const compact = seatColumns(seated(16), 16, 900)
+  assert.ok(compact.size > 68 && compact.size <= 84, String(compact.size))
+  assert.ok(8 * compact.size + 7 * compact.gap <= 900)
+})
+
 test('countdownNeverGoesNegativeAndWarnsAtTen', () => {
   const now = parseServerTime('2026-10-30T20:00:00')
   assert.deepEqual(countdown('2026-10-30T20:01:05.500', now, false), { seconds: 65, text: '1:05', warn: false })

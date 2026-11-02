@@ -1,39 +1,43 @@
 <script setup>
-// 上警：报名（只看到自己报没报）→ 警上发言（警上的人能退水，发言者本人能结束发言）→ 警长投票 / PK（没上警的人投）。
+// 上警：报名（只看到自己报没报）→ 警上发言（警上的人能退水，发言者本人能结束发言）→ 警长投票 / PK（没上警的人点两侧带「警」的座位投）。
 // 房主的推进按钮（截止报名、开始投票等）在房间页底部的操作栏。
 import { computed, ref, watch } from 'vue'
 import { countdown, phaseTitle } from '../../../utils/judge/room-view.js'
 import { sheriffPanel } from '../../../utils/judge/sheriff.js'
+import { gameAreaStyle, stageLayout } from '../../../utils/judge/stage.js'
+import { useStageFit } from '../../../utils/judge/stage-fit.js'
 
 const props = defineProps({
   snapshot: { type: Object, required: true },
   now: { type: Number, required: true },
   busy: { type: Boolean, default: false },
+  // 房间页记住的牌桌高度（rpx）和底部有没有固定操作栏
+  stageHeight: { type: Number, default: 0 },
+  bar: { type: Boolean, default: false },
 })
-const emit = defineEmits(['act'])
+const emit = defineEmits(['act', 'fit'])
 
 const selection = ref(0)
 watch(() => props.snapshot.currentPhase, () => {
   selection.value = 0
 })
 
+const layout = computed(() => stageLayout(props.snapshot, 'sheriff', { selection: selection.value, stageHeight: props.stageHeight }))
 const panel = computed(() => sheriffPanel(props.snapshot))
 const title = computed(() => phaseTitle(props.snapshot))
 const clock = computed(() => countdown(props.snapshot.phaseDeadline, props.now, props.snapshot.paused))
-const seats = computed(() => (props.snapshot.players || []).filter((player) => player.seatNo).sort((a, b) => a.seatNo - b.seatNo))
+const speaker = computed(() => (props.snapshot.players || []).find((player) => player.seatNo && player.seatNo === panel.value.speakerSeat) || null)
+const picked = computed(() => (panel.value.canVote && panel.value.targets.includes(selection.value) ? selection.value : 0))
+const info = computed(() => props.snapshot.dayInfo || {})
+useStageFit(props, emit, () => layout.value.cardHeight)
 
-function seatClass(player) {
-  return {
-    'jd-seat--dead': player.alive === false,
-    'jd-seat--speaker': panel.value.speakerSeat === player.seatNo,
-    'jd-seat--on': selection.value === player.seatNo,
-    'jd-seat--target': panel.value.canVote && panel.value.targets.includes(player.seatNo),
-  }
+function seatClass(seat) {
+  return { 'nt-seat--dim': seat.dim, 'nt-seat--on': seat.selected, 'nt-seat--speaking': seat.speaking, 'nt-seat--out': seat.out }
 }
 
-function tapSeat(player) {
-  if (!panel.value.canVote || !panel.value.targets.includes(player.seatNo)) return
-  selection.value = selection.value === player.seatNo ? 0 : player.seatNo
+function tapSeat(seat) {
+  if (!seat.tappable) return
+  selection.value = selection.value === seat.seatNo ? 0 : seat.seatNo
 }
 
 function send(payload) {
@@ -47,191 +51,99 @@ function endSpeech() {
 }
 
 function vote() {
-  if (!selection.value) return
-  send({ targetSeatNo: selection.value })
+  if (!picked.value) return
+  send({ targetSeatNo: picked.value })
 }
 </script>
 
 <template>
-  <view class="nt-gutter jd">
-    <view class="jd-head">
-      <text class="jd-head__title serif">{{ title }}</text>
-      <text class="jd-head__clock" :class="{ 'jd-head__clock--warn': clock.warn }">{{ clock.text }}</text>
-    </view>
-
-    <view class="jd-seats">
-      <view v-for="player in seats" :key="player.seatNo" class="jd-seat" :class="seatClass(player)" @tap="tapSeat(player)">
-        <view class="nt-token jd-token" :class="{ 'nt-token--dead': player.alive === false }">
-          <image v-if="player.avatar" class="nt-token__img" :src="player.avatar" mode="aspectFill" />
-          <view v-else class="nt-token__text jd-token__text">{{ (player.nickname || '').slice(0, 1) }}</view>
+  <view class="nt-game">
+    <view class="nt-stage">
+      <view v-for="side in layout.sides" :key="side.key" class="nt-stage__col" :class="`nt-stage__col--${side.key}`" :style="{ gap: `${layout.gap}rpx` }">
+        <view
+          v-for="seat in side.seats"
+          :key="seat.seatNo"
+          class="nt-seat"
+          :class="seatClass(seat)"
+          :style="{ width: `${layout.size}rpx`, height: `${layout.size}rpx` }"
+          @tap="tapSeat(seat)"
+        >
+          <view class="nt-token nt-seat__token" :class="{ 'nt-token--dead': seat.dead }">
+            <image v-if="seat.avatar" class="nt-token__img" :src="seat.avatar" mode="aspectFill" />
+            <view v-else class="nt-token__text nt-seat__text">{{ seat.initial }}</view>
+          </view>
+          <text class="nt-seat__no">{{ seat.seatNo }}</text>
+          <text v-if="seat.role" class="nt-seat__role" :style="{ backgroundColor: seat.roleColor }">{{ seat.role }}</text>
+          <text v-if="seat.tag" class="nt-seat__tag" :class="seat.tagKind ? `nt-seat__tag--${seat.tagKind}` : ''">{{ seat.tag }}</text>
+          <text v-if="seat.sheriff" class="nt-seat__sheriff">★</text>
         </view>
-        <text class="jd-seat__no">{{ player.seatNo }}</text>
-        <text v-if="panel.candidates.includes(player.seatNo)" class="jd-seat__tag">警</text>
+      </view>
+
+      <view class="nt-stage__center nt-card" :style="{ height: `${layout.cardHeight}rpx` }">
+        <image class="nt-scene__bg" src="/static/scenes/square.webp" mode="aspectFill" webp />
+        <view class="nt-scene__body">
+          <block v-if="panel.stage === 'signup'">
+            <text class="nt-scene__icon">★</text>
+            <text class="nt-scene__title">上警竞选</text>
+            <text class="nt-scene__text">警长有 1.5 票，并决定发言顺序</text>
+          </block>
+          <block v-else-if="panel.stage === 'speech'">
+            <text class="nt-scene__kicker">警上发言</text>
+            <view v-if="speaker" class="nt-token nt-scene__avatar">
+              <image v-if="speaker.avatar" class="nt-token__img" :src="speaker.avatar" mode="aspectFill" />
+              <view v-else class="nt-token__text nt-scene__avatar-text">{{ (speaker.nickname || '').slice(0, 1) }}</view>
+            </view>
+            <text class="nt-scene__title">{{ speaker ? `${speaker.seatNo} 号 ${speaker.nickname}` : '等待发言' }}</text>
+            <text class="nt-scene__text">警上：{{ panel.candidates.join('、') || '无' }} 号</text>
+          </block>
+          <block v-else>
+            <text class="nt-scene__kicker">{{ panel.stage === 'pk' ? '警长 PK' : '警长投票' }}</text>
+            <text class="nt-scene__big">{{ info.votedCount || 0 }}/{{ info.voterCount || 0 }}</text>
+            <text class="nt-scene__text">已投票</text>
+            <text v-if="panel.canVote" class="nt-scene__text">{{ picked ? `已选 ${picked} 号` : '点两侧带「警」的座位' }}</text>
+          </block>
+        </view>
       </view>
     </view>
 
-    <view class="nt-panel jd-panel">
-      <block v-if="panel.stage === 'signup'">
-        <text class="jd-panel__title">上警竞选警长</text>
-        <text class="jd-panel__hint">警长有 1.5 票，并决定发言顺序。报名只有你自己看得到。</text>
-        <view v-if="panel.canSignUp" class="jd-buttons">
-          <view class="nt-btn jd-button" :class="[panel.candidate ? 'nt-btn--gold' : 'nt-btn--ghost', { 'nt-btn--disabled': busy }]" @tap="send({ candidate: true })">
-            {{ panel.candidate ? '已上警' : '上警' }}
+    <view class="nt-game__head">
+      <text class="nt-game__title serif">{{ title }}</text>
+      <text class="nt-game__clock" :class="{ 'nt-game__clock--warn': clock.warn }">{{ clock.text }}</text>
+    </view>
+
+    <view class="nt-gutter nt-game__area" :style="gameAreaStyle(bar)">
+      <view class="nt-panel nt-game__panel">
+        <block v-if="panel.stage === 'signup'">
+          <text class="nt-game__lead">要上警竞选警长吗？</text>
+          <text class="nt-game__hint">报名只有你自己看得到，到点自动截止。</text>
+          <view v-if="panel.canSignUp" class="nt-game__buttons">
+            <view class="nt-btn nt-game__button" :class="[panel.candidate ? 'nt-btn--gold' : 'nt-btn--ghost', { 'nt-btn--disabled': busy }]" @tap="send({ candidate: true })">
+              {{ panel.candidate ? '已上警' : '上警' }}
+            </view>
+            <view class="nt-btn nt-game__button" :class="[panel.candidate ? 'nt-btn--ghost' : 'nt-btn--gold', { 'nt-btn--disabled': busy }]" @tap="send({ candidate: false })">
+              {{ panel.candidate ? '不上警了' : '不上警' }}
+            </view>
           </view>
-          <view class="nt-btn jd-button" :class="[panel.candidate ? 'nt-btn--ghost' : 'nt-btn--gold', { 'nt-btn--disabled': busy }]" @tap="send({ candidate: false })">
-            {{ panel.candidate ? '不上警了' : '不上警' }}
+        </block>
+        <block v-else-if="panel.stage === 'speech'">
+          <text class="nt-game__lead">{{ panel.speakerSeat ? `${panel.speakerSeat} 号警上发言` : '警上发言' }}</text>
+          <text class="nt-game__hint">警上：{{ panel.candidates.join('、') || '无' }} 号。警上的人可以退水。</text>
+          <view v-if="panel.canWithdraw || panel.isSpeaker" class="nt-game__buttons">
+            <view v-if="panel.isSpeaker" class="nt-btn nt-btn--gold nt-game__button" :class="{ 'nt-btn--disabled': busy }" @tap="endSpeech">结束发言</view>
+            <view v-if="panel.canWithdraw" class="nt-btn nt-btn--ghost nt-game__button" :class="{ 'nt-btn--disabled': busy }" @tap="send({ withdraw: true })">退水</view>
           </view>
-        </view>
-      </block>
-      <block v-else-if="panel.stage === 'speech'">
-        <text class="jd-panel__title">{{ panel.speakerSeat ? `${panel.speakerSeat} 号警上发言` : '警上发言' }}</text>
-        <text class="jd-panel__hint">警上：{{ panel.candidates.join('、') || '无' }} 号</text>
-        <view v-if="panel.canWithdraw || panel.isSpeaker" class="jd-buttons">
-          <view v-if="panel.isSpeaker" class="nt-btn nt-btn--gold jd-button" :class="{ 'nt-btn--disabled': busy }" @tap="endSpeech">结束发言</view>
-          <view v-if="panel.canWithdraw" class="nt-btn nt-btn--ghost jd-button" :class="{ 'nt-btn--disabled': busy }" @tap="send({ withdraw: true })">退水</view>
-        </view>
-      </block>
-      <block v-else>
-        <text class="jd-panel__title">{{ panel.stage === 'pk' ? '警长 PK 投票' : '警长投票' }}</text>
-        <text class="jd-panel__hint">{{ panel.progress }}{{ panel.voted ? ` · 你投了 ${panel.myVote} 号` : '' }}</text>
-        <view v-if="panel.canVote" class="jd-buttons">
-          <view class="nt-btn nt-btn--gold jd-button" :class="{ 'nt-btn--disabled': !selection || busy }" @tap="vote">
-            {{ selection ? `投给 ${selection} 号` : '点一个警上的座位' }}
+        </block>
+        <block v-else>
+          <text class="nt-game__lead">{{ panel.stage === 'pk' ? '警长 PK 投票' : '警长投票' }}</text>
+          <text class="nt-game__hint">{{ panel.progress }}{{ panel.voted ? ` · 你投了 ${panel.myVote} 号` : '' }}</text>
+          <text v-if="!panel.canVote" class="nt-game__hint">{{ panel.reason }}</text>
+          <view v-if="panel.canVote" class="nt-game__buttons">
+            <view class="nt-btn nt-btn--gold nt-game__button" :class="{ 'nt-btn--disabled': !picked || busy }" @tap="vote">
+              {{ picked ? `投给 ${picked} 号` : '先点一个警上的座位' }}
+            </view>
           </view>
-        </view>
-        <text v-else class="jd-panel__hint">{{ panel.reason }}</text>
-      </block>
+        </block>
+      </view>
     </view>
   </view>
 </template>
-
-<style scoped lang="scss">
-.jd {
-  padding-top: 24rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 28rpx;
-}
-
-.jd-head {
-  display: flex;
-  align-items: baseline;
-  gap: 20rpx;
-}
-
-.jd-head__title {
-  flex: 1;
-  font-size: 36rpx;
-  font-weight: 900;
-  color: var(--text);
-}
-
-.jd-head__clock {
-  font-size: 40rpx;
-  font-weight: 900;
-  color: var(--moon);
-}
-
-.jd-head__clock--warn {
-  color: var(--camp-wolf);
-}
-
-.jd-seats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 24rpx 20rpx;
-}
-
-.jd-seat {
-  position: relative;
-  width: 96rpx;
-  height: 96rpx;
-  border-radius: 48rpx;
-}
-
-.jd-seat--target {
-  box-shadow: 0 0 0 4rpx var(--line);
-}
-
-.jd-seat--speaker {
-  box-shadow: 0 0 0 6rpx var(--gold);
-}
-
-.jd-seat--on {
-  box-shadow: 0 0 0 6rpx var(--moon);
-}
-
-.jd-seat--dead {
-  opacity: 0.6;
-}
-
-.jd-token {
-  width: 100%;
-  height: 100%;
-}
-
-.jd-token__text {
-  font-size: 28rpx;
-}
-
-.jd-seat__no {
-  position: absolute;
-  left: 50%;
-  bottom: -10rpx;
-  transform: translateX(-50%);
-  min-width: 32rpx;
-  padding: 0 8rpx;
-  border-radius: 16rpx;
-  border: 3rpx solid var(--ink);
-  background: var(--gold);
-  color: var(--ink);
-  font-size: 20rpx;
-  font-weight: 900;
-  line-height: 28rpx;
-  text-align: center;
-}
-
-.jd-seat__tag {
-  position: absolute;
-  right: -6rpx;
-  top: -6rpx;
-  width: 34rpx;
-  height: 34rpx;
-  border-radius: 17rpx;
-  border: 3rpx solid var(--ink);
-  background: var(--moon);
-  color: var(--ink);
-  font-size: 20rpx;
-  font-weight: 900;
-  line-height: 34rpx;
-  text-align: center;
-}
-
-.jd-panel {
-  padding: 28rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 16rpx;
-}
-
-.jd-panel__title {
-  font-size: 32rpx;
-  font-weight: 900;
-  color: var(--text);
-}
-
-.jd-panel__hint {
-  font-size: 24rpx;
-  line-height: 1.6;
-  color: var(--text-2);
-}
-
-.jd-buttons {
-  display: flex;
-  gap: 16rpx;
-}
-
-.jd-button {
-  flex: 1;
-}
-</style>

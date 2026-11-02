@@ -1,19 +1,26 @@
 <script setup>
-// 夜晚：所有人同一张立绘屏（两侧座位、居中当前角色立绘、标题和倒计时），
-// 这一步的持有者在立绘下多一块操作面板；其他人同一位置是等高的空白占位，画面结构不变（零场外）。
+// 夜晚：所有人同一张牌桌（两侧座位、居中当前角色立绘、标题和倒计时），
+// 这一步的持有者在立绘下是操作面板；其他人同一位置是同样大小的「天黑请闭眼」面板，画面结构不变（零场外）。
 // 不振动、不弹「轮到你」、不出声；提交成功也不弹提示，只更新面板。
+// 牌桌（座位、样式）和其他阶段共用 utils/judge/stage.js 与 App.vue 的 nt-stage / nt-seat / nt-game 类，
+// 座位标记那段模板每个视图各写一份（自定义组件里不再嵌组件）。
 import { computed, ref, watch } from 'vue'
-import { countdown, phaseTitle, seatColumns } from '../../../utils/judge/room-view.js'
-import { isStepHolder, nightArt, nightPanel, panelHeight, seatBadges } from '../../../utils/judge/night-panel.js'
-import { godSeats, tonightRows } from '../../../utils/judge/judge-bar.js'
+import { countdown, phaseTitle } from '../../../utils/judge/room-view.js'
+import { isStepHolder, nightArt, nightPanel } from '../../../utils/judge/night-panel.js'
+import { tonightRows } from '../../../utils/judge/judge-bar.js'
+import { gameAreaStyle, stageLayout } from '../../../utils/judge/stage.js'
+import { useStageFit } from '../../../utils/judge/stage-fit.js'
 
 const props = defineProps({
   snapshot: { type: Object, required: true },
   board: { type: Object, default: null },
   now: { type: Number, required: true },
   busy: { type: Boolean, default: false },
+  // 房间页记住的牌桌高度（rpx）和底部有没有固定操作栏
+  stageHeight: { type: Number, default: 0 },
+  bar: { type: Boolean, default: false },
 })
-const emit = defineEmits(['act'])
+const emit = defineEmits(['act', 'fit'])
 
 const selection = ref(0)
 const stepKey = computed(() => `${props.snapshot.currentDay}-${props.snapshot.currentStep?.index ?? -1}`)
@@ -21,28 +28,22 @@ watch(stepKey, () => {
   selection.value = 0
 })
 
-const columns = computed(() => seatColumns(props.snapshot.players, props.snapshot.playerCount))
-const badges = computed(() => seatBadges(props.snapshot, selection.value))
+const layout = computed(() => stageLayout(props.snapshot, 'night', { selection: selection.value, stageHeight: props.stageHeight }))
 const holder = computed(() => isStepHolder(props.snapshot))
 const panel = computed(() => nightPanel(props.snapshot, selection.value))
 const title = computed(() => phaseTitle(props.snapshot))
 const clock = computed(() => countdown(props.snapshot.phaseDeadline, props.now, props.snapshot.paused))
 const art = computed(() => nightArt(props.snapshot, props.board))
-const areaHeight = computed(() => panelHeight(props.snapshot.currentStep?.kind))
-// 法官的上帝视角：座位上的身份角标、今晚汇总（法官手机不在零场外的约束里，大家都知道谁是法官）
-const god = computed(() => godSeats(props.snapshot))
+// 法官的「今晚」汇总（法官手机不在零场外的约束里，大家都知道谁是法官）
 const rows = computed(() => tonightRows(props.snapshot, props.board))
+useStageFit(props, emit, () => layout.value.cardHeight)
 
-function godOf(seatNo) {
-  return god.value.get(seatNo) || null
-}
-
-function badgeOf(seatNo) {
-  return badges.value.get(seatNo) || { mate: false, votes: 0, selected: false, disabled: true, dead: false }
+function seatClass(seat) {
+  return { 'nt-seat--dim': seat.dim, 'nt-seat--on': seat.selected, 'nt-seat--speaking': seat.speaking, 'nt-seat--out': seat.out }
 }
 
 function tapSeat(seat) {
-  if (!holder.value || seat.empty || badgeOf(seat.seatNo).disabled) return
+  if (!holder.value || !seat.tappable) return
   selection.value = selection.value === seat.seatNo ? 0 : seat.seatNo
 }
 
@@ -53,65 +54,46 @@ function tapButton(button) {
 </script>
 
 <template>
-  <view class="jn">
-    <view class="jn-stage">
-      <view class="jn-col" :style="{ gap: `${columns.gap}rpx` }">
+  <view class="nt-game">
+    <view class="nt-stage">
+      <view v-for="side in layout.sides" :key="side.key" class="nt-stage__col" :class="`nt-stage__col--${side.key}`" :style="{ gap: `${layout.gap}rpx` }">
         <view
-          v-for="seat in columns.left"
+          v-for="seat in side.seats"
           :key="seat.seatNo"
-          class="jn-seat"
-          :class="{ 'jn-seat--on': badgeOf(seat.seatNo).selected }"
-          :style="{ width: `${columns.size}rpx`, height: `${columns.size}rpx` }"
+          class="nt-seat"
+          :class="seatClass(seat)"
+          :style="{ width: `${layout.size}rpx`, height: `${layout.size}rpx` }"
           @tap="tapSeat(seat)"
         >
-          <view class="nt-token jn-token" :class="{ 'nt-token--dead': badgeOf(seat.seatNo).dead }">
-            <image v-if="seat.player && seat.player.avatar" class="nt-token__img" :src="seat.player.avatar" mode="aspectFill" />
-            <view v-else class="nt-token__text jn-token__text">{{ seat.player ? (seat.player.nickname || '').slice(0, 1) : '' }}</view>
+          <view class="nt-token nt-seat__token" :class="{ 'nt-token--dead': seat.dead }">
+            <image v-if="seat.avatar" class="nt-token__img" :src="seat.avatar" mode="aspectFill" />
+            <view v-else class="nt-token__text nt-seat__text">{{ seat.initial }}</view>
           </view>
-          <text class="jn-seat__no">{{ seat.seatNo }}</text>
-          <text v-if="godOf(seat.seatNo)" class="jn-seat__role" :style="{ backgroundColor: godOf(seat.seatNo).roleColor }">{{ godOf(seat.seatNo).roleShort }}</text>
-          <view v-if="badgeOf(seat.seatNo).mate" class="jn-seat__mate" />
-          <text v-if="badgeOf(seat.seatNo).votes || (godOf(seat.seatNo) && godOf(seat.seatNo).votes)" class="jn-seat__votes">{{ badgeOf(seat.seatNo).votes || godOf(seat.seatNo).votes }}</text>
+          <text class="nt-seat__no">{{ seat.seatNo }}</text>
+          <text v-if="seat.role" class="nt-seat__role" :style="{ backgroundColor: seat.roleColor }">{{ seat.role }}</text>
+          <view v-if="seat.mate" class="nt-seat__mate" />
+          <text v-if="seat.tag" class="nt-seat__tag" :class="seat.tagKind ? `nt-seat__tag--${seat.tagKind}` : ''">{{ seat.tag }}</text>
+          <text v-if="seat.sheriff" class="nt-seat__sheriff">★</text>
         </view>
       </view>
 
-      <view class="jn-art nt-card" :style="{ height: `${columns.cardHeight}rpx` }">
+      <view class="nt-stage__center nt-card" :style="{ height: `${layout.cardHeight}rpx` }">
         <image v-if="art" class="jn-art__img" :src="art" mode="aspectFill" webp />
         <view v-else class="nt-card__back">
           <view class="nt-card__line" />
           <text class="nt-card__moon">☾</text>
         </view>
       </view>
-
-      <view class="jn-col" :style="{ gap: `${columns.gap}rpx` }">
-        <view
-          v-for="seat in columns.right"
-          :key="seat.seatNo"
-          class="jn-seat"
-          :class="{ 'jn-seat--on': badgeOf(seat.seatNo).selected }"
-          :style="{ width: `${columns.size}rpx`, height: `${columns.size}rpx` }"
-          @tap="tapSeat(seat)"
-        >
-          <view class="nt-token jn-token" :class="{ 'nt-token--dead': badgeOf(seat.seatNo).dead }">
-            <image v-if="seat.player && seat.player.avatar" class="nt-token__img" :src="seat.player.avatar" mode="aspectFill" />
-            <view v-else class="nt-token__text jn-token__text">{{ seat.player ? (seat.player.nickname || '').slice(0, 1) : '' }}</view>
-          </view>
-          <text class="jn-seat__no">{{ seat.seatNo }}</text>
-          <text v-if="godOf(seat.seatNo)" class="jn-seat__role" :style="{ backgroundColor: godOf(seat.seatNo).roleColor }">{{ godOf(seat.seatNo).roleShort }}</text>
-          <view v-if="badgeOf(seat.seatNo).mate" class="jn-seat__mate" />
-          <text v-if="badgeOf(seat.seatNo).votes || (godOf(seat.seatNo) && godOf(seat.seatNo).votes)" class="jn-seat__votes">{{ badgeOf(seat.seatNo).votes || godOf(seat.seatNo).votes }}</text>
-        </view>
-      </view>
     </view>
 
-    <view class="jn-head">
-      <text class="jn-head__title serif">{{ title }}</text>
-      <text class="jn-head__clock" :class="{ 'jn-head__clock--warn': clock.warn }">{{ clock.text }}</text>
-      <text class="jn-head__step">{{ snapshot.currentStep ? `${snapshot.currentStep.index + 1} / ${snapshot.currentStep.total}` : '' }}</text>
+    <view class="nt-game__head">
+      <text class="nt-game__title serif">{{ title }}</text>
+      <text class="nt-game__clock" :class="{ 'nt-game__clock--warn': clock.warn }">{{ clock.text }}</text>
+      <text class="nt-game__step">{{ snapshot.currentStep ? `${snapshot.currentStep.index + 1} / ${snapshot.currentStep.total}` : '' }}</text>
     </view>
 
-    <view v-if="snapshot.judgeViewer" class="nt-gutter">
-      <view class="nt-panel jn-panel jn-tonight">
+    <view class="nt-gutter nt-game__area" :style="gameAreaStyle(bar)">
+      <view v-if="snapshot.judgeViewer" class="nt-panel nt-game__panel jn-tonight">
         <text class="jn-panel__label">今晚</text>
         <view v-for="row in rows" :key="row.role" class="jn-tonight__row">
           <text class="jn-tonight__role">{{ row.role }}</text>
@@ -119,9 +101,7 @@ function tapButton(button) {
           <text class="jn-tonight__state">{{ row.state }}</text>
         </view>
       </view>
-    </view>
-    <view v-else class="jn-area nt-gutter" :style="{ height: `${areaHeight}rpx` }">
-      <view v-if="panel" class="nt-panel jn-panel">
+      <view v-else-if="panel" class="nt-panel nt-game__panel jn-panel">
         <block v-if="panel.kind === 'wolf'">
           <view class="jn-panel__row">
             <text class="jn-panel__label">刀口</text>
@@ -169,85 +149,19 @@ function tapButton(button) {
           >{{ button.label }}</view>
         </view>
       </view>
-      <view v-else class="jn-panel jn-panel--blank" />
+      <view v-else class="nt-panel nt-game__panel jn-rest">
+        <text class="jn-rest__moon">☾</text>
+        <text class="jn-rest__text">天黑请闭眼</text>
+      </view>
     </view>
   </view>
 </template>
 
 <style scoped lang="scss">
-.jn-stage {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20rpx;
-  padding: 24rpx var(--page-gutter) 0;
-}
-
-.jn-col {
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-}
-
-.jn-seat {
-  position: relative;
-  border-radius: 50%;
-}
-
-.jn-seat--on {
-  box-shadow: 0 0 0 6rpx var(--moon);
-}
-
-.jn-token {
+.jn-art__img {
   width: 100%;
   height: 100%;
-}
-
-.jn-token__text {
-  font-size: 28rpx;
-}
-
-.jn-seat__no {
-  position: absolute;
-  left: 50%;
-  bottom: -10rpx;
-  transform: translateX(-50%);
-  min-width: 32rpx;
-  padding: 0 8rpx;
-  border-radius: 16rpx;
-  border: 3rpx solid var(--ink);
-  background: var(--gold);
-  color: var(--ink);
-  font-size: 20rpx;
-  font-weight: 900;
-  line-height: 28rpx;
-  text-align: center;
-}
-
-.jn-seat__mate {
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: 20rpx;
-  height: 20rpx;
-  border-radius: 10rpx;
-  border: 3rpx solid var(--ink);
-  background: var(--camp-wolf);
-}
-
-.jn-seat__role {
-  position: absolute;
-  right: -6rpx;
-  top: -6rpx;
-  width: 34rpx;
-  height: 34rpx;
-  border-radius: 17rpx;
-  border: 3rpx solid var(--ink);
-  color: var(--ink);
-  font-size: 20rpx;
-  font-weight: 900;
-  line-height: 34rpx;
-  text-align: center;
+  display: block;
 }
 
 .jn-tonight {
@@ -281,80 +195,21 @@ function tapButton(button) {
   color: var(--text-soft);
 }
 
-.jn-seat__votes {
-  position: absolute;
-  left: -8rpx;
-  top: -8rpx;
-  min-width: 32rpx;
-  border-radius: 16rpx;
-  border: 3rpx solid var(--ink);
-  background: var(--camp-wolf);
-  color: var(--ink);
-  font-size: 20rpx;
-  font-weight: 900;
-  line-height: 28rpx;
-  text-align: center;
+.jn-rest {
+  align-items: center;
+  justify-content: center;
 }
 
-.jn-art {
-  position: relative;
-  flex: 1;
-  min-width: 0;
+.jn-rest__moon {
+  font-size: 56rpx;
+  color: var(--gold);
+  opacity: 0.6;
 }
 
-.jn-art__img {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-.jn-head {
-  display: flex;
-  align-items: baseline;
-  gap: 20rpx;
-  padding: 36rpx var(--page-gutter) 20rpx;
-}
-
-.jn-head__title {
-  flex: 1;
-  font-size: 36rpx;
-  font-weight: 900;
-  color: var(--text);
-}
-
-.jn-head__clock {
-  font-size: 40rpx;
-  font-weight: 900;
-  color: var(--moon);
-}
-
-.jn-head__clock--warn {
-  color: var(--camp-wolf);
-}
-
-.jn-head__step {
-  font-size: 22rpx;
+.jn-rest__text {
+  font-size: 26rpx;
   color: var(--text-3);
-}
-
-/* 面板高度只看步骤类型（零场外）；内容放不下时在面板里滚，不撑出去也不裁掉按钮 */
-.jn-area {
-  box-sizing: border-box;
-  overflow: hidden;
-}
-
-.jn-panel {
-  height: 100%;
-  box-sizing: border-box;
-  overflow-y: auto;
-  padding: 24rpx 28rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 16rpx;
-}
-
-.jn-panel--blank {
-  border-radius: 28rpx;
+  letter-spacing: 4rpx;
 }
 
 .jn-panel__row {

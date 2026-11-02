@@ -32,6 +32,8 @@ const snapshot = ref(null)
 const board = ref(null)
 const pollError = ref('')
 const actionLoading = ref(false)
+// 牌桌高度（rpx）：视图量出来报上来，下一个阶段的视图直接用，座位不会先小后大
+const stageHeight = ref(0)
 
 // 倒计时用的本地时钟，每秒走一下（只是重画，不发请求）
 const now = ref(Date.now())
@@ -388,12 +390,12 @@ onUnload(() => {
     <view v-if="!snapshot && roomGone" class="jr-loading">房间不存在或已经关闭</view>
     <view v-else-if="!snapshot" class="jr-loading">正在进入房间…</view>
     <LobbyView v-else-if="view === 'lobby'" :snapshot="snapshot" :board="board" :busy="actionLoading" @act="onAct" />
-    <NightView v-else-if="view === 'night'" :snapshot="snapshot" :board="board" :now="now" :busy="actionLoading" @act="onAct" />
-    <PendingView v-else-if="view === 'pending'" :snapshot="snapshot" :now="now" :busy="actionLoading" @act="onAct" />
-    <SheriffView v-else-if="view === 'sheriff'" :snapshot="snapshot" :now="now" :busy="actionLoading" @act="onAct" />
-    <AnnounceView v-else-if="view === 'announce'" :snapshot="snapshot" :busy="actionLoading" @act="onAct" />
-    <SpeechView v-else-if="view === 'speech'" :snapshot="snapshot" :now="now" :busy="actionLoading" @act="onAct" />
-    <VoteView v-else-if="view === 'vote' || view === 'voteResult'" :snapshot="snapshot" :now="now" :busy="actionLoading" @act="onAct" />
+    <NightView v-else-if="view === 'night'" :snapshot="snapshot" :board="board" :now="now" :busy="actionLoading" :stage-height="stageHeight" :bar="hasBar" @fit="stageHeight = $event" @act="onAct" />
+    <PendingView v-else-if="view === 'pending'" :snapshot="snapshot" :now="now" :busy="actionLoading" :stage-height="stageHeight" :bar="hasBar" @fit="stageHeight = $event" @act="onAct" />
+    <SheriffView v-else-if="view === 'sheriff'" :snapshot="snapshot" :now="now" :busy="actionLoading" :stage-height="stageHeight" :bar="hasBar" @fit="stageHeight = $event" @act="onAct" />
+    <AnnounceView v-else-if="view === 'announce'" :snapshot="snapshot" :busy="actionLoading" :stage-height="stageHeight" :bar="hasBar" @fit="stageHeight = $event" @act="onAct" />
+    <SpeechView v-else-if="view === 'speech'" :snapshot="snapshot" :now="now" :busy="actionLoading" :stage-height="stageHeight" :bar="hasBar" @fit="stageHeight = $event" @act="onAct" />
+    <VoteView v-else-if="view === 'vote' || view === 'voteResult'" :snapshot="snapshot" :now="now" :busy="actionLoading" :stage-height="stageHeight" :bar="hasBar" @fit="stageHeight = $event" @act="onAct" />
     <ResultView v-else-if="view === 'result'" :snapshot="snapshot" :board="board" @open-log="logOpen = true" />
     <view v-else class="nt-gutter">
       <view class="nt-panel jr-placeholder">

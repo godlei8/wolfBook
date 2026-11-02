@@ -645,4 +645,288 @@ page {
   color: var(--gold);
   line-height: 1;
 }
+
+/* 电子法官牌桌（utils/judge/stage.js）：两侧座位 + 中间大卡片，下面是标题行和固定高度的操作面板 */
+.nt-stage {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20rpx;
+  padding: 24rpx var(--page-gutter) 0;
+}
+
+.nt-stage__col {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.nt-stage__col--left {
+  order: 0;
+}
+
+.nt-stage__col--right {
+  order: 2;
+}
+
+.nt-stage__center {
+  order: 1;
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.nt-seat {
+  position: relative;
+  border-radius: 50%;
+}
+
+.nt-seat--dim {
+  opacity: 0.45;
+}
+
+.nt-seat--on {
+  box-shadow: 0 0 0 8rpx var(--moon), 0 0 28rpx 8rpx rgba(95, 227, 224, 0.5);
+}
+
+.nt-seat--speaking {
+  box-shadow: 0 0 0 6rpx var(--gold), 0 0 28rpx 8rpx rgba(242, 179, 61, 0.45);
+}
+
+.nt-seat--out {
+  box-shadow: 0 0 0 8rpx var(--camp-wolf);
+}
+
+.nt-seat__token {
+  width: 100%;
+  height: 100%;
+}
+
+.nt-seat__text {
+  font-size: 28rpx;
+}
+
+.nt-seat__no {
+  position: absolute;
+  left: 50%;
+  bottom: -10rpx;
+  transform: translateX(-50%);
+  min-width: 32rpx;
+  padding: 0 8rpx;
+  border-radius: 16rpx;
+  border: 3rpx solid var(--ink);
+  background: var(--gold);
+  color: var(--ink);
+  font-size: 20rpx;
+  font-weight: 900;
+  line-height: 28rpx;
+  text-align: center;
+}
+
+.nt-seat__role {
+  position: absolute;
+  right: -6rpx;
+  top: -6rpx;
+  width: 34rpx;
+  height: 34rpx;
+  border-radius: 17rpx;
+  border: 3rpx solid var(--ink);
+  color: var(--ink);
+  font-size: 20rpx;
+  font-weight: 900;
+  line-height: 34rpx;
+  text-align: center;
+}
+
+.nt-seat__mate {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 20rpx;
+  height: 20rpx;
+  border-radius: 10rpx;
+  border: 3rpx solid var(--ink);
+  background: var(--camp-wolf);
+}
+
+.nt-seat__tag {
+  position: absolute;
+  left: -8rpx;
+  top: -8rpx;
+  min-width: 32rpx;
+  padding: 0 6rpx;
+  border-radius: 16rpx;
+  border: 3rpx solid var(--ink);
+  background: var(--moon);
+  color: var(--ink);
+  font-size: 20rpx;
+  font-weight: 900;
+  line-height: 28rpx;
+  text-align: center;
+}
+
+.nt-seat__tag--votes {
+  background: var(--camp-wolf);
+}
+
+.nt-seat__tag--gold {
+  background: var(--gold);
+}
+
+.nt-seat__sheriff {
+  position: absolute;
+  right: -8rpx;
+  bottom: 4rpx;
+  width: 32rpx;
+  height: 32rpx;
+  border-radius: 16rpx;
+  border: 3rpx solid var(--ink);
+  background: var(--gold);
+  color: var(--ink);
+  font-size: 18rpx;
+  line-height: 32rpx;
+  text-align: center;
+}
+
+.nt-game__head {
+  display: flex;
+  align-items: baseline;
+  gap: 20rpx;
+  padding: 36rpx var(--page-gutter) 20rpx;
+}
+
+.nt-game__title {
+  flex: 1;
+  font-size: 36rpx;
+  font-weight: 900;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nt-game__clock {
+  font-size: 40rpx;
+  font-weight: 900;
+  color: var(--moon);
+}
+
+.nt-game__clock--warn {
+  color: var(--camp-wolf);
+}
+
+.nt-game__step {
+  font-size: 22rpx;
+  color: var(--text-3);
+}
+
+/* 面板区高度整局固定（座位不跳）；内容放不下时在面板里滚，按钮贴底 */
+.nt-game__area {
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.nt-game__panel {
+  height: 100%;
+  box-sizing: border-box;
+  overflow-y: auto;
+  padding: 24rpx 28rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.nt-game__label {
+  font-size: 24rpx;
+  color: var(--text-3);
+}
+
+.nt-game__lead {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.nt-game__hint {
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.nt-game__buttons {
+  margin-top: auto;
+  display: flex;
+  gap: 16rpx;
+}
+
+.nt-game__button {
+  flex: 1;
+}
+
+/* 中间卡片：场景图打底加暗色蒙层，内容竖向居中 */
+.nt-scene__bg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.35;
+}
+
+.nt-scene__body {
+  position: relative;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 32rpx 24rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20rpx;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(7, 6, 10, 0.2) 0%, rgba(7, 6, 10, 0.75) 100%);
+}
+
+.nt-scene__icon {
+  font-size: 72rpx;
+  color: var(--gold);
+  line-height: 1;
+}
+
+.nt-scene__kicker {
+  font-size: 24rpx;
+  letter-spacing: 4rpx;
+  color: var(--text-2);
+}
+
+.nt-scene__title {
+  font-family: var(--serif);
+  font-size: 44rpx;
+  font-weight: 900;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.nt-scene__text {
+  font-size: 26rpx;
+  line-height: 1.6;
+  color: var(--text-soft);
+}
+
+.nt-scene__big {
+  font-family: var(--serif);
+  font-size: 96rpx;
+  font-weight: 900;
+  line-height: 1;
+  color: var(--gold);
+}
+
+.nt-scene__avatar {
+  width: 220rpx;
+  height: 220rpx;
+}
+
+.nt-scene__avatar-text {
+  font-size: 80rpx;
+}
 </style>

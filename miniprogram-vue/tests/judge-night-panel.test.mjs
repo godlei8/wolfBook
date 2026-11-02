@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { isStepHolder, nightArt, nightPanel, panelHeight, seatBadges } from '../src/utils/judge/night-panel.js'
+import { isStepHolder, nightArt, nightPanel, seatBadges } from '../src/utils/judge/night-panel.js'
+import { stageLayout } from '../src/utils/judge/stage.js'
 import { countdown, phaseTitle } from '../src/utils/judge/room-view.js'
 
 const players = Array.from({ length: 9 }, (_, i) => ({ seatNo: i + 1, nickname: `P${i + 1}`, alive: i + 1 !== 9, playing: true }))
@@ -111,8 +112,9 @@ test('nightScreensMatchExceptThePanel', () => {
     title: phaseTitle(snapshot),
     clock: countdown(snapshot.phaseDeadline, now, snapshot.paused),
     art: nightArt(snapshot, board),
-    height: panelHeight(snapshot.currentStep.kind),
     seats: [...seatBadges(snapshot, 0).entries()].map(([seat, badge]) => [seat, badge.dead, badge.disabled]),
+    // 牌桌上所有人都看得见的座位标记（队友红点、狼刀票数只给狼队那一步的狼，见 seatBadges）
+    stage: stageLayout(snapshot, 'night').sides.map((side) => side.seats.map((seat) => [seat.seatNo, seat.dead, seat.sheriff, seat.role])),
   })
   assert.deepEqual(shared(villager), shared(holder))
   assert.deepEqual(shared(other), shared(holder))

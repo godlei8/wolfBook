@@ -1,15 +1,21 @@
 <script setup>
-// 出局待办：当事人看到技能询问 / 开枪选人 / 移交警徽；其他人只看到「等待出局玩家确认」，法官多一行是谁、什么待办。
+// 出局待办：当事人看到技能询问 / 开枪选人 / 移交警徽（点两侧座位选人）；其他人只看到「等待出局玩家确认」，
+// 法官多一行是谁、什么待办。别人的座位上看不出是谁在处理（stageLayout 只给当事人可点的座位）。
 import { computed, ref, watch } from 'vue'
 import { countdown, phaseTitle } from '../../../utils/judge/room-view.js'
 import { pendingPanel } from '../../../utils/judge/pending.js'
+import { gameAreaStyle, stageLayout } from '../../../utils/judge/stage.js'
+import { useStageFit } from '../../../utils/judge/stage-fit.js'
 
 const props = defineProps({
   snapshot: { type: Object, required: true },
   now: { type: Number, required: true },
   busy: { type: Boolean, default: false },
+  // 房间页记住的牌桌高度（rpx）和底部有没有固定操作栏
+  stageHeight: { type: Number, default: 0 },
+  bar: { type: Boolean, default: false },
 })
-const emit = defineEmits(['act'])
+const emit = defineEmits(['act', 'fit'])
 
 const selection = ref(0)
 const pendingKey = computed(() => (props.snapshot.pending ? `${props.snapshot.pending.kind}-${props.snapshot.pending.seatNo}` : ''))
@@ -17,12 +23,20 @@ watch(pendingKey, () => {
   selection.value = 0
 })
 
+const layout = computed(() => stageLayout(props.snapshot, 'pending', { selection: selection.value, stageHeight: props.stageHeight }))
 const panel = computed(() => pendingPanel(props.snapshot, selection.value))
 const title = computed(() => phaseTitle(props.snapshot))
 const clock = computed(() => countdown(props.snapshot.pending?.deadline || props.snapshot.phaseDeadline, props.now, props.snapshot.paused))
+const picked = computed(() => (panel.value.needsTarget && panel.value.targets.includes(selection.value) ? selection.value : 0))
+useStageFit(props, emit, () => layout.value.cardHeight)
 
-function pick(seat) {
-  selection.value = selection.value === seat ? 0 : seat
+function seatClass(seat) {
+  return { 'nt-seat--dim': seat.dim, 'nt-seat--on': seat.selected, 'nt-seat--speaking': seat.speaking, 'nt-seat--out': seat.out }
+}
+
+function tapSeat(seat) {
+  if (!seat.tappable) return
+  selection.value = selection.value === seat.seatNo ? 0 : seat.seatNo
 }
 
 function tapButton(button) {
@@ -32,148 +46,74 @@ function tapButton(button) {
 </script>
 
 <template>
-  <view class="nt-gutter jp">
-    <view class="jp-head">
-      <text class="jp-head__title serif">{{ title }}</text>
-      <text class="jp-head__clock" :class="{ 'jp-head__clock--warn': clock.warn }">{{ clock.text }}</text>
-    </view>
-
-    <view v-if="panel.kind === 'waiting'" class="nt-panel jp-wait">
-      <text class="jp-wait__moon">☾</text>
-      <text class="jp-wait__title">{{ panel.title }}</text>
-      <text v-if="panel.detail" class="jp-wait__detail">{{ panel.detail }}</text>
-    </view>
-
-    <view v-else class="nt-ink jp-card">
-      <text class="jp-card__title serif">{{ panel.title }}</text>
-      <view v-if="panel.needsTarget" class="jp-targets">
+  <view class="nt-game">
+    <view class="nt-stage">
+      <view v-for="side in layout.sides" :key="side.key" class="nt-stage__col" :class="`nt-stage__col--${side.key}`" :style="{ gap: `${layout.gap}rpx` }">
         <view
-          v-for="seat in panel.targets"
-          :key="seat"
-          class="jp-target"
-          :class="{ 'jp-target--on': selection === seat }"
-          @tap="pick(seat)"
+          v-for="seat in side.seats"
+          :key="seat.seatNo"
+          class="nt-seat"
+          :class="seatClass(seat)"
+          :style="{ width: `${layout.size}rpx`, height: `${layout.size}rpx` }"
+          @tap="tapSeat(seat)"
         >
-          <text class="jp-target__no serif">{{ seat }}</text>
+          <view class="nt-token nt-seat__token" :class="{ 'nt-token--dead': seat.dead }">
+            <image v-if="seat.avatar" class="nt-token__img" :src="seat.avatar" mode="aspectFill" />
+            <view v-else class="nt-token__text nt-seat__text">{{ seat.initial }}</view>
+          </view>
+          <text class="nt-seat__no">{{ seat.seatNo }}</text>
+          <text v-if="seat.role" class="nt-seat__role" :style="{ backgroundColor: seat.roleColor }">{{ seat.role }}</text>
+          <text v-if="seat.tag" class="nt-seat__tag" :class="seat.tagKind ? `nt-seat__tag--${seat.tagKind}` : ''">{{ seat.tag }}</text>
+          <text v-if="seat.sheriff" class="nt-seat__sheriff">★</text>
         </view>
       </view>
-      <view class="jp-buttons">
-        <view
-          v-for="button in panel.buttons"
-          :key="button.decision"
-          class="nt-btn jp-button"
-          :class="[button.decision === 'use' ? 'nt-btn--gold' : 'nt-btn--ghost', { 'nt-btn--disabled': button.disabled || busy }]"
-          @tap="tapButton(button)"
-        >{{ button.label }}</view>
+
+      <view class="nt-stage__center nt-card" :style="{ height: `${layout.cardHeight}rpx` }">
+        <image class="nt-scene__bg" src="/static/scenes/moon.webp" mode="aspectFill" webp />
+        <view class="nt-scene__body">
+          <block v-if="panel.kind === 'waiting'">
+            <text class="nt-scene__icon">☾</text>
+            <text class="nt-scene__title">{{ panel.title }}</text>
+            <text v-if="panel.detail" class="nt-scene__text">{{ panel.detail }}</text>
+          </block>
+          <block v-else>
+            <text class="nt-scene__kicker">出局</text>
+            <text class="nt-scene__title">{{ panel.title }}</text>
+            <block v-if="panel.needsTarget">
+              <text class="nt-scene__big">{{ picked || '?' }}</text>
+              <text class="nt-scene__text">{{ picked ? `已选 ${picked} 号` : '点两侧的座位选人' }}</text>
+            </block>
+          </block>
+        </view>
+      </view>
+    </view>
+
+    <view class="nt-game__head">
+      <text class="nt-game__title serif">{{ title }}</text>
+      <text class="nt-game__clock" :class="{ 'nt-game__clock--warn': clock.warn }">{{ clock.text }}</text>
+    </view>
+
+    <view class="nt-gutter nt-game__area" :style="gameAreaStyle(bar)">
+      <view class="nt-panel nt-game__panel">
+        <block v-if="panel.kind === 'waiting'">
+          <text class="nt-game__lead">{{ panel.title }}</text>
+          <text class="nt-game__hint">出局的玩家在自己手机上处理，超时当作不发动。</text>
+          <text v-if="panel.detail" class="nt-game__hint">{{ panel.detail }}</text>
+        </block>
+        <block v-else>
+          <text class="nt-game__lead">{{ panel.title }}</text>
+          <text v-if="panel.needsTarget" class="nt-game__hint">点两侧的座位选人，再点下面的按钮。</text>
+          <view class="nt-game__buttons">
+            <view
+              v-for="button in panel.buttons"
+              :key="button.decision"
+              class="nt-btn nt-game__button"
+              :class="[button.decision === 'use' ? 'nt-btn--gold' : 'nt-btn--ghost', { 'nt-btn--disabled': button.disabled || busy }]"
+              @tap="tapButton(button)"
+            >{{ button.label }}</view>
+          </view>
+        </block>
       </view>
     </view>
   </view>
 </template>
-
-<style scoped lang="scss">
-.jp {
-  padding-top: 24rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 28rpx;
-}
-
-.jp-head {
-  display: flex;
-  align-items: baseline;
-  gap: 20rpx;
-}
-
-.jp-head__title {
-  flex: 1;
-  font-size: 36rpx;
-  font-weight: 900;
-  color: var(--text);
-}
-
-.jp-head__clock {
-  font-size: 40rpx;
-  font-weight: 900;
-  color: var(--moon);
-}
-
-.jp-head__clock--warn {
-  color: var(--camp-wolf);
-}
-
-.jp-wait {
-  padding: 64rpx 32rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16rpx;
-}
-
-.jp-wait__moon {
-  color: var(--gold);
-  font-size: 80rpx;
-}
-
-.jp-wait__title {
-  color: var(--text);
-  font-size: 32rpx;
-  font-weight: 700;
-}
-
-.jp-wait__detail {
-  color: var(--text-2);
-  font-size: 26rpx;
-}
-
-.jp-card {
-  padding: 36rpx 32rpx;
-  border-radius: 36rpx;
-  background: var(--panel);
-  display: flex;
-  flex-direction: column;
-  gap: 28rpx;
-}
-
-.jp-card__title {
-  color: var(--text);
-  font-size: 38rpx;
-  font-weight: 900;
-}
-
-.jp-targets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16rpx;
-}
-
-.jp-target {
-  width: 96rpx;
-  height: 96rpx;
-  border-radius: 48rpx;
-  background: var(--panel-raised);
-  border: 4rpx solid transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-}
-
-.jp-target--on {
-  border-color: var(--moon);
-}
-
-.jp-target__no {
-  color: var(--gold);
-  font-size: 36rpx;
-  font-weight: 900;
-}
-
-.jp-buttons {
-  display: flex;
-  gap: 16rpx;
-}
-
-.jp-button {
-  flex: 1;
-}
-</style>

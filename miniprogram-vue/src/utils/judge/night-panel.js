@@ -15,13 +15,6 @@ export function nightArt(snapshot, board) {
   return role?.fullIllustration || ''
 }
 
-const PANEL_HEIGHTS = { wolf: 380, witch: 380, seer: 300, guard: 300, hunter: 240, generic: 240 }
-
-/** 面板区高度只由这一步的类型决定，所有人一样（非持有者渲染等高的空白占位）。 */
-export function panelHeight(kind) {
-  return PANEL_HEIGHTS[kind] || PANEL_HEIGHTS.generic
-}
-
 function seatText(seat) {
   return `${seat} 号`
 }
