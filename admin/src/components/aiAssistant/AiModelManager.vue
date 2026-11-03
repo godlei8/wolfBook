@@ -6,6 +6,8 @@ import type { AdminAiModel, ModelTestResult } from '../../types'
 import { formatTime } from '../../utils/board'
 
 // 模型管理：登记多个 OpenAI 兼容的对话模型，选一个「当前使用」，AI 助手问答和角色起草马上改用它
+// 增删改、切换后通知父页面，状态条上的当前模型跟着变
+const emit = defineEmits<{ changed: [] }>()
 const models = ref<AdminAiModel[]>([])
 const loading = ref(false)
 const busyId = ref<number | null>(null)
@@ -63,6 +65,7 @@ async function activate(model: AdminAiModel) {
     await api.activateAiModel(model.id)
     ElMessage.success(`已切换到「${model.name}」，AI 助手马上用它回答`)
     await load()
+    emit('changed')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '切换失败')
   } finally {
@@ -84,6 +87,7 @@ async function remove(model: AdminAiModel) {
     await api.deleteAiModel(model.id)
     ElMessage.success('模型已删除')
     await load()
+    emit('changed')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '删除失败')
   }
@@ -130,6 +134,7 @@ async function save() {
     ElMessage.success(form.id ? '模型已保存' : '模型已添加，测试通过后可以设为当前')
     dialogOpen.value = false
     await load()
+    emit('changed')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '保存失败')
   } finally {

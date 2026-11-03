@@ -102,6 +102,11 @@ public class AssistantPublishService {
                     .set(AssistantDocumentEntity::getPublishVersionId, target.getId())
                     .in(AssistantDocumentEntity::getId, documentIds));
         }
+        // 自动资料（板子 / 角色 / 世界观）永远是当前内容、永远在线：回滚只决定上传文档用哪一批，
+        // 不然那个版本之后新建的板子、角色会掉线，要等下次有人保存才回来
+        assistantDocumentMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<AssistantDocumentEntity>()
+                .set(AssistantDocumentEntity::getPublishVersionId, target.getId())
+                .eq(AssistantDocumentEntity::getSourceType, AssistantConstants.SOURCE_STRUCTURED));
         return toView(target);
     }
 

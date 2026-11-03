@@ -517,6 +517,49 @@ select.nt-input {
   color: var(--ink);
 }
 
+/* 小状态标签（AI 助手页的线上 / 待发布 / 失败等），可以是 span、a 或 button */
+.ai-tag {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-2);
+  font: 600 12px var(--sans);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+button.ai-tag,
+a.ai-tag {
+  cursor: pointer;
+}
+
+.ai-tag--ok {
+  color: var(--camp-villager);
+  border-color: #2f5946;
+}
+
+.ai-tag--warn {
+  color: var(--camp-god);
+  border-color: var(--warn-line);
+  background: var(--warn-bg);
+}
+
+.ai-tag--bad {
+  color: var(--camp-wolf);
+  border-color: #6a2d2d;
+  background: var(--danger-bg);
+}
+
+.ai-tag--moon {
+  color: var(--moon);
+  border-color: #2b5f63;
+}
+
 .nt-campbar {
   display: flex;
   gap: 3px;

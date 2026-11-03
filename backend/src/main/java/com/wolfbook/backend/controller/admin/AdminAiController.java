@@ -139,6 +139,15 @@ public class AdminAiController {
         return ApiResponse.success(assistantKnowledgeService.listDocuments());
     }
 
+    @GetMapping("/documents/{id}")
+    public ApiResponse<AssistantDtos.AdminDocumentContentView> getDocumentContent(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable Integer id
+    ) {
+        adminService.requireAdmin(authorization);
+        return ApiResponse.success(assistantKnowledgeService.getDocumentContent(id));
+    }
+
     @PostMapping("/documents")
     public ApiResponse<AssistantDtos.AdminDocumentView> uploadDocument(
             @RequestHeader("Authorization") String authorization,

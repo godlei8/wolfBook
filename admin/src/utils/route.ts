@@ -15,11 +15,13 @@ window.addEventListener('hashchange', () => {
 })
 
 export const route = computed(() => {
-  const [first = '', second = ''] = path.value.split('/')
+  const [first = '', second = '', ...rest] = path.value.split('/')
   const menu: MenuKey = (MENUS as string[]).includes(first) ? (first as MenuKey) : 'overview'
   // boards/new 新建，boards/12 编辑
   const boardEdit = menu === 'boards' && second ? (second === 'new' ? 'new' : Number(second) || null) : null
-  return { menu, boardEdit }
+  // ai/knowledge、ai/settings/models：AI 助手页的哪一块、设置的哪一小节（utils/aiAdmin.ts 的 parseAiPath 解析）
+  const aiParts = menu === 'ai' ? [second, ...rest].filter(Boolean) : []
+  return { menu, boardEdit, aiParts }
 })
 
 export function go(target: string) {

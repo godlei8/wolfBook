@@ -234,6 +234,15 @@ public final class AssistantDtos {
     public record AdminRollbackRequest(@NotNull(message = "versionId is required") Integer versionId) {
     }
 
+    public record AdminDocumentContentView(
+            Integer id,
+            String name,
+            String sourceType,
+            String sourceKey,
+            String contentText
+    ) {
+    }
+
     public record AdminDocumentView(
             Integer id,
             String name,

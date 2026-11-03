@@ -68,6 +68,8 @@ public class AssistantKnowledgeService {
         thread.setDaemon(true);
         return thread;
     });
+    // 自动资料的同步一次只跑一个：后台线程的重建和发布时的同步重建同时插入同一条新资料会撞唯一键
+    private final Object structuredSyncLock = new Object();
     private final AtomicBoolean structuredKnowledgeRebuildRunning = new AtomicBoolean(false);
     private final AtomicBoolean structuredKnowledgeRebuildPending = new AtomicBoolean(false);
 
@@ -174,6 +176,18 @@ public class AssistantKnowledgeService {
         }
     }
 
+    /** 后台「资料」块点开一份资料，看 AI 拿到的原文 */
+    public AssistantDtos.AdminDocumentContentView getDocumentContent(Integer id) {
+        AssistantDocumentEntity entity = requireDocument(id);
+        return new AssistantDtos.AdminDocumentContentView(
+                entity.getId(),
+                entity.getName(),
+                entity.getSourceType(),
+                entity.getSourceKey(),
+                entity.getContentText()
+        );
+    }
+
     public AssistantDtos.AdminDocumentView updateReviewStatus(Integer id, String reviewStatus) {
         AssistantDocumentEntity entity = requireDocument(id);
         entity.setReviewStatus(reviewStatus);
@@ -221,6 +235,12 @@ public class AssistantKnowledgeService {
     }
 
     private void syncStructuredDocuments(Integer publishVersionId, boolean refreshIndex) {
+        synchronized (structuredSyncLock) {
+            doSyncStructuredDocuments(publishVersionId, refreshIndex);
+        }
+    }
+
+    private void doSyncStructuredDocuments(Integer publishVersionId, boolean refreshIndex) {
         List<Board> boards = boardService.listAllBoards();
         List<RoleEntity> roles = roleMapper.selectList(new LambdaQueryWrapper<RoleEntity>().orderByAsc(RoleEntity::getId));
 
