@@ -126,10 +126,10 @@ public class DatabaseSeeder {
         saveRole(17, "老酒鬼", null, "好人", "平民", "拥有较强抗伤或延迟结算能力，常见于功能板。", "属于能扰动刀口节奏的特殊民职。", faq("老酒鬼是否算神职？", "通常不算，会归为好人阵营的平民类。"), "https://picsum.photos/seed/drunk/300/300", "https://picsum.photos/seed/drunkfull/700/900");
     }
 
-    /** 种子角色里引擎认识的 7 个写上技能机制（骑士、狼美人这些还没有机制）。 */
+    /** 种子角色里引擎认识的 8 个写上技能机制（骑士、狼美人这些还没有机制）。 */
     private void seedRoleMechanics() {
         Map<String, String> mechanics = Map.of("守卫", "guard", "狼人", "wolf", "女巫", "witch", "预言家", "seer",
-                "猎人", "hunter", "白痴", "idiot", "平民", "villager");
+                "猎人", "hunter", "白痴", "idiot", "平民", "villager", "黑狼王", "wolf_king");
         for (RoleEntity role : roleMapper.selectList(null)) {
             String mechanic = mechanics.get(role.getName());
             if (mechanic != null) {
@@ -204,6 +204,7 @@ public class DatabaseSeeder {
         saveBoard(4, "白狼王骑士", 12, "进阶", List.of("经典", "高配"), "https://picsum.photos/seed/board4/900/600", List.of("白狼王在关键轮次具备强换人能力。", "骑士的白天决斗会极大放大轮次收益。"), List.of("警上要格外关注冲票和自爆节奏。"), faq("白狼王一定会和骑士形成对冲吗？", "不一定，但这类板型更强调白天强势角色的互博。"), "屠边", "对抗板", List.of(roleRef(6, 3), roleRef(10, 1), roleRef(1, 1), roleRef(2, 1), roleRef(5, 1), roleRef(4, 1), roleRef(9, 4)));
         saveBoard(5, "机械狼通灵师", 12, "烧脑", List.of("高配", "烧脑"), "https://picsum.photos/seed/board5/900/600", List.of("机械狼拥有高上限的学习空间。", "通灵师会补充额外信息链，提升对局复杂度。"), List.of("复盘时建议单独整理技能继承与信息来源。"), faq("机械狼是否总能学到关键技能？", "取决于场上死亡顺序和狼队运营。"), "屠边", "高配板", List.of(roleRef(6, 3), roleRef(12, 1), roleRef(14, 1), roleRef(2, 1), roleRef(3, 1), roleRef(4, 1), roleRef(9, 4)));
         saveBoard(6, "黑狼王织梦人", 12, "烧脑", List.of("高配", "功能"), "https://picsum.photos/seed/board6/900/600", List.of("黑狼王强化白天置换能力。", "织梦人会改变玩家之间的生死与信息联动。"), List.of("这类板型更适合熟悉轮次管理的玩家。"), faq("织梦人的优先级高吗？", "通常很高，因为连结关系会显著影响后续票型判断。"), "屠边", "高配板", List.of(roleRef(6, 3), roleRef(11, 1), roleRef(1, 1), roleRef(2, 1), roleRef(3, 1), roleRef(15, 1), roleRef(9, 4)));
+        saveBoard(8, "狼王守卫", 12, "进阶", List.of("经典", "标准"), "https://picsum.photos/seed/board8/900/600", List.of("狼王出局时可以开枪带走一人，被毒不能开枪。", "守卫可以守自己，不能连续两晚守同一人。"), List.of("狼王开枪的时机往往决定轮次，好人要提前想好怎么出狼王。"), faq("狼王被毒了还能开枪吗？", "不能，被毒、被法官点杀都不能开枪。"), "屠边", "标准板", List.of(roleRef(1, 1), roleRef(2, 1), roleRef(3, 1), roleRef(4, 1), roleRef(11, 1), roleRef(6, 3), roleRef(9, 4)));
         saveBoard(7, "爱神混情局", 12, "进阶", List.of("娱乐", "第三方"), "https://picsum.photos/seed/board7/900/600", List.of("爱神开局连线会打破基础站边结构。", "情侣关系会让部分回合出现独立胜负目标。"), List.of("发言时要额外关注不合常理的保人与互踩。"), faq("爱神局一定会出现第三方胜利吗？", "不一定，但情侣关系会显著改变局势。"), "屠边", "机制板", List.of(roleRef(6, 4), roleRef(16, 1), roleRef(1, 1), roleRef(2, 1), roleRef(3, 1), roleRef(9, 4)));
     }
 

@@ -99,13 +99,6 @@ class NightResolverTests {
     }
 
     @Test
-    void witchNeverSelfSaveRuleBlocksNightOneToo() {
-        JudgeRules never = new JudgeRules("side", true, JudgeRules.SELF_SAVE_NEVER, true, 120, 150);
-        Map<Integer, NightResolver.SeatState> seats = seats();
-        assertThrows(ApiException.class, () -> NightResolver.validate(save(2, 2), seats.get(2), seats.get(2), never, 1, 2));
-    }
-
-    @Test
     void witchCanOnlySaveTheKnifedSeat() {
         Map<Integer, NightResolver.SeatState> seats = seats();
         assertThrows(ApiException.class, () -> NightResolver.validate(save(2, 8), seats.get(2), seats.get(8), RULES, 1, 7));
@@ -187,6 +180,23 @@ class NightResolverTests {
         seats.put(3, new NightResolver.SeatState(3, "枪手", "好人", Mechanic.HUNTER, true, false, false, null));
         NightResolver.Outcome outcome = NightResolver.resolve(List.of(poison(2, 3)), seats, RULES, 2, RANDOM);
         assertEquals(Set.of(3), outcome.cannotShoot());
+    }
+
+    @Test
+    void poisonedWolfKingCannotShoot() {
+        Map<Integer, NightResolver.SeatState> seats = seats();
+        seats.put(6, new NightResolver.SeatState(6, "黑狼王", "狼人", Mechanic.WOLF_KING, true, false, false, null));
+        NightResolver.Outcome outcome = NightResolver.resolve(List.of(poison(2, 6)), seats, RULES, 2, RANDOM);
+        assertEquals(Set.of(6), outcome.cannotShoot());
+    }
+
+    @Test
+    void knifedWolfKingCanShoot() {
+        Map<Integer, NightResolver.SeatState> seats = seats();
+        seats.put(6, new NightResolver.SeatState(6, "黑狼王", "狼人", Mechanic.WOLF_KING, true, false, false, null));
+        NightResolver.Outcome outcome = NightResolver.resolve(List.of(kill(5, 6)), seats, RULES, 2, RANDOM);
+        assertTrue(outcome.deadSeats().contains(6));
+        assertTrue(outcome.cannotShoot().isEmpty());
     }
 
     @Test

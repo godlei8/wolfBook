@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * 胜负判定，每次有人出局后跑一遍。先查好人胜（最后一只狼和最后一个神职同时出局算好人胜），再查狼胜：
+ * 胜负判定，每次有人出局后跑一遍。先查狼胜（同一次出局里双方条件同时达成算狼人胜，三期 A 全局规则），再查好人胜：
  * 屠边是神职或平民任一边全灭，屠城是神职和平民都全灭。狼人阵营按 faction，神职 / 平民按 role_type；
  * 翻牌的白痴仍算存活神职。第三方的胜负三期再做。
  */
@@ -33,19 +33,17 @@ public final class WinJudge {
         long gods = count(seats, seat -> !FACTION_WOLF.equals(seat.faction()) && TYPE_GOD.equals(seat.roleType()));
         long villagers = count(seats, seat -> !FACTION_WOLF.equals(seat.faction()) && TYPE_VILLAGER.equals(seat.roleType()));
 
+        if (JudgeRules.WIN_CITY.equals(winCondition)) {
+            if (gods == 0 && villagers == 0) {
+                return Optional.of(new Verdict(CAMP_WOLF, "好人全部出局，狼人阵营胜利"));
+            }
+        } else if (gods == 0) {
+            return Optional.of(new Verdict(CAMP_WOLF, "神职全部出局，狼人阵营胜利"));
+        } else if (villagers == 0) {
+            return Optional.of(new Verdict(CAMP_WOLF, "平民全部出局，狼人阵营胜利"));
+        }
         if (wolves == 0) {
             return Optional.of(new Verdict(CAMP_GOOD, "狼人阵营全部出局，好人阵营胜利"));
-        }
-        if (JudgeRules.WIN_CITY.equals(winCondition)) {
-            return gods == 0 && villagers == 0
-                    ? Optional.of(new Verdict(CAMP_WOLF, "好人全部出局，狼人阵营胜利"))
-                    : Optional.empty();
-        }
-        if (gods == 0) {
-            return Optional.of(new Verdict(CAMP_WOLF, "神职全部出局，狼人阵营胜利"));
-        }
-        if (villagers == 0) {
-            return Optional.of(new Verdict(CAMP_WOLF, "平民全部出局，狼人阵营胜利"));
         }
         return Optional.empty();
     }

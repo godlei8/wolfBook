@@ -507,10 +507,6 @@ public class AdminService {
         if (input == null) {
             return null;
         }
-        String selfSave = normalizeText(input.witchSelfSave());
-        if (selfSave != null && !JudgeRules.SELF_SAVE_FIRST_NIGHT.equals(selfSave) && !JudgeRules.SELF_SAVE_NEVER.equals(selfSave)) {
-            throw new ApiException(4000, "法官规则取值不合法");
-        }
         for (Integer seconds : java.util.Arrays.asList(input.speechSeconds(), input.sheriffSpeechSeconds())) {
             if (seconds != null && (seconds < 30 || seconds > 300)) {
                 throw new ApiException(4000, "法官规则取值不合法");
@@ -520,10 +516,10 @@ public class AdminService {
                 || (input.roleSeconds() != null && (input.roleSeconds() < 15 || input.roleSeconds() > 60))) {
             throw new ApiException(4000, "法官规则取值不合法");
         }
-        JudgeRules normalized = new JudgeRules(null, input.sheriffDefault(), selfSave, input.witchOnePotionPerNight(),
+        // 女巫规则是全局规则，板子上不存（旧请求带了也直接丢掉）
+        JudgeRules normalized = new JudgeRules(null, input.sheriffDefault(), null, null,
                 input.speechSeconds(), input.sheriffSpeechSeconds(), input.wolfSeconds(), input.roleSeconds());
-        boolean empty = normalized.sheriffDefault() == null && normalized.witchSelfSave() == null
-                && normalized.witchOnePotionPerNight() == null && normalized.speechSeconds() == null
+        boolean empty = normalized.sheriffDefault() == null && normalized.speechSeconds() == null
                 && normalized.sheriffSpeechSeconds() == null && normalized.wolfSeconds() == null
                 && normalized.roleSeconds() == null;
         return empty ? null : normalized;

@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { isStepHolder, nightArt, nightPanel, panelHeight, seatBadges } from '../src/utils/judge/night-panel.js'
+import { isStepHolder, nightArt, nightPanel, seatBadges } from '../src/utils/judge/night-panel.js'
+import { stageLayout } from '../src/utils/judge/stage.js'
 import { countdown, phaseTitle } from '../src/utils/judge/room-view.js'
 
 const players = Array.from({ length: 9 }, (_, i) => ({ seatNo: i + 1, nickname: `P${i + 1}`, alive: i + 1 !== 9, playing: true }))
@@ -67,6 +68,19 @@ test('witchPanelHidesSaveWhenNoAntidote', () => {
   assert.deepEqual(used.buttons, [], '一晚一瓶：用过就没有按钮')
 })
 
+test('witchRulesAreGlobal', () => {
+  // 板子或房间里写了别的女巫规则也不算数：首夜可以自救，第二夜起不行
+  const rules = { witchSelfSave: 'never', witchOnePotionPerNight: false }
+  const firstNight = nightPanel(night('witch', '女巫', me(3), {
+    line: 'x', nightInfo: { knifeSeat: 3, antidote: true, poison: true }, extra: { rules },
+  }))
+  assert.equal(firstNight.buttons.some((button) => button.action === 'save'), true, '首夜可以自救')
+  const later = nightPanel(night('witch', '女巫', me(3), {
+    line: 'x', nightInfo: { knifeSeat: 3, antidote: true, poison: true }, extra: { rules, currentDay: 2 },
+  }))
+  assert.equal(later.buttons.some((button) => button.action === 'save'), false, '第二夜起不能自救')
+})
+
 test('seerPanelShowsTheResultAfterChecking', () => {
   const before = nightPanel(night('seer', '预言家', me(4), { line: 'x' }), 6)
   assert.deepEqual(before.buttons.map((button) => button.label), ['查验 6 号'])
@@ -98,8 +112,9 @@ test('nightScreensMatchExceptThePanel', () => {
     title: phaseTitle(snapshot),
     clock: countdown(snapshot.phaseDeadline, now, snapshot.paused),
     art: nightArt(snapshot, board),
-    height: panelHeight(snapshot.currentStep.kind),
     seats: [...seatBadges(snapshot, 0).entries()].map(([seat, badge]) => [seat, badge.dead, badge.disabled]),
+    // 牌桌上所有人都看得见的座位标记（队友红点、狼刀票数只给狼队那一步的狼，见 seatBadges）
+    stage: stageLayout(snapshot, 'night').sides.map((side) => side.seats.map((seat) => [seat.seatNo, seat.dead, seat.sheriff, seat.role])),
   })
   assert.deepEqual(shared(villager), shared(holder))
   assert.deepEqual(shared(other), shared(holder))

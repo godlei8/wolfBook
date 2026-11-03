@@ -1,5 +1,5 @@
 // 建房页的纯逻辑（有单测）：房间规则的默认值和步进范围、建房请求、板子玩法规则的只读一行。
-// 房间规则只管节奏（上警、发言时长、行动时长）；胜负、女巫自救、一晚一瓶跟板子走，建房页只读。
+// 房间规则只管节奏（上警、发言时长、行动时长）；胜负跟板子走，女巫首夜可自救、一晚一瓶是全局规则，建房页只读。
 
 export const ROOM_RULE_DEFAULTS = {
   sheriffEnabled: true,
@@ -45,20 +45,14 @@ export function canChooseJoined(board) {
   return board?.judgeSupportLevel === 'full'
 }
 
-const SELF_SAVE_TEXT = {
-  first_night: '女巫只首夜可自救',
-  never: '女巫不能自救',
-}
-
 export function boardRuleLine(board) {
   const rules = board?.ruleDetail?.judgeRules || {}
   const city = rules.winCondition ? rules.winCondition === 'city' : String(board?.winCondition || '').includes('屠城')
   const parts = [city ? '屠城' : '屠边']
   const hasWitch = (board?.roles || []).some((role) => role?.name === '女巫')
   if (hasWitch) {
-    parts.push(SELF_SAVE_TEXT[rules.witchSelfSave || 'first_night'] || SELF_SAVE_TEXT.first_night)
-    // 电子法官每人每晚只记最后一次行动，一晚两瓶实际用不了，统一写一晚一瓶
-    parts.push('一晚一瓶')
+    // 女巫规则是全局规则（三期 A），所有板子一样
+    parts.push('女巫只首夜可自救', '一晚一瓶')
   }
   return parts.join(' · ')
 }

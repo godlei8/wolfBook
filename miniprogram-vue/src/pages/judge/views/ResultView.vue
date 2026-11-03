@@ -1,7 +1,7 @@
 <script setup>
-// 对局结束：胜负和判定依据、每个人的身份和存活，再来一局 / 看对局记录。
+// 对局结束：胜负和判定依据、每个人的身份卡（胜方金边、出局变暗），底部固定「对局记录 / 再来一局」。
 import { computed } from 'vue'
-import { verdictText } from '../../../utils/judge/rounds.js'
+import { resultCards, verdictText } from '../../../utils/judge/rounds.js'
 
 const props = defineProps({
   snapshot: { type: Object, required: true },
@@ -10,7 +10,7 @@ const props = defineProps({
 const emit = defineEmits(['open-log'])
 
 const verdict = computed(() => verdictText(props.snapshot))
-const players = computed(() => (props.snapshot.players || []).filter((player) => player.seatNo).sort((a, b) => a.seatNo - b.seatNo))
+const cards = computed(() => resultCards(props.snapshot, props.board))
 
 function playAgain() {
   if (!props.snapshot.boardId) return
@@ -28,16 +28,29 @@ function playAgain() {
       </view>
     </view>
 
-    <view class="nt-panel jx-list">
-      <view v-for="player in players" :key="player.seatNo" class="jx-row" :class="{ 'jx-row--dead': player.alive === false }">
-        <text class="jx-row__no serif">{{ player.seatNo }}</text>
-        <text class="jx-row__name">{{ player.nickname }}</text>
-        <text class="jx-row__role" :class="{ 'jx-row__role--wolf': player.faction === '狼人' }">{{ player.roleName || '—' }}</text>
-        <text class="jx-row__state">{{ player.alive === false ? '出局' : '存活' }}</text>
+    <view class="jx-grid">
+      <view
+        v-for="card in cards"
+        :key="card.seatNo"
+        class="nt-panel jx-card"
+        :class="{ 'jx-card--win': card.winner, 'jx-card--dead': !card.alive }"
+      >
+        <view class="nt-token jx-token" :class="{ 'nt-token--dead': !card.alive }">
+          <image v-if="card.portrait" class="nt-token__img" :src="card.portrait" mode="aspectFill" />
+          <view v-else class="nt-token__text jx-token__text">{{ card.roleName.slice(0, 1) }}</view>
+        </view>
+        <view class="jx-card__text">
+          <view class="jx-card__top">
+            <text class="jx-card__no serif">{{ card.seatNo }}</text>
+            <text class="jx-card__role" :class="`jx-card__role--${card.camp}`">{{ card.roleName }}</text>
+          </view>
+          <text class="jx-card__name">{{ card.nickname }}</text>
+        </view>
+        <text class="jx-card__state">{{ card.alive ? '存活' : '出局' }}</text>
       </view>
     </view>
 
-    <view class="jx-buttons">
+    <view class="nt-bar">
       <view class="nt-btn nt-btn--ghost jx-button" @tap="emit('open-log')">对局记录</view>
       <view class="nt-btn nt-btn--gold jx-button" @tap="playAgain">再来一局</view>
     </view>
@@ -47,7 +60,7 @@ function playAgain() {
 <style scoped lang="scss">
 .jx {
   padding-top: 24rpx;
-  padding-bottom: 48rpx;
+  padding-bottom: var(--bar-space);
   display: flex;
   flex-direction: column;
   gap: 28rpx;
@@ -55,7 +68,7 @@ function playAgain() {
 
 .jx-hero {
   position: relative;
-  height: 360rpx;
+  height: 320rpx;
   border-radius: 40rpx;
   overflow: hidden;
   background: var(--panel-sunk);
@@ -89,59 +102,92 @@ function playAgain() {
   font-size: 24rpx;
 }
 
-.jx-list {
-  padding: 12rpx 28rpx;
-}
-
-.jx-row {
+.jx-grid {
   display: flex;
-  align-items: center;
-  gap: 20rpx;
-  min-height: 76rpx;
-  border-bottom: 2rpx solid var(--panel-line);
+  flex-wrap: wrap;
+  gap: 16rpx;
 }
 
-.jx-row--dead {
+.jx-card {
+  position: relative;
+  width: calc(50% - 8rpx);
+  box-sizing: border-box;
+  padding: 18rpx 16rpx;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.jx-card--win {
+  border: 3rpx solid var(--gold);
+}
+
+.jx-card--dead .jx-card__text {
   opacity: 0.55;
 }
 
-.jx-row__no {
-  width: 48rpx;
+.jx-token {
+  width: 72rpx;
+  height: 72rpx;
+}
+
+.jx-token__text {
+  font-size: 28rpx;
+}
+
+.jx-card__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.jx-card__top {
+  display: flex;
+  align-items: baseline;
+  gap: 10rpx;
+}
+
+.jx-card__no {
   color: var(--gold);
   font-size: 30rpx;
   font-weight: 900;
 }
 
-.jx-row__name {
-  flex: 1;
-  min-width: 0;
-  color: var(--text);
+.jx-card__role {
   font-size: 26rpx;
+  font-weight: 700;
+  color: var(--camp-god);
+}
+
+.jx-card__role--wolf {
+  color: var(--camp-wolf);
+}
+
+.jx-card__role--villager {
+  color: var(--camp-villager);
+}
+
+.jx-card__role--third {
+  color: var(--camp-third);
+}
+
+.jx-card__name {
+  font-size: 22rpx;
+  color: var(--text-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.jx-row__role {
-  color: var(--camp-god);
-  font-size: 26rpx;
-  font-weight: 700;
-}
-
-.jx-row__role--wolf {
-  color: var(--camp-wolf);
-}
-
-.jx-row__state {
-  width: 72rpx;
-  text-align: right;
+.jx-card__state {
+  position: absolute;
+  right: 14rpx;
+  top: 10rpx;
+  font-size: 20rpx;
   color: var(--text-3);
-  font-size: 22rpx;
-}
-
-.jx-buttons {
-  display: flex;
-  gap: 16rpx;
 }
 
 .jx-button {

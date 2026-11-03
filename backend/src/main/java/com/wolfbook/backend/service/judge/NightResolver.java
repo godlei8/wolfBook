@@ -41,7 +41,7 @@ public final class NightResolver {
 
     /**
      * 结算结果。deadSeats 按座位号排序；feedback 是只发给本人的信息（预言家：好人 / 狼人；女巫：刀口）；
-     * cannotShoot 是今晚被毒、出局后不能开枪的猎人。
+     * cannotShoot 是今晚被毒、出局后不能开枪的猎人 / 狼王。
      */
     public record Outcome(Integer knifeSeat, List<Integer> deadSeats, Map<Integer, String> feedback, Set<Integer> cannotShoot,
                           Set<Integer> antidoteUsedBy, Set<Integer> poisonUsedBy) {
@@ -122,7 +122,7 @@ public final class NightResolver {
         Set<Integer> cannotShoot = new TreeSet<>();
         if (poisoned != null) {
             SeatState target = seats.get(poisoned);
-            if (target != null && target.mechanic() == Mechanic.HUNTER) {
+            if (target != null && target.mechanic() != null && target.mechanic().canShoot()) {
                 cannotShoot.add(poisoned);
             }
         }

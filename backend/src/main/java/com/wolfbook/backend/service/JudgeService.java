@@ -1854,7 +1854,8 @@ public class JudgeService {
             markPlayersDead(players, List.of(target.getSeatNo()), dayNo, PHASE_SKILL_PENDING, now);
             addEvent(roomId, dayNo, PHASE_SKILL_PENDING, actor.getPlayerId(), List.of(target.getPlayerId()), EVENT_HUNTER_SHOT,
                     mapOf("actorSeatNo", seat, "targetSeatNo", target.getSeatNo()), Map.of(), VISIBILITY_PUBLIC, now);
-            room.setLatestAnnouncement(seat + "号开枪带走了" + target.getSeatNo() + "号");
+            // 猎人、狼王同一句公告：场上只能从发言判断是谁开的枪
+            room.setLatestAnnouncement(seat + "号发动技能，带走了" + target.getSeatNo() + "号");
             Optional<WinJudge.Verdict> verdict = verdictOf(room, players, null);
             if (verdict.isPresent()) {
                 finishByVerdict(room, verdict.get(), room.getLatestAnnouncement() + "。" + verdict.get().reason(), now);
@@ -1959,7 +1960,7 @@ public class JudgeService {
                 Map.of(), Map.of(), VISIBILITY_PUBLIC, now);
     }
 
-    /** 法官点杀：违规的玩家直接出局，公告注明法官判罚，照常问技能（点杀的猎人不能开枪）。 */
+    /** 法官点杀：违规的玩家直接出局，公告注明法官判罚，照常问技能（点杀的猎人 / 狼王不能开枪）。 */
     private void handleForceOut(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players,
                                 WolfbookDtos.JudgeRoomAdvanceRequest request, LocalDateTime now) {
         JudgeRoomPlayerEntity target = requireAliveSeat(players, request.forceOutSeatNo());
@@ -1995,14 +1996,14 @@ public class JudgeService {
         addFinishedEvent(room, verdict, null, announcement, now);
     }
 
-    /** 技能询问的选项：没被毒的猎人可以开枪，其余人只有「确认」。 */
+    /** 技能询问的选项：没被毒、没被点杀的猎人 / 狼王可以开枪，其余人只有「确认」。 */
     private List<String> skillOptions(JudgeRoomPlayerEntity player) {
         if (player == null) {
             return List.of("skip");
         }
-        boolean hunter = mechanicOf(player).map(mechanic -> mechanic == Mechanic.HUNTER).orElse(false);
+        boolean shooter = mechanicOf(player).map(Mechanic::canShoot).orElse(false);
         boolean canShoot = !Boolean.FALSE.equals(readMap(player.getStatusJson()).get("canShoot"));
-        return hunter && canShoot ? List.of("use", "skip") : List.of("skip");
+        return shooter && canShoot ? List.of("use", "skip") : List.of("skip");
     }
 
     /** 当前待办只发给当事人和法官。 */

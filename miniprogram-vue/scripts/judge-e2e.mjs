@@ -1,8 +1,9 @@
 // 电子法官联调脚本：用多个 Mock 账号真打本地后端（start-backend-dev.ps1，test profile 任意 code 都能登录）跑完整局，
 // 每一轮把每个人的快照交给小程序的视图逻辑（utils/judge/*），检查零场外和请求格式。只对本地跑。
-// 用法：node scripts/judge-e2e.mjs [http://127.0.0.1:8088] [observer|joined|both]
+// 用法：node scripts/judge-e2e.mjs [http://127.0.0.1:8088] [observer|joined|wolfking|both]（both 三局都跑；狼王守卫要先在本地库跑 deploy/sql/2026-11-02-wolf-king-mechanic.sql）
 import { phaseTitle, pickView, countdown } from '../src/utils/judge/room-view.js'
-import { isStepHolder, nightArt, nightPanel, panelHeight, seatBadges } from '../src/utils/judge/night-panel.js'
+import { isStepHolder, nightArt, nightPanel, seatBadges } from '../src/utils/judge/night-panel.js'
+import { stageLayout } from '../src/utils/judge/stage.js'
 import { lobbyAction } from '../src/utils/judge/lobby.js'
 import { pendingPanel } from '../src/utils/judge/pending.js'
 import { announcePanel, sheriffPanel } from '../src/utils/judge/sheriff.js'
@@ -53,12 +54,14 @@ async function findBoard(keyword) {
 
 function checkNightScreens(snaps, judgeIndex) {
   const players = snaps.filter((s, i) => s && i !== judgeIndex)
+  // 同一个时刻算所有人的倒计时（逐个取 Date.now() 跨秒时会差 1 秒，误报不一致）
+  const now = Date.now()
   const shared = (s) => JSON.stringify({
     title: phaseTitle(s),
-    clock: countdown(s.phaseDeadline, Date.now(), s.paused).text,
+    clock: countdown(s.phaseDeadline, now, s.paused).text,
     art: nightArt(s, null),
-    height: panelHeight(s.currentStep?.kind),
     seats: [...seatBadges(s, 0).entries()].map(([seat, badge]) => [seat, badge.dead, badge.disabled]),
+    stage: stageLayout(s, 'night').sides.map((side) => side.seats.map((seat) => [seat.seatNo, seat.dead, seat.sheriff, seat.role])),
   })
   const first = shared(players[0])
   for (const s of players) {
@@ -228,8 +231,9 @@ async function hostDo(host, roomId, hostSnap, action) {
 }
 
 const games = []
-if (MODE !== 'joined') games.push({ mode: 'observer', keyword: '守卫', count: 9 })
-if (MODE !== 'observer') games.push({ mode: 'joined', keyword: '预女猎白', count: 12 })
+if (MODE === 'both' || MODE === 'observer') games.push({ mode: 'observer', keyword: '守卫九人局', count: 9 })
+if (MODE === 'both' || MODE === 'joined') games.push({ mode: 'joined', keyword: '预女猎白', count: 12 })
+if (MODE === 'both' || MODE === 'wolfking') games.push({ mode: 'joined', keyword: '狼王守卫', count: 12 })
 for (const game of games) await runGame(game)
 console.log(`\n走过的视图：${[...seen].join(' ')}；房主播报台词出现 ${narrations} 次`)
 console.log(problems.length ? `\n${problems.length} 个问题` : '\n没有发现问题')

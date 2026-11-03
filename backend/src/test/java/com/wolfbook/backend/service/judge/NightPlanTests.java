@@ -24,6 +24,7 @@ class NightPlanTests {
             8, role(8, "白痴", "好人", "idiot"),
             9, role(9, "平民", "好人", "villager"),
             10, role(10, "白狼王", "狼人", null),
+            11, role(11, "黑狼王", "狼人", "wolf_king"),
             15, role(15, "织梦人", "好人", null)
     );
 
@@ -56,6 +57,17 @@ class NightPlanTests {
                 List.of(new BoardRoleRef(6, 2), new BoardRoleRef(10, 1), new BoardRoleRef(1, 1)), ROLES, 1);
         assertEquals(List.of(NightKind.WOLF, NightKind.SEER), steps.stream().map(NightPlan.NightStep::kind).toList());
         assertEquals(List.of(6, 10), steps.get(0).roleIds());
+    }
+
+    @Test
+    void wolfKingJoinsTheWolfStep() {
+        // 狼王守卫：狼王和狼人一起睁眼刀人，不单独成步
+        List<NightPlan.NightStep> steps = NightPlan.build(BoardRuleDetail.empty(),
+                List.of(new BoardRoleRef(1, 1), new BoardRoleRef(2, 1), new BoardRoleRef(3, 1), new BoardRoleRef(4, 1),
+                        new BoardRoleRef(11, 1), new BoardRoleRef(6, 3), new BoardRoleRef(9, 4)), ROLES, 1);
+        assertEquals(List.of(NightKind.GUARD, NightKind.WOLF, NightKind.WITCH, NightKind.SEER, NightKind.HUNTER),
+                steps.stream().map(NightPlan.NightStep::kind).toList());
+        assertTrue(steps.get(1).roleIds().containsAll(List.of(6, 11)));
     }
 
     @Test

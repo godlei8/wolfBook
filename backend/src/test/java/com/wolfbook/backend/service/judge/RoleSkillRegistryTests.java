@@ -46,6 +46,28 @@ class RoleSkillRegistryTests {
     }
 
     @Test
+    void wolfKingBoardIsFull() {
+        assertEquals(JudgeSupportLevels.FULL, RoleSkillRegistry.supportLevel(List.of(
+                role("预言家", "好人", "seer"), role("女巫", "好人", "witch"), role("猎人", "好人", "hunter"),
+                role("守卫", "好人", "guard"), role("黑狼王", "狼人", "wolf_king"), role("狼人", "狼人", "wolf"),
+                role("平民", "好人", "villager"))));
+        Mechanic wolfKing = Mechanic.fromCode("wolf_king").orElseThrow();
+        assertEquals(Mechanic.WOLF_KING, wolfKing);
+        assertTrue(wolfKing.wolfTeam());
+        assertEquals(NightKind.WOLF, wolfKing.nightKind());
+        assertTrue(wolfKing.canShoot());
+        assertEquals("狼王", wolfKing.label());
+        assertEquals(Mechanic.WOLF_KING, RoleSkillRegistry.legacyMechanic("黑狼王").orElseThrow());
+    }
+
+    @Test
+    void onlyHunterAndWolfKingCanShoot() {
+        assertTrue(Mechanic.HUNTER.canShoot());
+        assertFalse(Mechanic.WOLF.canShoot());
+        assertFalse(Mechanic.IDIOT.canShoot());
+    }
+
+    @Test
     void roleWithoutMechanicMakesTheBoardPartial() {
         assertEquals(JudgeSupportLevels.PARTIAL, RoleSkillRegistry.supportLevel(List.of(
                 role("守卫", "好人", null), role("狼人", "狼人", "wolf"))));

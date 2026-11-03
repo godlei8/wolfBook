@@ -38,9 +38,22 @@ class WinJudgeTests {
     }
 
     @Test
-    void simultaneousWipeoutGoesToGood() {
-        // 最后一只狼和最后一个神职同时出局：好人胜
-        assertEquals("好人", WinJudge.judge(seats(0, 2, 0, 3, 2, 1), "side").orElseThrow().camp());
+    void simultaneousWipeoutGoesToWolvesWhenGodsAreOut() {
+        // 最后一只狼和最后一个神职同一次出局：狼人胜（三期 A 全局规则）
+        WinJudge.Verdict verdict = WinJudge.judge(seats(0, 2, 0, 3, 2, 1), "side").orElseThrow();
+        assertEquals("狼人", verdict.camp());
+        assertEquals("神职全部出局，狼人阵营胜利", verdict.reason());
+    }
+
+    @Test
+    void simultaneousWipeoutGoesToWolvesWhenVillagersAreOut() {
+        assertEquals("平民全部出局，狼人阵营胜利", WinJudge.judge(seats(0, 2, 2, 1, 0, 3), "side").orElseThrow().reason());
+    }
+
+    @Test
+    void cityRuleSimultaneousWipeoutGoesToWolves() {
+        assertEquals("狼人", WinJudge.judge(seats(0, 2, 0, 3, 0, 3), "city").orElseThrow().camp());
+        assertEquals("好人", WinJudge.judge(seats(0, 2, 0, 3, 1, 2), "city").orElseThrow().camp(), "屠城还剩平民：好人胜");
     }
 
     @Test
