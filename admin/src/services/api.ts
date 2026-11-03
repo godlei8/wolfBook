@@ -2,6 +2,7 @@ import axios from 'axios'
 import type {
   AdminAiConfig,
   AdminAiDocument,
+  AdminAiDocumentContent,
   AdminAiLog,
   AdminAiModel,
   AdminAiModelPayload,
@@ -197,6 +198,9 @@ export const api = {
   },
   async getAiDocuments() {
     return unwrap<AdminAiDocument[]>(http.get('/admin/ai/documents'))
+  },
+  async getAiDocumentContent(id: number) {
+    return unwrap<AdminAiDocumentContent>(http.get(`/admin/ai/documents/${id}`))
   },
   async uploadAiDocument(file: File) {
     return uploadMultipart<AdminAiDocument>('/admin/ai/documents', file, AI_UPLOAD_TIMEOUT)

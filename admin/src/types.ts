@@ -346,6 +346,15 @@ export interface AdminAiDocument {
   updateTime: string
 }
 
+/** 一份资料的原文（AI 拿到的就是这些字） */
+export interface AdminAiDocumentContent {
+  id: number
+  name: string
+  sourceType: string
+  sourceKey: string
+  contentText: string | null
+}
+
 export interface AdminAiVersion {
   id: number
   versionName: string

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wolfbook.backend.dto.AssistantDtos;
 import com.wolfbook.backend.service.assistant.AssistantConfigService;
+import com.wolfbook.backend.service.assistant.AssistantKnowledgeService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,6 +44,9 @@ class BackendApplicationTests {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private AssistantKnowledgeService assistantKnowledgeService;
 
     @Test
     void boardsEndpointShouldReturnPagedPayload() throws Exception {
@@ -1139,6 +1143,130 @@ class BackendApplicationTests {
                 .andExpect(jsonPath("$.data[?(@.name == '守卫')].mechanic").value("guard"))
                 .andExpect(jsonPath("$.data[?(@.name == '白痴')].mechanic").value("idiot"))
                 .andExpect(jsonPath("$.data[?(@.name == '骑士')].mechanic").value(org.hamcrest.Matchers.contains((Object) null)));
+    }
+
+    @Test
+    void assistantDocumentContentIsReadableFromAdmin() throws Exception {
+        String adminToken = loginAndGetAdminToken();
+        mockMvc.perform(get("/admin/ai/documents/{id}", 1))
+                .andExpect(jsonPath("$.code").value(4001));
+        mockMvc.perform(get("/admin/ai/documents/{id}", 999999).header("Authorization", "Bearer " + adminToken))
+                .andExpect(jsonPath("$.code").value(4004));
+
+        String list = mockMvc.perform(get("/admin/ai/documents").header("Authorization", "Bearer " + adminToken))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        int boardDocId = -1;
+        for (JsonNode node : objectMapper.readTree(list).path("data")) {
+            if ("BOARD:2".equals(node.path("sourceKey").asText())) {
+                boardDocId = node.path("id").asInt();
+            }
+        }
+        Assertions.assertTrue(boardDocId > 0, "板子 2 应该有一份自动资料");
+        // 后台「资料」块点一个板子，看到的是 AI 拿到的原文
+        mockMvc.perform(get("/admin/ai/documents/{id}", boardDocId).header("Authorization", "Bearer " + adminToken))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.sourceType").value("STRUCTURED"))
+                .andExpect(jsonPath("$.data.sourceKey").value("BOARD:2"))
+                .andExpect(jsonPath("$.data.contentText").value(containsString("预女猎白")));
+    }
+
+    @Test
+    void rollbackKeepsStructuredKnowledgeOnTheRolledBackVersion() throws Exception {
+        String adminToken = loginAndGetAdminToken();
+        // 这个用例会发布、回滚，跑完把发布状态放回原样，别让后面的助手用例受影响
+        Integer latestVersionBefore = jdbcTemplate.queryForObject("SELECT MAX(id) FROM assistant_publish_versions", Integer.class);
+        java.util.List<Integer> currentBefore = jdbcTemplate.queryForList(
+                "SELECT id FROM assistant_publish_versions WHERE is_current = 1", Integer.class);
+        java.util.List<java.util.Map<String, Object>> documentVersionsBefore = jdbcTemplate.queryForList(
+                "SELECT id, publish_version_id FROM assistant_documents");
+        int firstVersion = publishAssistantKnowledge(adminToken, "回滚测试 v1");
+
+        // 发布之后新建的角色：自动资料改了就生效，回滚到旧版本也不能让它掉线
+        String created = mockMvc.perform(post("/admin/roles")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "回滚测试角色", "faction": "好人", "roleType": "神职", "skill": "测试"}
+                                """))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        int roleId = objectMapper.readTree(created).path("data").path("id").asInt();
+        try {
+            // 保存角色会在后台线程里重建自动资料，等它写好再发布，免得两边同时插入同一条
+            for (int i = 0; i < 50 && jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM assistant_documents WHERE source_key = ?", Integer.class, "ROLE:" + roleId) == 0; i++) {
+                Thread.sleep(100);
+            }
+            publishAssistantKnowledge(adminToken, "回滚测试 v2");
+            mockMvc.perform(post("/admin/ai/publish/rollback")
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"versionId\": " + firstVersion + "}"))
+                    .andExpect(jsonPath("$.code").value(0));
+
+            Integer versionOfNewRole = jdbcTemplate.queryForObject(
+                    "SELECT publish_version_id FROM assistant_documents WHERE source_key = ?",
+                    Integer.class,
+                    "ROLE:" + roleId
+            );
+            Assertions.assertEquals(firstVersion, versionOfNewRole);
+        } finally {
+            mockMvc.perform(delete("/admin/roles/{id}", roleId).header("Authorization", "Bearer " + adminToken))
+                    .andExpect(jsonPath("$.code").value(0));
+            jdbcTemplate.update("DELETE FROM assistant_publish_versions WHERE id > ?", latestVersionBefore == null ? 0 : latestVersionBefore);
+            jdbcTemplate.update("UPDATE assistant_publish_versions SET is_current = 0");
+            for (Integer id : currentBefore) {
+                jdbcTemplate.update("UPDATE assistant_publish_versions SET is_current = 1 WHERE id = ?", id);
+            }
+            for (java.util.Map<String, Object> row : documentVersionsBefore) {
+                jdbcTemplate.update("UPDATE assistant_documents SET publish_version_id = ? WHERE id = ?", row.get("publish_version_id"), row.get("id"));
+            }
+            // 删角色会在后台线程重建自动资料；同步再重建一次（和后台线程互斥），把删掉的角色那条资料清干净
+            assistantKnowledgeService.rebuildStructuredKnowledge();
+        }
+    }
+
+    @Test
+    void concurrentStructuredRebuildsDoNotCollide() throws Exception {
+        // 后台保存角色会在后台线程重建自动资料，紧接着点发布又同步重建一次：两边同时插入新角色那条资料曾撞唯一键（5000）
+        java.util.List<Integer> roleIds = new java.util.ArrayList<>();
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            for (int round = 0; round < 8; round++) {
+                String name = "并发重建测试" + round;
+                jdbcTemplate.update("INSERT INTO roles (name, faction, role_type, camp, skill) VALUES (?, '好人', '神职', '好人', '测试')", name);
+                roleIds.add(jdbcTemplate.queryForObject("SELECT id FROM roles WHERE name = ?", Integer.class, name));
+
+                java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+                java.util.concurrent.Callable<Void> rebuild = () -> {
+                    start.await();
+                    assistantKnowledgeService.rebuildStructuredKnowledge();
+                    return null;
+                };
+                java.util.concurrent.Future<Void> first = pool.submit(rebuild);
+                java.util.concurrent.Future<Void> second = pool.submit(rebuild);
+                start.countDown();
+                first.get(30, java.util.concurrent.TimeUnit.SECONDS);
+                second.get(30, java.util.concurrent.TimeUnit.SECONDS);
+            }
+        } finally {
+            pool.shutdownNow();
+            for (Integer roleId : roleIds) {
+                jdbcTemplate.update("DELETE FROM roles WHERE id = ?", roleId);
+            }
+            assistantKnowledgeService.rebuildStructuredKnowledge();
+        }
+    }
+
+    private int publishAssistantKnowledge(String adminToken, String notes) throws Exception {
+        String published = mockMvc.perform(post("/admin/ai/publish")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"notes\": \"" + notes + "\"}"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(published).path("data").path("id").asInt();
     }
 
     private String loginAndGetToken() throws Exception {
