@@ -1,4 +1,4 @@
-import type { Board, BoardRoleItem, NightStep, Role } from '../types'
+import type { Board, BoardJudgeRules, BoardRoleItem, NightStep, Role } from '../types'
 
 /** 阵营分组，和小程序 utils/board-rules.js 的 lineupGroup 一致。 */
 export type CampKey = 'god' | 'villager' | 'wolf' | 'third'
@@ -163,6 +163,20 @@ export function defaultNightOrder(lineup: BoardRoleItem[], rolesById: Map<number
   }
   unknown.forEach((role) => steps.push({ roleId: role.id, action: `${role.name}请睁眼，请行动。` }))
   return steps
+}
+
+/** 阵容里有没有女巫机制的角色（有才显示「女巫自救」开关）。 */
+export function hasWitch(lineup: BoardRoleItem[], rolesById: Map<number, Role>) {
+  return lineup.some((item) => rolesById.get(item.roleId)?.mechanic === 'witch')
+}
+
+/**
+ * 保存板子时的电子法官规则：女巫自救按开关写（默认不能自救），板子原来存的节奏项原样带上，
+ * 一晚一瓶是全局规则、不存。
+ */
+export function buildJudgeRules(existing: (BoardJudgeRules & { witchOnePotionPerNight?: unknown }) | null | undefined, witchFirstNight: boolean): BoardJudgeRules {
+  const { witchOnePotionPerNight: _global, ...kept } = existing || {}
+  return { ...kept, witchSelfSave: witchFirstNight ? 'first_night' : 'never' }
 }
 
 export type JudgeSupportLevel = 'full' | 'partial' | 'manual_only'

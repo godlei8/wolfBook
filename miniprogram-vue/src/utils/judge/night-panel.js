@@ -88,9 +88,7 @@ export function nightPanel(snapshot, selection = 0) {
     const knifeSeat = info.knifeSeat || null
     const antidote = info.antidote !== false
     const poison = info.poison !== false
-    // 女巫只有首夜可以自救（全局规则，不看板子和房间规则）
-    const selfSaveAllowed = (snapshot.currentDay || 1) === 1
-    const canSave = antidote && Boolean(knifeSeat) && (knifeSeat !== self.seatNo || selfSaveAllowed)
+    const canSave = antidote && Boolean(knifeSeat) && (knifeSeat !== self.seatNo || witchSelfSaveAllowed(snapshot))
     const buttons = []
     if (!done) {
       if (canSave) buttons.push({ action: 'save', label: `救 ${seatText(knifeSeat)}`, target: knifeSeat, disabled: false })
@@ -167,4 +165,15 @@ export function seatBadges(snapshot, selection = 0) {
     })
   }
   return badges
+}
+
+/** 女巫今晚能不能救自己：跟板子（开局时拷进房间的 rules）走，默认不能自救；设了首夜可以自救的只有第一夜能。 */
+export function witchSelfSaveAllowed(snapshot) {
+  return snapshot?.rules?.witchSelfSave === 'first_night' && (snapshot?.currentDay || 1) === 1
+}
+
+/** 旧主持台女巫那一步的小标签。 */
+export function witchSelfSaveText(snapshot) {
+  if (snapshot?.rules?.witchSelfSave !== 'first_night') return '本板子不能自救'
+  return witchSelfSaveAllowed(snapshot) ? '首夜可以自救' : '首夜已过，不能自救'
 }

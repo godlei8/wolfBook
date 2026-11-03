@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { isStepHolder, nightArt, nightPanel, seatBadges } from '../src/utils/judge/night-panel.js'
+import { isStepHolder, nightArt, nightPanel, seatBadges, witchSelfSaveText } from '../src/utils/judge/night-panel.js'
 import { stageLayout } from '../src/utils/judge/stage.js'
 import { countdown, phaseTitle } from '../src/utils/judge/room-view.js'
 
@@ -68,17 +68,25 @@ test('witchPanelHidesSaveWhenNoAntidote', () => {
   assert.deepEqual(used.buttons, [], '一晚一瓶：用过就没有按钮')
 })
 
-test('witchRulesAreGlobal', () => {
-  // 板子或房间里写了别的女巫规则也不算数：首夜可以自救，第二夜起不行
-  const rules = { witchSelfSave: 'never', witchOnePotionPerNight: false }
-  const firstNight = nightPanel(night('witch', '女巫', me(3), {
-    line: 'x', nightInfo: { knifeSeat: 3, antidote: true, poison: true }, extra: { rules },
-  }))
-  assert.equal(firstNight.buttons.some((button) => button.action === 'save'), true, '首夜可以自救')
-  const later = nightPanel(night('witch', '女巫', me(3), {
-    line: 'x', nightInfo: { knifeSeat: 3, antidote: true, poison: true }, extra: { rules, currentDay: 2 },
-  }))
-  assert.equal(later.buttons.some((button) => button.action === 'save'), false, '第二夜起不能自救')
+test('witchSelfSaveFollowsTheBoard', () => {
+  // 女巫自救跟板子走：默认不能自救；板子设了首夜可以自救的，只有第一夜能救自己
+  const canSelfSave = (rules, currentDay = 1) => nightPanel(night('witch', '女巫', me(3), {
+    line: 'x', nightInfo: { knifeSeat: 3, antidote: true, poison: true }, extra: { rules, currentDay },
+  })).buttons.some((button) => button.action === 'save')
+  assert.equal(canSelfSave({ witchSelfSave: 'never' }), false, '不能自救的板子首夜也不行')
+  assert.equal(canSelfSave({}), false, '没设 = 默认不能自救')
+  assert.equal(canSelfSave({ witchSelfSave: 'first_night' }), true, '首夜可以自救')
+  assert.equal(canSelfSave({ witchSelfSave: 'first_night' }, 2), false, '第二夜起不能自救')
+  // 刀口不是自己时照样能救
+  const other = nightPanel(night('witch', '女巫', me(3), { line: 'x', nightInfo: { knifeSeat: 7, antidote: true, poison: true }, extra: { rules: {} } }))
+  assert.equal(other.buttons.some((button) => button.action === 'save'), true)
+})
+
+test('witchSelfSaveTextForTheLegacyJudgeDesk', () => {
+  assert.equal(witchSelfSaveText({ rules: { witchSelfSave: 'first_night' }, currentDay: 1 }), '首夜可以自救')
+  assert.equal(witchSelfSaveText({ rules: { witchSelfSave: 'first_night' }, currentDay: 2 }), '首夜已过，不能自救')
+  assert.equal(witchSelfSaveText({ rules: { witchSelfSave: 'never' }, currentDay: 1 }), '本板子不能自救')
+  assert.equal(witchSelfSaveText({ currentDay: 1 }), '本板子不能自救')
 })
 
 test('seerPanelShowsTheResultAfterChecking', () => {

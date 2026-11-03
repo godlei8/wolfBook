@@ -15,7 +15,7 @@ class JudgeRulesTests {
         JudgeRules rules = JudgeRules.defaults();
         assertEquals("side", rules.winCondition());
         assertTrue(rules.sheriffDefault());
-        assertEquals("first_night", rules.witchSelfSave());
+        assertEquals("never", rules.witchSelfSave());
         assertTrue(rules.witchOnePotionPerNight());
         assertEquals(120, rules.speechSeconds());
         assertEquals(150, rules.sheriffSpeechSeconds());
@@ -39,9 +39,9 @@ class JudgeRulesTests {
 
     @Test
     void partialJudgeRulesFallBackPerField() {
-        JudgeRules partial = new JudgeRules(null, false, "never", false, null, null);
+        JudgeRules partial = new JudgeRules(null, false, "first_night", false, null, null);
         JudgeRules rules = partial.withDefaults();
-        // 女巫规则是全局规则：写了别的值也按首夜可自救、一晚一瓶
+        // 女巫自救跟板子走（默认不能自救）；一晚一瓶是全局规则，写了 false 也按一晚一瓶
         assertEquals("first_night", rules.witchSelfSave());
         assertEquals(120, rules.speechSeconds());
         assertFalse(rules.sheriffDefault());
@@ -49,12 +49,21 @@ class JudgeRulesTests {
     }
 
     @Test
+    void witchSelfSaveIsNeverUnlessFirstNightIsChosen() {
+        assertEquals("never", new JudgeRules(null, null, null, null, null, null).withDefaults().witchSelfSave());
+        assertEquals("never", new JudgeRules(null, null, "never", null, null, null).withDefaults().witchSelfSave());
+        assertEquals("never", new JudgeRules(null, null, "bogus", null, null, null).withDefaults().witchSelfSave());
+        assertEquals("first_night", new JudgeRules(null, null, "first_night", null, null, null).withDefaults().witchSelfSave());
+    }
+
+    @Test
     void boardJudgeRulesAreKeptButWinConditionComesFromTheBoardColumn() {
         BoardRuleDetail detail = new BoardRuleDetail(null, List.of(), List.of(), List.of(),
-                new JudgeRules("side", true, "never", true, 90, null));
+                new JudgeRules("side", true, "first_night", true, 90, null));
         JudgeRules rules = JudgeRules.fromBoard(board("屠城", detail));
         assertEquals("city", rules.winCondition());
         assertEquals("first_night", rules.witchSelfSave());
+        assertEquals("never", JudgeRules.fromBoard(board("屠边", BoardRuleDetail.empty())).witchSelfSave());
         assertEquals(90, rules.speechSeconds());
         assertEquals(150, rules.sheriffSpeechSeconds());
     }

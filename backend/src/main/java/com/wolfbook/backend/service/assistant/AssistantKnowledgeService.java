@@ -6,6 +6,7 @@ import com.wolfbook.backend.common.ApiException;
 import com.wolfbook.backend.config.AssistantProperties;
 import com.wolfbook.backend.domain.Board;
 import com.wolfbook.backend.domain.BoardRuleDetail;
+import com.wolfbook.backend.domain.JudgeRules;
 import com.wolfbook.backend.domain.FaqItem;
 import com.wolfbook.backend.domain.RoleRelation;
 import com.wolfbook.backend.domain.WorldLore;
@@ -581,6 +582,10 @@ public class AssistantKnowledgeService {
         if (board.specialRules() != null && !board.specialRules().isEmpty()) {
             builder.append("规则：").append(String.join("；", board.specialRules())).append('\n');
         }
+        String judgeRules = judgeRuleText(board, roleNames);
+        if (!judgeRules.isEmpty()) {
+            builder.append(judgeRules).append('\n');
+        }
         appendRuleDetail(builder, board.ruleDetail(), roleNames);
         if (board.tips() != null && !board.tips().isEmpty()) {
             builder.append("提示：").append(String.join("；", board.tips())).append('\n');
@@ -592,6 +597,18 @@ public class AssistantKnowledgeService {
             }
         }
         return builder.toString();
+    }
+
+    /** 电子法官按板子结算的女巫规则（默认不能自救，板子可以设成首夜可以）；阵容里没有女巫返回空串。 */
+    static String judgeRuleText(Board board, Map<Integer, String> roleNames) {
+        boolean hasWitch = board.roles() != null && board.roles().stream()
+                .anyMatch(ref -> "女巫".equals(roleNames.get(ref.roleId())));
+        if (!hasWitch) {
+            return "";
+        }
+        boolean firstNight = JudgeRules.SELF_SAVE_FIRST_NIGHT.equals(JudgeRules.fromBoard(board).witchSelfSave());
+        return "电子法官规则：" + (firstNight ? "女巫只有首夜可以自救，之后不能" : "女巫不能自救（被刀的是自己时不能用解药）")
+                + "；一晚只能用一瓶药";
     }
 
     private void appendRuleDetail(StringBuilder builder, BoardRuleDetail detail, Map<Integer, String> roleNames) {

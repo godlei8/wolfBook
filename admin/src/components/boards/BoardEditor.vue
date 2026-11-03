@@ -6,7 +6,7 @@ import RoleToken from '../ui/RoleToken.vue'
 import CampBar from '../ui/CampBar.vue'
 import BoardPreview from './BoardPreview.vue'
 import { api } from '../../services/api'
-import type { Board, BoardRuleDetail, NightStep, Role } from '../../types'
+import type { Board, BoardJudgeRules, BoardRuleDetail, NightStep, Role } from '../../types'
 import {
   CAMP_META,
   CAMP_ORDER,
@@ -21,6 +21,8 @@ import {
   JUDGE_SUPPORT_META,
   judgeSupport,
   isWolfTeam,
+  buildJudgeRules,
+  hasWitch,
 } from '../../utils/board'
 
 const props = defineProps<{ boardId: number | null }>()
@@ -36,6 +38,8 @@ const tagDraft = ref('')
 const openExtra = reactive({ special: false, tips: false, faqs: false })
 const dragIndex = ref<number | null>(null)
 let snapshot = ''
+// 板子原来存的电子法官规则（节奏项等编辑页没有界面的部分），保存时原样带回去
+let loadedJudgeRules: BoardJudgeRules | null = null
 
 interface RoleRuleDraft {
   roleId: number
@@ -57,6 +61,7 @@ const form = reactive({
   backgroundImage: '',
   cardDescription: '',
   winCondition: '屠边',
+  witchFirstNight: false,
   ruleType: '标准板',
   status: 1,
   roles: [] as { roleId: number; count: number }[],
@@ -77,6 +82,7 @@ const isNew = computed(() => !props.boardId)
 const rolesById = computed(() => new Map(roles.value.map((role) => [role.id, role])))
 const size = computed(() => lineupSize(form.roles))
 const support = computed(() => judgeSupport(form.roles, rolesById.value))
+const lineupHasWitch = computed(() => hasWitch(form.roles, rolesById.value))
 const autoOrderText = computed(() =>
   defaultNightOrder(form.roles, rolesById.value)
     .map((step) => (isWolfTeam(rolesById.value.get(step.roleId)) ? '狼队' : rolesById.value.get(step.roleId)?.name || ''))
@@ -171,6 +177,7 @@ function buildRuleDetail(): BoardRuleDetail {
     sections: form.sections
       .map((section) => ({ title: section.title.trim(), items: splitLines(section.text) }))
       .filter((section) => section.title && section.items.length),
+    judgeRules: buildJudgeRules(loadedJudgeRules, form.witchFirstNight),
   }
 }
 
@@ -188,6 +195,8 @@ function fill(board?: Board) {
   form.status = board?.status ?? 1
   form.roles = (board?.roles || []).map((item) => ({ roleId: item.roleId, count: item.count }))
   const detail = board?.ruleDetail
+  loadedJudgeRules = detail?.judgeRules || null
+  form.witchFirstNight = detail?.judgeRules?.witchSelfSave === 'first_night'
   form.overview = detail?.overview || ''
   form.nightOrder = (detail?.nightOrder || []).map((step) => ({ roleId: step.roleId, action: step.action }))
   form.roleRules = (detail?.roleRules || []).map((note) => ({ roleId: note.roleId, text: note.items.join('\n') }))
@@ -456,6 +465,13 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
               <button v-for="win in WIN_CONDITIONS" :key="win" type="button" role="radio" :aria-checked="form.winCondition === win" :class="{ on: form.winCondition === win }" @click="form.winCondition = win">{{ win }}</button>
             </div>
           </div>
+          <div v-if="lineupHasWitch" class="nt-field">
+            <span class="nt-label">女巫自救 <small>· 电子法官按这个结算</small></span>
+            <div class="nt-seg" role="radiogroup" aria-label="女巫自救">
+              <button type="button" role="radio" :aria-checked="!form.witchFirstNight" :class="{ on: !form.witchFirstNight }" @click="form.witchFirstNight = false">不能自救</button>
+              <button type="button" role="radio" :aria-checked="form.witchFirstNight" :class="{ on: form.witchFirstNight }" @click="form.witchFirstNight = true">首夜可以自救</button>
+            </div>
+          </div>
           <div class="nt-field">
             <label class="nt-label" for="b-tag">标签</label>
             <div class="tags">
@@ -591,7 +607,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
               <small>{{ lineCount(note.text) }} 条</small>
               <button type="button" class="nt-iconbtn" aria-label="删除这组细则" @click="form.roleRules.splice(index, 1)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
             </div>
-            <textarea v-model="note.text" class="nt-input" rows="3" :aria-label="`${rolesById.get(note.roleId)?.name}细则，一行一条`" placeholder="例如：只有首夜可以自救"></textarea>
+            <textarea v-model="note.text" class="nt-input" rows="3" :aria-label="`${rolesById.get(note.roleId)?.name}细则，一行一条`" placeholder="例如：骑士白天可以翻牌决斗一名玩家"></textarea>
           </div>
         </div>
         <p v-if="!form.roleRules.length" class="nt-empty">没有角色细则</p>

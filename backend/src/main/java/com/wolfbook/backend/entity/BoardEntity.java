@@ -26,6 +26,8 @@ public class BoardEntity {
     private String specialRules;
     private String tips;
     private String faqs;
+    // 规则详情整个清空（比如女巫自救改回默认）时存 null，同样要写入
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String ruleDetail;
     private String winCondition;
     private String ruleType;

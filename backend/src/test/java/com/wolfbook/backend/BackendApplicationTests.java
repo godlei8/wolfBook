@@ -576,15 +576,29 @@ class BackendApplicationTests {
     }
 
     @Test
-    void boardWitchRulesAreGlobalAndOldValuesAreDropped() throws Exception {
+    void boardChoosesFirstNightSelfSaveAndOnePotionStaysGlobal() throws Exception {
         String adminToken = loginAndGetAdminToken();
-        String body = """
+        String bogus = """
                 {
-                  "name": "女巫全局规则板",
+                  "name": "女巫自救板",
                   "playerCount": 6,
                   "difficulty": "入门",
                   "roles": [{"roleId": 6, "count": 2}, {"roleId": 2, "count": 1}, {"roleId": 9, "count": 3}],
-                  "ruleDetail": {"judgeRules": {"witchSelfSave": "bogus", "witchOnePotionPerNight": false, "speechSeconds": 90}}
+                  "ruleDetail": {"judgeRules": {"witchSelfSave": "bogus"}}
+                }
+                """;
+        mockMvc.perform(post("/admin/boards")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bogus))
+                .andExpect(jsonPath("$.code").value(4000));
+        String body = """
+                {
+                  "name": "女巫自救板",
+                  "playerCount": 6,
+                  "difficulty": "入门",
+                  "roles": [{"roleId": 6, "count": 2}, {"roleId": 2, "count": 1}, {"roleId": 9, "count": 3}],
+                  "ruleDetail": {"judgeRules": {"witchSelfSave": "first_night", "witchOnePotionPerNight": false, "speechSeconds": 90}}
                 }
                 """;
         String created = mockMvc.perform(post("/admin/boards")
@@ -600,6 +614,16 @@ class BackendApplicationTests {
                     .andExpect(jsonPath("$.data.ruleDetail.judgeRules.witchSelfSave").value("first_night"))
                     .andExpect(jsonPath("$.data.ruleDetail.judgeRules.witchOnePotionPerNight").value(true))
                     .andExpect(jsonPath("$.data.ruleDetail.judgeRules.speechSeconds").value(90));
+            // 改回不能自救：规则详情整个空了也要落库（不能因为 null 被跳过、留下旧的首夜可以自救）
+            mockMvc.perform(put("/admin/boards/{id}", boardId)
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body.replace("\"witchSelfSave\": \"first_night\", \"witchOnePotionPerNight\": false, \"speechSeconds\": 90",
+                                    "\"witchSelfSave\": \"never\"")))
+                    .andExpect(jsonPath("$.code").value(0));
+            mockMvc.perform(get("/api/boards/{id}", boardId))
+                    .andExpect(jsonPath("$.data.ruleDetail.judgeRules.witchSelfSave").value("never"))
+                    .andExpect(jsonPath("$.data.ruleDetail.judgeRules.speechSeconds").value(120));
         } finally {
             mockMvc.perform(delete("/admin/boards/{id}", boardId).header("Authorization", "Bearer " + adminToken))
                     .andExpect(jsonPath("$.code").value(0));
