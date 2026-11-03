@@ -113,11 +113,22 @@ export interface RuleSection {
   items: string[]
 }
 
+/** 电子法官规则（后端 domain/JudgeRules）：没写的项用默认值。女巫自救默认 never，板子可以设成 first_night。 */
+export interface BoardJudgeRules {
+  sheriffDefault?: boolean | null
+  witchSelfSave?: 'first_night' | 'never' | null
+  speechSeconds?: number | null
+  sheriffSpeechSeconds?: number | null
+  wolfSeconds?: number | null
+  roleSeconds?: number | null
+}
+
 export interface BoardRuleDetail {
   overview: string | null
   nightOrder: NightStep[]
   roleRules: RoleRuleNote[]
   sections: RuleSection[]
+  judgeRules?: BoardJudgeRules | null
 }
 
 export type WorldCamp = 'good' | 'wolf' | 'third'

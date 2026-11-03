@@ -1367,10 +1367,24 @@ class JudgeFlowIntegrationTests {
     }
 
     @Test
-    void oldRoomWithNeverStillSelfSavesOnNightOne() throws Exception {
+    void witchCannotSaveHerselfOnABoardThatKeepsTheDefault() throws Exception {
+        Game game = autoGame12(false);
+        Assertions.assertEquals("never", game.snapshot(game.host).path("rules").path("witchSelfSave").asText());
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int witch = seats.get("女巫").get(0);
+        for (int wolf : seats.get("狼人")) {
+            game.act(wolf, "kill", witch);
+        }
+        Assertions.assertEquals("witch", game.snapshot(game.host).path("currentStep").path("kind").asText());
+        JsonNode selfSave = game.call(game.players.get(witch - 1), "/night-action", "{\"actionType\":\"save\",\"targetSeatNo\":" + witch + "}");
+        Assertions.assertEquals(4000, selfSave.path("code").asInt(), selfSave.toString());
+    }
+
+    @Test
+    void roomKeepsTheFirstNightSelfSaveItWasCreatedWith() throws Exception {
         Game game = autoGame12(false);
         jdbcTemplate.update("UPDATE judge_rooms SET rules_json = ? WHERE room_id = ?",
-                "{\"winCondition\":\"side\",\"witchSelfSave\":\"never\",\"witchOnePotionPerNight\":false}", game.roomId);
+                "{\"winCondition\":\"side\",\"witchSelfSave\":\"first_night\",\"witchOnePotionPerNight\":false}", game.roomId);
         Map<String, List<Integer>> seats = game.seatsByRole();
         int witch = seats.get("女巫").get(0);
         for (int wolf : seats.get("狼人")) {
@@ -1378,16 +1392,18 @@ class JudgeFlowIntegrationTests {
         }
         Assertions.assertEquals("witch", game.snapshot(game.host).path("currentStep").path("kind").asText());
         game.act(witch, "save", witch);
-        Assertions.assertEquals("first_night", game.snapshot(game.host).path("rules").path("witchSelfSave").asText());
+        JsonNode rules = game.snapshot(game.host).path("rules");
+        Assertions.assertEquals("first_night", rules.path("witchSelfSave").asText());
+        Assertions.assertTrue(rules.path("witchOnePotionPerNight").asBoolean(), "一晚一瓶是全局规则");
     }
 
     @Test
     void roomRulesNeverChangeTheWinCondition() throws Exception {
         Game game = lobbyGame("{\"boardId\":" + BOARD_ID + ",\"judgeMode\":\"observer\",\"autoJudge\":true,"
-                + "\"rules\":{\"winCondition\":\"city\",\"witchSelfSave\":\"never\"}}");
+                + "\"rules\":{\"winCondition\":\"city\",\"witchSelfSave\":\"first_night\"}}");
         JsonNode rules = game.snapshot(game.host).path("rules");
         Assertions.assertEquals("side", rules.path("winCondition").asText());
-        Assertions.assertEquals("first_night", rules.path("witchSelfSave").asText());
+        Assertions.assertEquals("never", rules.path("witchSelfSave").asText(), "女巫自救跟板子走，建房请求改不了");
     }
 
     private JsonNode putRules(Game game, String token, String body) throws Exception {

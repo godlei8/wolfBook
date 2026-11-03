@@ -155,7 +155,7 @@ public class DatabaseSeeder {
                 List.of(
                         new BoardRuleDetail.RoleRuleNote(2, List.of(
                                 "解药和毒药整局各一瓶，同一晚不能同时使用",
-                                "只有首夜可以自救，之后不能对自己使用解药"
+                                "不能自救：被刀的是自己时不能对自己使用解药"
                         )),
                         new BoardRuleDetail.RoleRuleNote(3, List.of(
                                 "被狼人击杀或被放逐时可以开枪带走一名玩家，也可以选择不开枪",

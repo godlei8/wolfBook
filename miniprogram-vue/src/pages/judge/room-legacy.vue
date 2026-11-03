@@ -14,6 +14,7 @@ import { openAssistant } from '../../utils/assistant-entry'
 import { getJudgePhaseLabel } from '../../utils/judge/meta'
 import { buildJudgeVoiceScript, createJudgeVoicePlayer } from '../../utils/judge/voice'
 import { buildNightSteps, checkResult, isWolfTeam, stepHolders as holdersOfStep, witchPotions } from '../../utils/judge/night-order.js'
+import { witchSelfSaveAllowed, witchSelfSaveText } from '../../utils/judge/night-panel.js'
 import { fromNow } from '../../utils/format'
 import { getNavInsets, rpxToPx } from '../../utils/nav'
 import { goToUserTab, hasAuthToken } from '../../utils/auth'
@@ -131,10 +132,9 @@ const savedSeats = computed(() => actionTargets(isWitch, '解药'))
 const poisonSeats = computed(() => actionTargets(isWitch, '毒药'))
 const guardSeats = computed(() => actionTargets(() => true, '守护'))
 const potions = computed(() => witchPotions(snapshot.value?.nightHistory || [], witchSeats.value))
-// 女巫只有第一夜可以自救
+// 女巫自救跟板子走：默认不能自救，设了首夜可以自救的只有第一夜能
 const witchKnifed = computed(() => knifeSeats.value.some((seat) => witchSeats.value.includes(seat)))
-const firstNight = computed(() => snapshot.value?.currentDay === 1)
-const canSave = computed(() => potions.value.antidote > 0 && knifeSeats.value.length > 0 && (firstNight.value || !witchKnifed.value))
+const canSave = computed(() => potions.value.antidote > 0 && knifeSeats.value.length > 0 && (witchSelfSaveAllowed(snapshot.value) || !witchKnifed.value))
 // 天亮时建议的出局座位：刀口（被救或被守则幸免，同守同救照样出局）+ 毒药目标
 const suggestedDead = computed(() => {
   const dead = knifeSeats.value.filter((seat) => savedSeats.value.includes(seat) === guardSeats.value.includes(seat))
@@ -982,7 +982,7 @@ onUnload(() => {
                 <block v-if="currentKind === 'witch'">
                   <text class="jr-pill jr-pill--save">解药 ×{{ potions.antidote }}</text>
                   <text class="jr-pill jr-pill--wolf">毒药 ×{{ potions.poison }}</text>
-                  <text class="jr-pill">{{ firstNight ? '首夜可以自救' : '首夜已过，不能自救' }}</text>
+                  <text class="jr-pill">{{ witchSelfSaveText(snapshot) }}</text>
                 </block>
                 <text v-else-if="currentKind === 'hunter'" class="jr-pill" :class="hunterPoisoned ? 'jr-pill--wolf' : 'jr-pill--save'">
                   {{ hunterPoisoned ? '今晚被毒，不能开枪' : '可以开枪' }}

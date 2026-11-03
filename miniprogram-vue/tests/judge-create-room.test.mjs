@@ -44,7 +44,8 @@ test('joinedOnlyForFullBoards', () => {
 test('boardRuleLineIsReadOnlyText', () => {
   const city = board({ winCondition: 'city', witchSelfSave: 'first_night', witchOnePotionPerNight: true })
   assert.equal(boardRuleLine(city), '屠城 · 女巫只首夜可自救 · 一晚一瓶')
-  assert.equal(boardRuleLine(board({ winCondition: 'side', witchSelfSave: 'never', witchOnePotionPerNight: false })), '屠边 · 女巫只首夜可自救 · 一晚一瓶',
-    '女巫规则是全局规则，板子上写的别的值不算数')
+  assert.equal(boardRuleLine(board({ winCondition: 'side', witchSelfSave: 'never', witchOnePotionPerNight: false })), '屠边 · 女巫不能自救 · 一晚一瓶',
+    '女巫自救跟板子走；一晚一瓶是全局规则，板子上写 false 也是一晚一瓶')
+  assert.equal(boardRuleLine(board({ winCondition: 'side' })), '屠边 · 女巫不能自救 · 一晚一瓶', '板子没设 = 默认不能自救')
   assert.equal(boardRuleLine(board({ winCondition: 'side' }, { roles: [{ name: '狼人' }, { name: '平民' }] })), '屠边')
 })

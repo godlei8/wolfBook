@@ -92,10 +92,19 @@ class NightResolverTests {
 
     @Test
     void witchMaySaveHerselfOnNightOneWhenRuleAllows() {
+        JudgeRules firstNight = new JudgeRules("side", true, JudgeRules.SELF_SAVE_FIRST_NIGHT, true, 120, 150).withDefaults();
         Map<Integer, NightResolver.SeatState> seats = seats();
-        NightResolver.validate(save(2, 2), seats.get(2), seats.get(2), RULES, 1, 2);
-        NightResolver.Outcome outcome = NightResolver.resolve(List.of(kill(5, 2), save(2, 2)), seats, RULES, 1, RANDOM);
+        NightResolver.validate(save(2, 2), seats.get(2), seats.get(2), firstNight, 1, 2);
+        NightResolver.Outcome outcome = NightResolver.resolve(List.of(kill(5, 2), save(2, 2)), seats, firstNight, 1, RANDOM);
         assertTrue(outcome.deadSeats().isEmpty());
+    }
+
+    @Test
+    void witchCannotSaveHerselfByDefaultEvenOnNightOne() {
+        Map<Integer, NightResolver.SeatState> seats = seats();
+        ApiException error = assertThrows(ApiException.class,
+                () -> NightResolver.validate(save(2, 2), seats.get(2), seats.get(2), RULES, 1, 2));
+        assertEquals(4000, error.getCode());
     }
 
     @Test
