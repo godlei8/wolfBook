@@ -235,3 +235,13 @@ test('clampAdvancedKeepsNumbersInRange', () => {
   assert.equal(clamped.base.maxSuggestions, 6)
   assert.equal(draft.base.temperature, 3)
 })
+
+test('pageNumbersCollapseLongRuns', async () => {
+  const { pageNumbers } = await import('../src/utils/pagination.ts')
+  assert.deepEqual(pageNumbers(1, 1), [1])
+  assert.deepEqual(pageNumbers(2, 5), [1, 2, 3, 4, 5])
+  assert.deepEqual(pageNumbers(1, 50), [1, 2, 3, '…', 50])
+  assert.deepEqual(pageNumbers(25, 50), [1, '…', 24, 25, 26, '…', 50])
+  assert.deepEqual(pageNumbers(50, 50), [1, '…', 48, 49, 50])
+  assert.deepEqual(pageNumbers(4, 8), [1, 2, 3, 4, 5, '…', 8])
+})

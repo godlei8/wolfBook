@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../../services/api'
 import type { AdminAiDocument, AdminAiLog, AdminPlaygroundResult, Board, Role } from '../../types'
 import { renderMarkdown } from '../../utils/markdown'
+import { clampPage, pageNumbers, paginate } from '../../utils/pagination'
 import { SLOW_MS, filterLogs, formatFullTime, formatLogTime, hitKind, logFilterCounts, type LogFilter } from '../../utils/aiAdmin'
 import { answerTypeLabel, failureLabel, hitTypeLabel, intentLabel } from './formatters'
 
@@ -29,7 +30,8 @@ const FILTERS: { key: LogFilter; label: string }[] = [
   { key: 'slow', label: '慢' },
   { key: 'refused', label: '婉拒' },
 ]
-const BATCH = 30
+// 一页 10 条，记录最多 500 条，翻页不用一直往下滚
+const PAGE_SIZE = 10
 
 // ---------- 试答 ----------
 const message = ref('')
@@ -45,7 +47,7 @@ const rightPanel = ref<HTMLElement | null>(null)
 
 // ---------- 记录 ----------
 const filter = ref<LogFilter>('all')
-const shown = ref(BATCH)
+const logPage = ref(1)
 const selectedId = ref<number | null>(null)
 // 右边看的是记录还是试答结果
 const viewing = ref<'log' | 'trial'>('log')
@@ -53,11 +55,13 @@ const menuOpen = ref(false)
 
 const counts = computed(() => logFilterCounts(props.logs))
 const filtered = computed(() => filterLogs(props.logs, filter.value))
-const visible = computed(() => filtered.value.slice(0, shown.value))
+const pageCount = computed(() => Math.max(1, Math.ceil(filtered.value.length / PAGE_SIZE)))
+const visible = computed(() => paginate(filtered.value, logPage.value, PAGE_SIZE))
+const pages = computed(() => pageNumbers(logPage.value, pageCount.value))
 const selected = computed(() => props.logs.find((log) => log.id === selectedId.value) || null)
 
 watch(filter, () => {
-  shown.value = BATCH
+  logPage.value = 1
   selectedId.value = filtered.value[0]?.id ?? null
   viewing.value = 'log'
 })
@@ -67,6 +71,7 @@ watch(
   (request) => {
     if (!request) return
     filter.value = request.filter
+    logPage.value = 1
     selectedId.value = filterLogs(props.logs, request.filter)[0]?.id ?? null
     viewing.value = 'log'
     emit('filter-consumed')
@@ -76,6 +81,7 @@ watch(
 watch(
   () => props.logs,
   (logs) => {
+    logPage.value = clampPage(logPage.value, PAGE_SIZE, filtered.value.length)
     if (!logs.some((log) => log.id === selectedId.value)) selectedId.value = filtered.value[0]?.id ?? null
   },
   { immediate: true },
@@ -295,9 +301,24 @@ onMounted(async () => {
         </li>
       </ol>
       <div v-else class="nt-empty">{{ logs.length ? '这个筛选下没有记录' : '还没有人问过' }}</div>
-      <button v-if="filtered.length > shown" type="button" class="nt-btn nt-btn--ghost nt-btn--small qa-more" @click="shown += BATCH">
-        再看 {{ Math.min(BATCH, filtered.length - shown) }} 条（还有 {{ filtered.length - shown }} 条）
-      </button>
+      <nav v-if="filtered.length > PAGE_SIZE" class="qa-pager" aria-label="问答记录翻页">
+        <button type="button" class="qa-pager__btn" :disabled="logPage === 1" aria-label="上一页" @click="logPage--">‹</button>
+        <template v-for="(item, index) in pages" :key="`${item}-${index}`">
+          <span v-if="item === '…'" class="qa-pager__gap">…</span>
+          <button
+            v-else
+            type="button"
+            class="qa-pager__btn"
+            :class="{ 'is-on': item === logPage }"
+            :aria-current="item === logPage ? 'page' : undefined"
+            @click="logPage = item"
+          >
+            {{ item }}
+          </button>
+        </template>
+        <button type="button" class="qa-pager__btn" :disabled="logPage === pageCount" aria-label="下一页" @click="logPage++">›</button>
+        <span class="qa-pager__info">{{ (logPage - 1) * PAGE_SIZE + 1 }}–{{ Math.min(logPage * PAGE_SIZE, filtered.length) }} / {{ filtered.length }}</span>
+      </nav>
     </section>
 
     <section ref="rightPanel" class="nt-panel qa-right" aria-live="polite">
@@ -567,8 +588,54 @@ onMounted(async () => {
   font-size: 12px;
 }
 
-.qa-more {
-  align-self: center;
+.qa-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.qa-pager__btn {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-2);
+  font: 600 13px var(--sans);
+  cursor: pointer;
+}
+
+.qa-pager__btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--text-3);
+}
+
+.qa-pager__btn.is-on {
+  background: var(--moon);
+  border-color: var(--moon);
+  color: var(--ink);
+}
+
+.qa-pager__btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.qa-pager__gap {
+  color: var(--text-3);
+  padding: 0 2px;
+}
+
+.qa-pager__info {
+  flex-basis: 100%;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 12px;
 }
 
 .qa-head {
