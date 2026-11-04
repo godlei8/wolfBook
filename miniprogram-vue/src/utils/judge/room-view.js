@@ -106,5 +106,6 @@ export function phaseTitle(snapshot) {
     const roleName = snapshot.currentStep?.roleName
     return roleName ? `第 ${day} 夜 · ${roleName}请睁眼` : `第 ${day} 夜 · 天黑请闭眼`
   }
+  if (snapshot.currentPhase === 'sheriff_speech' && day > 1) return `第 ${day} 天 · 昨天的竞选继续`
   return `第 ${day} 天 · ${DAY_TITLES[snapshot.currentPhase] || '进行中'}`
 }

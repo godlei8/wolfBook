@@ -44,13 +44,17 @@ function dayCue(snapshot, now) {
       return cue(snapshot, phase, ['天亮了', '现在开始上警，想竞选警长的请在手机上报名'])
     case 'sheriff_speech': {
       const speaker = speakerOf(snapshot)
-      return cue(snapshot, `${phase}:${snapshot.speech?.index || 0}`, [speaker ? `请 ${speaker} 号警上发言` : '警上发言'])
+      const index = snapshot.speech?.index || 0
+      // 昨天警上有人自爆，今天接着竞选
+      const resumed = (snapshot.currentDay || 1) > 1 && index === 0 ? '昨天的警长竞选继续' : ''
+      return cue(snapshot, `${phase}:${index}`, [resumed, speaker ? `请 ${speaker} 号警上发言` : '警上发言'])
     }
     case 'sheriff_vote':
       return cue(snapshot, phase, ['请警下玩家投票选警长'])
     case 'sheriff_pk':
       return cue(snapshot, phase, ['警长平票，进入 PK 投票'])
     case 'day_announce': {
+      if (snapshot.nightNext) return cue(snapshot, `${phase}:explode`, [snapshot.latestAnnouncement, '天黑请闭眼'])
       const panel = announcePanel(snapshot)
       const round = (snapshot.rounds || []).find((item) => item.dayNo === (snapshot.currentDay || 1))
       // 当天上过警的话「天亮了」已经在上警前播过

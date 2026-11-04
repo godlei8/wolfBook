@@ -36,6 +36,8 @@ function skillText(skill) {
       return skill.targetSeatNo ? `${skill.actorSeatNo} 号把警徽交给 ${skill.targetSeatNo} 号` : `${skill.actorSeatNo} 号撕掉警徽`
     case 'idiot_revealed':
       return `${skill.actorSeatNo} 号翻牌是白痴`
+    case 'self_destruct':
+      return `${skill.actorSeatNo} 号自爆`
     case 'force_out':
       return `法官点杀 ${skill.targetSeatNo || skill.actorSeatNo} 号`
     default:

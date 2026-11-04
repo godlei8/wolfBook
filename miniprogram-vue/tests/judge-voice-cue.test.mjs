@@ -106,3 +106,22 @@ test('aFailedCueIsRetriedOnce', () => {
   assert.equal(shouldPlay(cue, played), false, '重播也失败就不再播，免得每秒刷一次')
   assert.equal(failures[cue.key], 2)
 })
+
+test('explodedAnnounceEndsWithNightfall', () => {
+  const day = (extra = {}) => ({
+    roomId: 'r1', roomStatus: 'playing', currentPhase: 'day_announce', currentDay: 1, host: true, paused: false,
+    latestAnnouncement: '4号自爆，警长竞选推迟到明天。昨夜平安夜', rounds: [], players: [], ...extra,
+  })
+  const exploded = voiceCue(day({ nightNext: true }), NOW)
+  assert.equal(exploded.lines.at(-1), '天黑请闭眼')
+  assert.ok(exploded.lines.includes('4号自爆，警长竞选推迟到明天。昨夜平安夜'))
+  assert.notEqual(exploded.key, voiceCue(day(), NOW).key)
+})
+
+test('deferredElectionSaysItContinues', () => {
+  const speech = voiceCue({
+    roomId: 'r1', roomStatus: 'playing', currentPhase: 'sheriff_speech', currentDay: 2, host: true, paused: false,
+    speech: { order: [3, 6], index: 0 }, rounds: [], players: [],
+  }, NOW)
+  assert.equal(speech.lines[0], '昨天的警长竞选继续')
+})
