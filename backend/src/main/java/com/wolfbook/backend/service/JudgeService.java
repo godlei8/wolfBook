@@ -1649,7 +1649,9 @@ public class JudgeService {
         requirePhase(room, PHASE_DAY_ANNOUNCE);
         Map<String, Object> phaseData = readMap(room.getPhaseData());
         if (Boolean.TRUE.equals(phaseData.get("nightNext"))) {
-            throw new ApiException(4002, "今天有人自爆，直接天黑");
+            // 今天有人警上自爆，直接天黑。旧版小程序的房主只有「开始发言」，当作「天黑」，免得房间卡住
+            handleStartNight(room, now);
+            return;
         }
         List<Integer> alive = new ArrayList<>(aliveSeats(players));
         alive.sort(Integer::compareTo);

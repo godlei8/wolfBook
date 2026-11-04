@@ -1454,7 +1454,10 @@ class JudgeFlowIntegrationTests {
         JsonNode exploded = game.call(game.players.get(wolf - 1), "/self-destruct", null);
         Assertions.assertEquals("day_announce", exploded.path("data").path("currentPhase").asText(), "平安夜也停在公布死讯");
         Assertions.assertTrue(exploded.path("data").path("nightNext").asBoolean());
-        Assertions.assertEquals(4002, game.advance(game.host, "{\"action\":\"start_speech\"}").path("code").asInt());
+        // 旧版小程序的房主只有「开始发言」：当作天黑，不能让房间卡住
+        JsonNode oldClient = game.advance(game.host, "{\"action\":\"start_speech\"}");
+        Assertions.assertEquals(0, oldClient.path("code").asInt(), oldClient.toString());
+        Assertions.assertEquals("night_action", oldClient.path("data").path("currentPhase").asText());
 
         Game normal = autoGame(false);
         normal.finishNight(normal.seatsByRole().get("平民").get(0), null);
@@ -1574,6 +1577,18 @@ class JudgeFlowIntegrationTests {
         Assertions.assertEquals("night_action", night.path("currentPhase").asText(), night.toString());
         JsonNode dayTwo = game.finishNight();
         Assertions.assertEquals("day_announce", dayTwo.path("currentPhase").asText(), "竞选结束后的自爆不影响警徽");
+    }
+
+    @Test
+    void lastWolfExplodingOnStageEndsTheGame() throws Exception {
+        Game game = autoGame(true);
+        Map<String, List<Integer>> roles = game.seatsByRole();
+        int wolf = roles.get("狼人").get(0);
+        toSheriffSpeech(game, null, wolf, roles.get("预言家").get(0));
+        markDead(game, roles.get("狼人").stream().filter(seat -> seat != wolf).toList());
+        JsonNode data = game.call(game.players.get(wolf - 1), "/self-destruct", null).path("data");
+        Assertions.assertEquals("finished", data.path("roomStatus").asText(), data.path("latestAnnouncement").asText());
+        Assertions.assertEquals("好人", data.path("winnerCamp").asText());
     }
 
     /** 第一夜刀 knife（null = 平安夜），candidates 报名上警，截止进警上发言。返回警上发言时的房主快照。 */

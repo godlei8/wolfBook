@@ -113,7 +113,8 @@ test('explodedAnnounceEndsWithNightfall', () => {
     latestAnnouncement: '4号自爆，警长竞选推迟到明天。昨夜平安夜', rounds: [], players: [], ...extra,
   })
   const exploded = voiceCue(day({ nightNext: true }), NOW)
-  assert.equal(exploded.lines.at(-1), '天黑请闭眼')
+  assert.ok(!exploded.lines.includes('天黑请闭眼'), '遗言还没说完，不能先喊天黑')
+  assert.match(exploded.lines.at(-1), /遗言/)
   assert.ok(exploded.lines.includes('4号自爆，警长竞选推迟到明天。昨夜平安夜'))
   assert.notEqual(exploded.key, voiceCue(day(), NOW).key)
 })
@@ -124,4 +125,11 @@ test('deferredElectionSaysItContinues', () => {
     speech: { order: [3, 6], index: 0 }, rounds: [], players: [],
   }, NOW)
   assert.equal(speech.lines[0], '昨天的警长竞选继续')
+})
+
+test('daySpeechExplosionIsAnnouncedAtNightfall', () => {
+  const first = voiceCue(night(0, 'wolf', '狼人', { currentDay: 2, latestAnnouncement: '4号自爆，天黑请闭眼' }), NOW)
+  assert.equal(first.lines[0], '4号自爆，天黑请闭眼')
+  assert.equal(first.lines.filter((line) => line.includes('天黑请闭眼')).length, 1)
+  assert.equal(voiceCue(night(0, 'wolf', '狼人', { latestAnnouncement: '天黑请闭眼' }), NOW).lines[0], '天黑请闭眼')
 })

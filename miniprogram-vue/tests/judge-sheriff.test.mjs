@@ -71,3 +71,8 @@ test('theSheriffSpeakerCanEndTheirSpeech', () => {
   assert.equal(sheriffPanel({ ...speaking, selfPlayer: me(3) }).isSpeaker, false, '还没轮到')
   assert.equal(sheriffPanel({ ...speaking, currentPhase: 'sheriff_vote' }).isSpeaker, false, '投票阶段没有发言人')
 })
+
+test('explodedAnnounceTellsTheHostToCallNight', () => {
+  assert.match(announcePanel(room('day_announce', me(2), { nightNext: true })).hint, /天黑/)
+  assert.match(announcePanel(room('day_announce', me(2))).hint, /开始发言/)
+})

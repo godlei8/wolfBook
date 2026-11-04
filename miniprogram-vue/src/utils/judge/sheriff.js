@@ -65,5 +65,7 @@ export function announcePanel(snapshot) {
     sheriffSeat,
     canChooseOrder,
     orderOptions,
+    // 警上有人自爆的那天公布完死讯直接天黑
+    hint: snapshot?.nightNext ? '有遗言的玩家发表遗言，房主点「天黑」进入黑夜。' : '房主点「开始发言」进入白天发言。',
   }
 }
