@@ -93,6 +93,8 @@ export interface Mechanic {
   brief: string
   nightPriority: number | null
   wolfTeam: boolean
+  /** 白天发言时能不能自爆（狼人、狼王）。是机制自带的技能，不是开关。 */
+  canSelfDestruct: boolean
 }
 
 /** 夜间行动顺序里的一步，roleId 必须在本板子的阵容里。 */

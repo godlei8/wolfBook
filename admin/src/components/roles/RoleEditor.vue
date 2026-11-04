@@ -385,7 +385,7 @@ async function remove() {
           <option v-for="item in mechanics" :key="item.code" :value="item.code">{{ item.label }} · {{ item.brief }}</option>
         </select>
         <p class="nt-muted mech-hint">
-          {{ currentMechanic ? `夜里：${currentMechanic.nightPriority ? `第 ${currentMechanic.nightPriority} 顺位醒来` : '不用睁眼'}${currentMechanic.wolfTeam ? '，和狼队一起刀人' : ''}。` : '带没有机制的角色的板子只能开有法官。' }}
+          {{ currentMechanic ? `夜里：${currentMechanic.nightPriority ? `第 ${currentMechanic.nightPriority} 顺位醒来` : '不用睁眼'}${currentMechanic.wolfTeam ? '，和狼队一起刀人' : ''}${currentMechanic.canSelfDestruct ? '；白天发言时可以自爆' : ''}。` : '带没有机制的角色的板子只能开有法官。' }}
           阵营决定算谁赢，类型决定屠边时算神职还是平民，机制决定夜里做什么、出局有没有技能，三者各管各的。
         </p>
       </div>
