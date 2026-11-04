@@ -1474,8 +1474,8 @@ public class JudgeService {
             if (!PHASE_SHERIFF_VOTE.equals(phase) && !PHASE_SHERIFF_PK.equals(phase)) {
                 throw new ApiException(4002, "现在不是警长投票");
             }
-            if (Boolean.TRUE.equals(self.getSheriffCandidate())) {
-                throw new ApiException(4003, "上过警的玩家不能投警长");
+            if (!eligibleVoters(room, players, phase).contains(self.getSeatNo())) {
+                throw new ApiException(4003, PHASE_SHERIFF_PK.equals(phase) ? "PK 的玩家和退水的玩家不能投警长" : "上过警的玩家不能投警长");
             }
             Set<Integer> allowed = PHASE_SHERIFF_PK.equals(phase) ? new LinkedHashSet<>(pkSeats(room)) : new LinkedHashSet<>(onStage(players));
             if (!allowed.contains(request.targetSeatNo())) {
@@ -2338,12 +2338,19 @@ public class JudgeService {
     }
 
     /** 这一轮能投票的座位：放逐看投票权（翻牌白痴没有），PK 去掉平票者；警长投票只有没上过警的人。 */
+    /**
+     * 这一轮能投票的座位。警长投票只有警下的人；警长 PK 时还在警上、不在 PK 里的候选人也能投（退水的始终不能投）。
+     * 放逐投票看 canVote（翻牌白痴不能投），PK 的人不能投。
+     */
     private Set<Integer> eligibleVoters(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players, String phase) {
         boolean sheriffVote = PHASE_SHERIFF_VOTE.equals(phase) || PHASE_SHERIFF_PK.equals(phase);
-        Set<Integer> pk = new HashSet<>(PHASE_VOTE_PK.equals(phase) ? pkSeats(room) : List.of());
+        boolean sheriffPk = PHASE_SHERIFF_PK.equals(phase);
+        Set<Integer> pk = new HashSet<>(PHASE_VOTE_PK.equals(phase) || sheriffPk ? pkSeats(room) : List.of());
         return players.stream()
                 .filter(player -> Boolean.TRUE.equals(player.getPlaying()) && Boolean.TRUE.equals(player.getAlive()) && player.getSeatNo() != null)
-                .filter(player -> sheriffVote ? !Boolean.TRUE.equals(player.getSheriffCandidate()) : !Boolean.FALSE.equals(player.getCanVote()))
+                .filter(player -> !sheriffVote ? !Boolean.FALSE.equals(player.getCanVote())
+                        : !Boolean.TRUE.equals(player.getSheriffCandidate())
+                        || (sheriffPk && !Boolean.TRUE.equals(player.getSheriffWithdrew())))
                 .map(JudgeRoomPlayerEntity::getSeatNo)
                 .filter(seat -> !pk.contains(seat))
                 .collect(Collectors.toSet());

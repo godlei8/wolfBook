@@ -1591,6 +1591,43 @@ class JudgeFlowIntegrationTests {
         Assertions.assertEquals("好人", data.path("winnerCamp").asText());
     }
 
+    @Test
+    void otherCandidatesVoteInTheSheriffPk() throws Exception {
+        Game game = autoGame(true);
+        Map<String, List<Integer>> roles = game.seatsByRole();
+        List<Integer> villagers = roles.get("平民");
+        int a = roles.get("预言家").get(0);
+        int b = roles.get("守卫").get(0);
+        int c = villagers.get(0);
+        int withdrawn = villagers.get(1);
+        toSheriffSpeech(game, null, a, b, c, withdrawn);
+        game.sheriff(withdrawn, "{\"withdraw\":true}");
+        game.advance(game.host, "{\"action\":\"start_sheriff_vote\"}");
+        List<Integer> below = new ArrayList<>();
+        for (int seat = 1; seat <= PLAYER_COUNT; seat++) {
+            if (!List.of(a, b, c, withdrawn).contains(seat)) {
+                below.add(seat);
+            }
+        }
+        Assertions.assertEquals(4003, game.call(game.players.get(c - 1), "/sheriff", "{\"targetSeatNo\":" + a + "}").path("code").asInt(),
+                "第一轮只有警下能投");
+        game.sheriff(below.get(0), "{\"targetSeatNo\":" + a + "}");
+        game.sheriff(below.get(1), "{\"targetSeatNo\":" + a + "}");
+        game.sheriff(below.get(2), "{\"targetSeatNo\":" + b + "}");
+        game.sheriff(below.get(3), "{\"targetSeatNo\":" + b + "}");
+        JsonNode pk = game.advance(game.host, "{\"action\":\"resolve_sheriff_vote\"}").path("data");
+        Assertions.assertEquals("sheriff_pk", pk.path("currentPhase").asText(), pk.toString());
+
+        JsonNode own = game.call(game.players.get(c - 1), "/sheriff", "{\"targetSeatNo\":" + a + "}");
+        Assertions.assertEquals(0, own.path("code").asInt(), "PK 时其余警上的人也能投：" + own);
+        Assertions.assertTrue(game.snapshot(game.players.get(c - 1)).path("dayInfo").path("canVote").asBoolean());
+        Assertions.assertEquals(4003, game.call(game.players.get(withdrawn - 1), "/sheriff", "{\"targetSeatNo\":" + a + "}").path("code").asInt(),
+                "退水的人不能投");
+        Assertions.assertEquals(4003, game.call(game.players.get(a - 1), "/sheriff", "{\"targetSeatNo\":" + b + "}").path("code").asInt(),
+                "PK 的人不能投");
+        Assertions.assertFalse(game.snapshot(game.players.get(withdrawn - 1)).path("dayInfo").path("canVote").asBoolean());
+    }
+
     /** 第一夜刀 knife（null = 平安夜），candidates 报名上警，截止进警上发言。返回警上发言时的房主快照。 */
     private JsonNode toSheriffSpeech(Game game, Integer knife, int... candidates) throws Exception {
         JsonNode signup = game.finishNight(knife, null);

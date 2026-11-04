@@ -76,3 +76,11 @@ test('explodedAnnounceTellsTheHostToCallNight', () => {
   assert.match(announcePanel(room('day_announce', me(2), { nightNext: true })).hint, /天黑/)
   assert.match(announcePanel(room('day_announce', me(2))).hint, /开始发言/)
 })
+
+test('otherCandidatesVoteInTheSheriffPk', () => {
+  const pk = (seat, canVote) => sheriffPanel(room('sheriff_pk', me(seat), { sheriffCandidates: [2, 3, 5], pkSeats: [3, 5], dayInfo: { canVote, voted: false, votedCount: 0, voterCount: 5 } }))
+  assert.equal(pk(2, true).canVote, true, '还在警上、不在 PK 的人 PK 时能投')
+  assert.equal(pk(3, false).canVote, false)
+  assert.equal(pk(3, false).reason, '你在 PK，不能投票')
+  assert.equal(sheriffPanel(room('sheriff_vote', me(2), { sheriffCandidates: [2, 3, 5], dayInfo: { canVote: false } })).canVote, false, '第一轮警上的人不能投')
+})
