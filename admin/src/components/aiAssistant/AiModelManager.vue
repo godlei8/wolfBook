@@ -59,20 +59,6 @@ async function testSaved(model: AdminAiModel) {
   }
 }
 
-async function activate(model: AdminAiModel) {
-  busyId.value = model.id
-  try {
-    await api.activateAiModel(model.id)
-    ElMessage.success(`已切换到「${model.name}」，AI 助手马上用它回答`)
-    await load()
-    emit('changed')
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '切换失败')
-  } finally {
-    busyId.value = null
-  }
-}
-
 async function remove(model: AdminAiModel) {
   try {
     await ElMessageBox.confirm(`删除「${model.name}」？Key 也会一起删掉。`, '删除模型', {
@@ -131,7 +117,7 @@ async function save() {
     const payload = { name: form.name, baseUrl: form.baseUrl, model: form.model, apiKey: form.apiKey, enabled: form.enabled, disableThinking: form.disableThinking, remark: form.remark }
     if (form.id) await api.updateAiModel(form.id, payload)
     else await api.createAiModel(payload)
-    ElMessage.success(form.id ? '模型已保存' : '模型已添加，测试通过后可以设为当前')
+    ElMessage.success(form.id ? '模型已保存' : '模型已添加，测试通过后可以在编排页选它发布')
     dialogOpen.value = false
     await load()
     emit('changed')
@@ -155,16 +141,16 @@ onMounted(load)
       <div>
         <h3 class="mm__title">对话模型</h3>
         <p class="nt-muted">
-          AI 助手问答和「按世界观起草」都用<strong>当前使用</strong>的那一个；接口按 OpenAI 兼容格式（{接口地址}/chat/completions）调用，Key 只存在服务器上。
+          AI 助手问答和「按世界观起草」都用<strong>线上</strong>那一个；换线上模型在编排页的模型下拉里选好再发布。接口按 OpenAI 兼容格式（{接口地址}/chat/completions）调用，Key 只存在服务器上。
         </p>
       </div>
       <button class="nt-btn nt-btn--gold" type="button" @click="openForm()">+ 添加模型</button>
     </div>
 
     <div v-if="active" class="mm__current">
-      当前使用：<strong>{{ active.name }}</strong> · <code>{{ active.model }}</code>
+      线上在用：<strong>{{ active.name }}</strong> · <code>{{ active.model }}</code>
     </div>
-    <div v-else-if="!loading" class="mm__current mm__current--warn">还没有设为当前的模型，AI 助手会退回原来的 DeepSeek 配置</div>
+    <div v-else-if="!loading" class="mm__current mm__current--warn">还没有线上模型，AI 助手会退回原来的 DeepSeek 配置；在编排页选一个模型发布就行</div>
 
     <p v-if="loading && !models.length" class="nt-empty">正在读取模型…</p>
 
@@ -172,9 +158,10 @@ onMounted(load)
       <article v-for="model in models" :key="model.id" class="mm__card" :class="{ 'mm__card--active': model.active, 'mm__card--off': !model.enabled }">
         <div class="mm__card-head">
           <strong class="mm__name">{{ model.name }}</strong>
-          <span v-if="model.active" class="nt-badge nt-badge--on">当前使用</span>
+          <span v-if="model.active" class="nt-badge nt-badge--on">线上</span>
           <span v-else-if="!model.enabled" class="nt-badge nt-badge--off">已停用</span>
         </div>
+        <p v-if="model.active" class="mm__live-warn">这是线上在用的模型，改了地址、Key 或思考设置马上影响玩家，不走发布</p>
         <dl class="mm__meta">
           <div><dt>接口地址</dt><dd><code>{{ model.baseUrl }}</code></dd></div>
           <div><dt>模型编码</dt><dd><code>{{ model.model }}</code></dd></div>
@@ -188,7 +175,6 @@ onMounted(load)
           <button class="nt-btn nt-btn--ghost nt-btn--small" type="button" :disabled="busyId === model.id" @click="testSaved(model)">
             {{ busyId === model.id ? '测试中…' : '测试连接' }}
           </button>
-          <button v-if="!model.active && model.enabled" class="nt-btn nt-btn--gold nt-btn--small" type="button" :disabled="busyId === model.id" @click="activate(model)">设为当前</button>
           <button class="nt-btn nt-btn--ghost nt-btn--small" type="button" @click="openForm(model)">编辑</button>
           <button v-if="!model.active" class="nt-iconbtn mm__del" type="button" :aria-label="`删除${model.name}`" title="删除" @click="remove(model)">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
@@ -283,6 +269,12 @@ onMounted(load)
 .mm__current--warn {
   background: var(--warn-bg);
   color: var(--camp-god);
+}
+
+.mm__live-warn {
+  margin: 0;
+  color: var(--camp-god);
+  font-size: 12.5px;
 }
 
 .mm__grid {

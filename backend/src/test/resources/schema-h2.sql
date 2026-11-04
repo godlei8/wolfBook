@@ -204,6 +204,16 @@ CREATE TABLE assistant_publish_versions (
   create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE assistant_config_versions (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  config_json CLOB,
+  model_id INT,
+  model_name VARCHAR(120),
+  notes VARCHAR(500),
+  published_by VARCHAR(100),
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE assistant_sessions (
   session_id VARCHAR(64) PRIMARY KEY,
   openid VARCHAR(100) NOT NULL,

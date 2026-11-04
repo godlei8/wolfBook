@@ -1,6 +1,7 @@
 package com.wolfbook.backend.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -297,12 +298,46 @@ public final class AssistantDtos {
     ) {
     }
 
-    /** 后台调试台：用当前配置答一题，不落库、不写日志，返回判断过程。 */
+    /**
+     * 后台调试台：用当前配置答一题，不落库、不写日志，返回判断过程。
+     * 后三个字段都可以不传：config 是还没发布的草稿设置，modelId 是草稿里选的模型，history 是这段预览对话里之前的问答。
+     */
     public record AdminPlaygroundRequest(
             @NotBlank(message = "message is required") @Size(max = 500, message = "message is too long") String message,
             String scene,
-            Map<String, Object> pageContext
+            Map<String, Object> pageContext,
+            AdminAiConfig config,
+            Integer modelId,
+            List<PlaygroundTurn> history
     ) {
+    }
+
+    /** 试答历史里的一条，role 是 user 或 assistant。 */
+    public record PlaygroundTurn(String role, String content) {
+    }
+
+    /** 设置的一个发布版本，后台显示成 v{id}。config 是发布时的快照，Key 一律是空串。 */
+    public record AdminConfigVersionView(
+            Integer id,
+            String notes,
+            String publishedBy,
+            LocalDateTime createTime,
+            Integer modelId,
+            String modelName,
+            AdminAiConfig config
+    ) {
+    }
+
+    /** 发布设置：保存配置、按需切换线上模型、记一个版本。Key 传回打码值表示不改。 */
+    public record AdminConfigPublishRequest(
+            @NotNull(message = "config is required") @Valid AdminAiConfig config,
+            Integer modelId,
+            @Size(max = 500, message = "发布说明不能超过 500") String notes
+    ) {
+    }
+
+    /** version 是新记的版本，config 是发布后的配置（Key 打码）。 */
+    public record AdminConfigPublishResult(AdminConfigVersionView version, AdminAiConfig config) {
     }
 
     public record AdminPlaygroundHit(

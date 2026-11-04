@@ -1259,6 +1259,298 @@ class BackendApplicationTests {
         }
     }
 
+    @Test
+    void aiConfigPublishSavesTheConfigAndRecordsAVersionWithoutKeys() throws Exception {
+        String authorization = "Bearer " + loginAndGetAdminToken();
+        mockMvc.perform(post("/admin/ai/config/publish").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(jsonPath("$.code").value(4001));
+        mockMvc.perform(get("/admin/ai/config/versions"))
+                .andExpect(jsonPath("$.code").value(4001));
+
+        AiState state = snapshotAiState(authorization);
+        try {
+            // 先放一个真实的火山 Key，看发布时传回打码值会不会把它改掉
+            com.fasterxml.jackson.databind.node.ObjectNode withKey = currentAdminConfig(authorization);
+            ((com.fasterxml.jackson.databind.node.ObjectNode) withKey.path("volcengine")).put("embeddingApiKey", "ark-publish-test-key");
+            mockMvc.perform(put("/admin/ai/config")
+                            .header("Authorization", authorization)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(withKey.toString()))
+                    .andExpect(jsonPath("$.code").value(0));
+
+            com.fasterxml.jackson.databind.node.ObjectNode draft = currentAdminConfig(authorization);
+            String maskedKey = draft.path("volcengine").path("embeddingApiKey").asText();
+            Assertions.assertTrue(maskedKey.startsWith("********"));
+            ((com.fasterxml.jackson.databind.node.ObjectNode) draft.path("base")).put("welcomeMessage", "发布测试开场白一");
+
+            String first = mockMvc.perform(post("/admin/ai/config/publish")
+                            .header("Authorization", authorization)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.createObjectNode().<com.fasterxml.jackson.databind.node.ObjectNode>set("config", draft)
+                                    .put("notes", "第一次发布").toString()))
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.config.base.welcomeMessage").value("发布测试开场白一"))
+                    .andExpect(jsonPath("$.data.config.volcengine.embeddingApiKey").value(maskedKey))
+                    .andExpect(jsonPath("$.data.version.notes").value("第一次发布"))
+                    .andExpect(jsonPath("$.data.version.publishedBy").isNotEmpty())
+                    .andExpect(jsonPath("$.data.version.createTime").isNotEmpty())
+                    .andExpect(jsonPath("$.data.version.config.base.welcomeMessage").value("发布测试开场白一"))
+                    .andExpect(jsonPath("$.data.version.config.provider.apiKey").value(""))
+                    .andExpect(jsonPath("$.data.version.config.volcengine.embeddingApiKey").value(""))
+                    .andExpect(jsonPath("$.data.version.config.volcengine.searchApiKey").value(""))
+                    .andReturn().getResponse().getContentAsString();
+            int firstId = objectMapper.readTree(first).path("data").path("version").path("id").asInt();
+
+            // 打码值原样传回：线上 Key 不变；版本表里也不存 Key
+            Assertions.assertEquals("ark-publish-test-key", assistantConfigService.getRuntimeConfig().volcengine().embeddingApiKey());
+            String storedSnapshot = jdbcTemplate.queryForObject("SELECT config_json FROM assistant_config_versions WHERE id = ?", String.class, firstId);
+            Assertions.assertFalse(storedSnapshot.contains("ark-publish-test-key"));
+
+            ((com.fasterxml.jackson.databind.node.ObjectNode) draft.path("base")).put("welcomeMessage", "发布测试开场白二");
+            String second = mockMvc.perform(post("/admin/ai/config/publish")
+                            .header("Authorization", authorization)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.createObjectNode().set("config", draft).toString()))
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andReturn().getResponse().getContentAsString();
+            int secondId = objectMapper.readTree(second).path("data").path("version").path("id").asInt();
+            Assertions.assertTrue(secondId > firstId);
+
+            mockMvc.perform(get("/admin/ai/config/versions").header("Authorization", authorization))
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data[0].id").value(secondId))
+                    .andExpect(jsonPath("$.data[0].config.base.welcomeMessage").value("发布测试开场白二"))
+                    .andExpect(jsonPath("$.data[1].id").value(firstId))
+                    .andExpect(jsonPath("$.data[1].notes").value("第一次发布"));
+        } finally {
+            restoreAiState(state);
+        }
+    }
+
+    @Test
+    void aiConfigPublishSwitchesTheModelAndRollsBackOnADisabledOne() throws Exception {
+        String authorization = "Bearer " + loginAndGetAdminToken();
+        AiState state = snapshotAiState(authorization);
+        try {
+            int usable = createAssistantModel(authorization, "发布测试模型", true);
+            int disabled = createAssistantModel(authorization, "发布测试停用模型", false);
+
+            com.fasterxml.jackson.databind.node.ObjectNode draft = currentAdminConfig(authorization);
+            String personaBefore = draft.path("base").path("welcomeMessage").asText();
+            mockMvc.perform(post("/admin/ai/config/publish")
+                            .header("Authorization", authorization)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.createObjectNode().<com.fasterxml.jackson.databind.node.ObjectNode>set("config", draft)
+                                    .put("modelId", usable).toString()))
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.version.modelId").value(usable))
+                    .andExpect(jsonPath("$.data.version.modelName").value("发布测试模型"));
+            Assertions.assertEquals(java.util.List.of(usable),
+                    jdbcTemplate.queryForList("SELECT id FROM assistant_models WHERE active = 1", Integer.class));
+            Integer versionsBefore = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM assistant_config_versions", Integer.class);
+
+            // 停用的模型：4000，配置、线上模型、版本都不动
+            ((com.fasterxml.jackson.databind.node.ObjectNode) draft.path("base")).put("welcomeMessage", "不该保存的开场白");
+            mockMvc.perform(post("/admin/ai/config/publish")
+                            .header("Authorization", authorization)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.createObjectNode().<com.fasterxml.jackson.databind.node.ObjectNode>set("config", draft)
+                                    .put("modelId", disabled).toString()))
+                    .andExpect(jsonPath("$.code").value(4000));
+            mockMvc.perform(get("/admin/ai/config").header("Authorization", authorization))
+                    .andExpect(jsonPath("$.data.base.welcomeMessage").value(personaBefore));
+            Assertions.assertEquals(java.util.List.of(usable),
+                    jdbcTemplate.queryForList("SELECT id FROM assistant_models WHERE active = 1", Integer.class));
+            Assertions.assertEquals(versionsBefore,
+                    jdbcTemplate.queryForObject("SELECT COUNT(1) FROM assistant_config_versions", Integer.class));
+        } finally {
+            restoreAiState(state);
+        }
+    }
+
+    @Test
+    void playgroundUsesTheDraftSafetySettings() throws Exception {
+        String authorization = "Bearer " + loginAndGetAdminToken();
+        com.fasterxml.jackson.databind.node.ObjectNode draft = currentAdminConfig(authorization);
+        com.fasterxml.jackson.databind.node.ObjectNode safety = (com.fasterxml.jackson.databind.node.ObjectNode) draft.path("safety");
+        safety.put("unsupportedMessage", "草稿里的婉拒话术");
+        safety.putArray("blockedKeywords").add("草稿拦截词");
+
+        mockMvc.perform(post("/admin/ai/playground")
+                        .header("Authorization", authorization)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.createObjectNode()
+                                .put("message", "草稿拦截词 9个人新手玩什么好？")
+                                .set("config", draft).toString()))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.intent").value("REFUSE"))
+                .andExpect(jsonPath("$.data.answerType").value("REFUSAL"))
+                .andExpect(jsonPath("$.data.answer").value(org.hamcrest.Matchers.startsWith("草稿里的婉拒话术")));
+
+        // 不带草稿：线上配置没有这个拦截词，照常推荐；试答也不会把草稿存进去
+        mockMvc.perform(post("/admin/ai/playground")
+                        .header("Authorization", authorization)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.createObjectNode().put("message", "草稿拦截词 9个人新手玩什么好？").toString()))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.intent").value("RECOMMEND"));
+        Assertions.assertFalse(assistantConfigService.getRuntimeConfig().safety().blockedKeywords().contains("草稿拦截词"));
+    }
+
+    @Test
+    void playgroundFollowsUpOnTheBoardFromTheHistory() throws Exception {
+        String authorization = "Bearer " + loginAndGetAdminToken();
+        // 启动时的自动资料是后台线程建的，单独跑这个用例时可能还没建好，先同步建一次
+        assistantKnowledgeService.rebuildStructuredKnowledge();
+        mockMvc.perform(post("/admin/ai/playground")
+                        .header("Authorization", authorization)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "message": "第一个具体怎么玩？",
+                                  "history": [
+                                    {"role": "user", "content": "12人进阶推荐什么板子"},
+                                    {"role": "assistant", "content": "可以试试「狼美人骑士」：12 人进阶，骑士白天能决斗。"},
+                                    {"role": "system", "content": "不认识的角色会被丢掉"},
+                                    {"role": "user", "content": "   "}
+                                  ]
+                                }
+                                """))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.intent").value("KNOWLEDGE"))
+                .andExpect(jsonPath("$.data.hits[*].title").value(org.hamcrest.Matchers.hasItem("狼美人骑士")));
+
+        // 不带历史就不知道「第一个」是谁
+        mockMvc.perform(post("/admin/ai/playground")
+                        .header("Authorization", authorization)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "message": "第一个具体怎么玩？" }
+                                """))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.hits[*].title").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("狼美人骑士"))));
+    }
+
+    @Test
+    void playgroundRejectsAModelThatCanNotBeUsed() throws Exception {
+        String authorization = "Bearer " + loginAndGetAdminToken();
+        AiState state = snapshotAiState(authorization);
+        try {
+            int usable = createAssistantModel(authorization, "试答测试模型", true);
+            int disabled = createAssistantModel(authorization, "试答测试停用模型", false);
+            mockMvc.perform(post("/admin/ai/playground")
+                            .header("Authorization", authorization)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.createObjectNode().put("message", "女巫能自救吗").put("modelId", disabled).toString()))
+                    .andExpect(jsonPath("$.code").value(4000))
+                    .andExpect(jsonPath("$.msg").value(org.hamcrest.Matchers.startsWith("这个模型不能用：")));
+            mockMvc.perform(post("/admin/ai/playground")
+                            .header("Authorization", authorization)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.createObjectNode().put("message", "女巫能自救吗").put("modelId", 987654).toString()))
+                    .andExpect(jsonPath("$.code").value(4000));
+
+            // 能用的模型：返回里的 model 是这次实际用的那个（用拦截词走婉拒，不真的去调这个不通的地址）
+            com.fasterxml.jackson.databind.node.ObjectNode draft = currentAdminConfig(authorization);
+            ((com.fasterxml.jackson.databind.node.ObjectNode) draft.path("safety")).putArray("blockedKeywords").add("试答拦截");
+            mockMvc.perform(post("/admin/ai/playground")
+                            .header("Authorization", authorization)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.createObjectNode().put("message", "试答拦截").put("modelId", usable)
+                                    .set("config", draft).toString()))
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.intent").value("REFUSE"))
+                    .andExpect(jsonPath("$.data.model").value("playground-test-model"));
+        } finally {
+            restoreAiState(state);
+        }
+    }
+
+    /** AI 配置、线上模型、设置版本：用例改了要放回去，别让后面的助手用例受影响。 */
+    private record AiState(java.util.Map<String, Object> configRow, java.util.List<Integer> activeModelIds,
+                           Integer latestModelId, Integer latestVersionId) {
+    }
+
+    @Test
+    void aiConfigPublishKeepsTheServerSwitchAndKeys() throws Exception {
+        // 编排页开着时，别处刚关了助手、换了 Key：这边发布的是旧页面上的设置，开关和 Key 不能被它带回去
+        String authorization = "Bearer " + loginAndGetAdminToken();
+        AiState state = snapshotAiState(authorization);
+        try {
+            com.fasterxml.jackson.databind.node.ObjectNode stale = currentAdminConfig(authorization);
+            com.fasterxml.jackson.databind.node.ObjectNode turnedOff = stale.deepCopy();
+            ((com.fasterxml.jackson.databind.node.ObjectNode) turnedOff.path("base")).put("enabled", false);
+            ((com.fasterxml.jackson.databind.node.ObjectNode) turnedOff.path("volcengine")).put("embeddingApiKey", "sk-elsewhere-9876");
+            mockMvc.perform(put("/admin/ai/config")
+                            .header("Authorization", authorization)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(turnedOff.toString()))
+                    .andExpect(jsonPath("$.code").value(0));
+
+            ((com.fasterxml.jackson.databind.node.ObjectNode) stale.path("prompt")).put("systemPrompt", "旧页面上改的人设");
+            ((com.fasterxml.jackson.databind.node.ObjectNode) stale.path("volcengine")).put("embeddingApiKey", "sk-typed-in-draft-1111");
+            String body = objectMapper.createObjectNode().set("config", stale).toString();
+            mockMvc.perform(post("/admin/ai/config/publish")
+                            .header("Authorization", authorization)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.config.prompt.systemPrompt").value("旧页面上改的人设"))
+                    .andExpect(jsonPath("$.data.config.base.enabled").value(false))
+                    .andExpect(jsonPath("$.data.config.volcengine.embeddingApiKey").value(containsString("9876")));
+        } finally {
+            restoreAiState(state);
+        }
+    }
+
+    private AiState snapshotAiState(String authorization) throws Exception {
+        // 先打开一次配置和模型管理：配置行、迁移过来的第一个模型都在这时建好
+        mockMvc.perform(get("/admin/ai/config").header("Authorization", authorization)).andExpect(jsonPath("$.code").value(0));
+        mockMvc.perform(get("/admin/ai/models").header("Authorization", authorization)).andExpect(jsonPath("$.code").value(0));
+        return new AiState(
+                jdbcTemplate.queryForMap("SELECT * FROM assistant_config WHERE id = 1"),
+                jdbcTemplate.queryForList("SELECT id FROM assistant_models WHERE active = 1", Integer.class),
+                jdbcTemplate.queryForObject("SELECT COALESCE(MAX(id), 0) FROM assistant_models", Integer.class),
+                jdbcTemplate.queryForObject("SELECT COALESCE(MAX(id), 0) FROM assistant_config_versions", Integer.class)
+        );
+    }
+
+    private void restoreAiState(AiState state) {
+        java.util.Map<String, Object> row = state.configRow();
+        jdbcTemplate.update("""
+                        UPDATE assistant_config SET base_config = ?, provider_config = ?, volcengine_config = ?, prompt_config = ?,
+                          retrieval_config = ?, search_config = ?, safety_config = ?, ui_config = ? WHERE id = 1
+                        """,
+                row.get("BASE_CONFIG"), row.get("PROVIDER_CONFIG"), row.get("VOLCENGINE_CONFIG"), row.get("PROMPT_CONFIG"),
+                row.get("RETRIEVAL_CONFIG"), row.get("SEARCH_CONFIG"), row.get("SAFETY_CONFIG"), row.get("UI_CONFIG"));
+        jdbcTemplate.update("UPDATE assistant_models SET active = 0");
+        for (Integer id : state.activeModelIds()) {
+            jdbcTemplate.update("UPDATE assistant_models SET active = 1 WHERE id = ?", id);
+        }
+        jdbcTemplate.update("DELETE FROM assistant_models WHERE id > ?", state.latestModelId());
+        jdbcTemplate.update("DELETE FROM assistant_config_versions WHERE id > ?", state.latestVersionId());
+    }
+
+    private com.fasterxml.jackson.databind.node.ObjectNode currentAdminConfig(String authorization) throws Exception {
+        String body = mockMvc.perform(get("/admin/ai/config").header("Authorization", authorization))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        return (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.readTree(body).path("data");
+    }
+
+    /** 建一个指向不通地址的模型；enabled = false 时建好再停用。 */
+    private int createAssistantModel(String authorization, String name, boolean enabled) throws Exception {
+        String body = "{\"name\": \"" + name + "\", \"baseUrl\": \"http://127.0.0.1:1/v1\", \"model\": \"playground-test-model\", "
+                + "\"apiKey\": \"sk-playground-test-1234\", \"enabled\": " + enabled + "}";
+        String created = mockMvc.perform(post("/admin/ai/models")
+                        .header("Authorization", authorization)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(created).path("data").path("id").asInt();
+    }
+
     private int publishAssistantKnowledge(String adminToken, String notes) throws Exception {
         String published = mockMvc.perform(post("/admin/ai/publish")
                         .header("Authorization", "Bearer " + adminToken)

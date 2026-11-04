@@ -113,6 +113,19 @@ public class AssistantModelService {
         return toView(entity);
     }
 
+    /** 后台试答指定的模型（草稿里选的，还没设为线上）：必须存在、已启用、填了 Key。 */
+    public AssistantDtos.ProviderSection usableProvider(Integer id) {
+        AssistantModelEntity entity = id == null ? null : modelMapper.selectById(id);
+        String reason = entity == null ? "模型不存在"
+                : !isEnabled(entity) ? "已停用"
+                : !StringUtils.hasText(entity.getApiKey()) ? "还没填 Key"
+                : null;
+        if (reason != null) {
+            throw new ApiException(4000, "这个模型不能用：" + reason);
+        }
+        return AssistantConfigService.providerOf(entity);
+    }
+
     /** 测试连接：真的发一句话过去，看能不能回、要多久。不抛异常，失败写在 error 里。 */
     public AssistantDtos.ModelTestResult test(AssistantDtos.ModelTestRequest request) {
         AssistantModelEntity stored = request.id() == null ? null : getEntity(request.id());

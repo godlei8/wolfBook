@@ -60,16 +60,58 @@ public class AssistantConfigService {
         if (active == null || !StringUtils.hasText(active.getApiKey())) {
             return stored;
         }
+        return withProvider(stored, providerOf(active));
+    }
+
+    /** 模型管理里的一项组成实际调用用的 provider（OpenAI 兼容接口）。 */
+    static AssistantDtos.ProviderSection providerOf(AssistantModelEntity model) {
+        return new AssistantDtos.ProviderSection("openai-compatible", model.getModel(), model.getBaseUrl(), model.getApiKey(),
+                Integer.valueOf(1).equals(model.getDisableThinking()));
+    }
+
+    static AssistantDtos.AdminAiConfig withProvider(AssistantDtos.AdminAiConfig config, AssistantDtos.ProviderSection provider) {
+        return new AssistantDtos.AdminAiConfig(config.base(), provider, config.volcengine(), config.prompt(),
+                config.retrieval(), config.search(), config.safety(), config.ui());
+    }
+
+    /**
+     * 后台试答用草稿：base（开关除外）、prompt、retrieval、search、safety 换成草稿的，按保存时一样整理；
+     * provider、volcengine（含 Key）、ui 一律用线上的。草稿里缺的小节沿用线上。
+     */
+    AssistantDtos.AdminAiConfig withDraft(AssistantDtos.AdminAiConfig live, AssistantDtos.AdminAiConfig draft) {
+        AssistantDtos.BaseSection base = live.base();
+        if (draft.base() != null) {
+            AssistantDtos.BaseSection drafted = sanitizeBaseSection(draft.base());
+            base = new AssistantDtos.BaseSection(live.base().enabled(), drafted.welcomeMessage(), drafted.quickQuestions(),
+                    drafted.temperature(), drafted.maxSuggestions());
+        }
         return new AssistantDtos.AdminAiConfig(
-                stored.base(),
-                new AssistantDtos.ProviderSection("openai-compatible", active.getModel(), active.getBaseUrl(), active.getApiKey(),
-                        Integer.valueOf(1).equals(active.getDisableThinking())),
-                stored.volcengine(),
-                stored.prompt(),
-                stored.retrieval(),
-                stored.search(),
-                stored.safety(),
-                stored.ui()
+                base,
+                live.provider(),
+                live.volcengine(),
+                draft.prompt() == null ? live.prompt() : draft.prompt(),
+                draft.retrieval() == null ? live.retrieval() : draft.retrieval(),
+                draft.search() == null ? live.search() : sanitizeSearchSection(draft.search()),
+                draft.safety() == null ? live.safety() : draft.safety(),
+                live.ui()
+        );
+    }
+
+    /** 发布版本里存的快照：所有 Key 清成空串。 */
+    static AssistantDtos.AdminAiConfig withoutSecrets(AssistantDtos.AdminAiConfig config) {
+        AssistantDtos.ProviderSection provider = config.provider();
+        AssistantDtos.VolcengineSection volcengine = config.volcengine();
+        return new AssistantDtos.AdminAiConfig(
+                config.base(),
+                provider == null ? null : new AssistantDtos.ProviderSection(provider.platform(), provider.model(), provider.baseUrl(), "",
+                        provider.disableThinking()),
+                volcengine == null ? null : new AssistantDtos.VolcengineSection(volcengine.baseUrl(), volcengine.embeddingModel(), "",
+                        volcengine.searchModel(), ""),
+                config.prompt(),
+                config.retrieval(),
+                config.search(),
+                config.safety(),
+                config.ui()
         );
     }
 

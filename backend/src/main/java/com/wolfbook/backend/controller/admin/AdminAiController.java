@@ -5,6 +5,7 @@ import com.wolfbook.backend.dto.AssistantDtos;
 import com.wolfbook.backend.service.AdminService;
 import com.wolfbook.backend.service.assistant.AssistantAnswerService;
 import com.wolfbook.backend.service.assistant.AssistantConfigService;
+import com.wolfbook.backend.service.assistant.AssistantConfigVersionService;
 import com.wolfbook.backend.service.assistant.AssistantKnowledgeService;
 import com.wolfbook.backend.service.assistant.AssistantLogService;
 import com.wolfbook.backend.service.assistant.AssistantModelService;
@@ -27,6 +28,7 @@ public class AdminAiController {
     private final AssistantLogService assistantLogService;
     private final AssistantModelService assistantModelService;
     private final AssistantAnswerService assistantAnswerService;
+    private final AssistantConfigVersionService assistantConfigVersionService;
     private final TokenService tokenService;
 
     public AdminAiController(
@@ -37,6 +39,7 @@ public class AdminAiController {
             AssistantLogService assistantLogService,
             AssistantModelService assistantModelService,
             AssistantAnswerService assistantAnswerService,
+            AssistantConfigVersionService assistantConfigVersionService,
             TokenService tokenService
     ) {
         this.adminService = adminService;
@@ -46,6 +49,7 @@ public class AdminAiController {
         this.assistantLogService = assistantLogService;
         this.assistantModelService = assistantModelService;
         this.assistantAnswerService = assistantAnswerService;
+        this.assistantConfigVersionService = assistantConfigVersionService;
         this.tokenService = tokenService;
     }
 
@@ -131,6 +135,23 @@ public class AdminAiController {
     ) {
         adminService.requireAdmin(authorization);
         return ApiResponse.success(assistantConfigService.saveAdminConfig(request));
+    }
+
+    // ---------- 设置的发布与版本：编排页改草稿，发布时才保存、切模型、记版本；PUT /config 不记版本 ----------
+
+    @PostMapping("/config/publish")
+    public ApiResponse<AssistantDtos.AdminConfigPublishResult> publishConfig(
+            @RequestHeader("Authorization") String authorization,
+            @RequestBody @Valid AssistantDtos.AdminConfigPublishRequest request
+    ) {
+        adminService.requireAdmin(authorization);
+        return ApiResponse.success(assistantConfigVersionService.publish(request, tokenService.requireAdmin(authorization)));
+    }
+
+    @GetMapping("/config/versions")
+    public ApiResponse<List<AssistantDtos.AdminConfigVersionView>> listConfigVersions(@RequestHeader("Authorization") String authorization) {
+        adminService.requireAdmin(authorization);
+        return ApiResponse.success(assistantConfigVersionService.listVersions());
     }
 
     @GetMapping("/documents")

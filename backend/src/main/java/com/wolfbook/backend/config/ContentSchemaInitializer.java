@@ -53,6 +53,10 @@ public class ContentSchemaInitializer implements ApplicationRunner {
                 + "base_url VARCHAR(300) NOT NULL, model VARCHAR(120) NOT NULL, api_key VARCHAR(500), enabled TINYINT DEFAULT 1, active TINYINT DEFAULT 0, "
                 + "remark VARCHAR(200), create_time DATETIME DEFAULT CURRENT_TIMESTAMP, update_time DATETIME DEFAULT CURRENT_TIMESTAMP)");
         addColumnIfMissing("assistant_models", "disable_thinking", "ALTER TABLE assistant_models ADD COLUMN disable_thinking TINYINT DEFAULT 0");
+        // AI 助手设置的发布版本（AssistantSchemaInitializer 也建，但它不在 test profile 下跑，开发脚本连本地 MySQL 时靠这里）
+        createTableIfMissing("assistant_config_versions", "CREATE TABLE assistant_config_versions (id INT PRIMARY KEY AUTO_INCREMENT, config_json JSON, "
+                + "model_id INT NULL, model_name VARCHAR(120) NULL, notes VARCHAR(500) NULL, published_by VARCHAR(100) NULL, "
+                + "create_time DATETIME DEFAULT CURRENT_TIMESTAMP)");
         createTableIfMissing("world_lore", "CREATE TABLE world_lore (id INT PRIMARY KEY, content TEXT, update_time DATETIME DEFAULT CURRENT_TIMESTAMP)");
         // 帖子的标题、分类和关联板子（酒馆页的分类筛选和板子标签）
         addColumnIfMissing("posts", "title", "ALTER TABLE posts ADD COLUMN title VARCHAR(60) NULL");

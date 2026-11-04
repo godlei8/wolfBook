@@ -191,6 +191,17 @@ CREATE TABLE `assistant_publish_versions` (
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- AI 助手设置的发布版本：每次在后台「发布」记一份完整配置快照（Key 一律存空串，不存密钥）
+CREATE TABLE `assistant_config_versions` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `config_json` JSON,
+  `model_id` INT NULL,
+  `model_name` VARCHAR(120) NULL,
+  `notes` VARCHAR(500) NULL,
+  `published_by` VARCHAR(100) NULL,
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE `assistant_sessions` (
   `session_id` VARCHAR(64) PRIMARY KEY,
   `openid` VARCHAR(100) NOT NULL,

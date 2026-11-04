@@ -8,6 +8,8 @@ import type {
   AdminAiModelPayload,
   ModelTestResult,
   AdminAiVersion,
+  AdminConfigPublishResult,
+  AdminConfigVersion,
   AdminPlaygroundRequest,
   AdminPlaygroundResult,
   ApiResponse,
@@ -173,6 +175,12 @@ export const api = {
   },
   async saveAiConfig(payload: AdminAiConfig) {
     return unwrap<AdminAiConfig>(http.put('/admin/ai/config', payload))
+  },
+  async publishAiConfig(payload: { config: AdminAiConfig; modelId: number | null; notes: string }) {
+    return unwrap<AdminConfigPublishResult>(http.post('/admin/ai/config/publish', payload))
+  },
+  async getAiConfigVersions() {
+    return unwrap<AdminConfigVersion[]>(http.get('/admin/ai/config/versions'))
   },
   async getAiModels() {
     return unwrap<AdminAiModel[]>(http.get('/admin/ai/models'))

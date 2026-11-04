@@ -386,6 +386,27 @@ export interface AdminPlaygroundRequest {
   message: string
   scene?: string
   pageContext?: Record<string, unknown>
+  /** 编排页的草稿：试答用还没发布的设置 */
+  config?: AdminAiConfig
+  modelId?: number | null
+  /** 预览里这段对话之前的问答，和小程序会话里的历史一样 */
+  history?: { role: 'user' | 'assistant'; content: string }[]
+}
+
+/** 设置的一个发布版本（快照里不含 Key） */
+export interface AdminConfigVersion {
+  id: number
+  notes: string | null
+  publishedBy: string | null
+  createTime: string
+  modelId: number | null
+  modelName: string | null
+  config: AdminAiConfig
+}
+
+export interface AdminConfigPublishResult {
+  version: AdminConfigVersion
+  config: AdminAiConfig
 }
 
 export interface AdminPlaygroundHit {
