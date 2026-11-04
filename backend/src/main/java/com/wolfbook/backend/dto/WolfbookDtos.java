@@ -655,7 +655,9 @@ public final class WolfbookDtos {
      * votedCount / voterCount 已投人数和能投人数（公开进度，不含投给谁）。
      */
     public record JudgeDayInfoView(Boolean sheriffCandidate, boolean canVote, boolean voted, Integer myVote,
-                                   int votedCount, int voterCount) {
+                                   int votedCount, int voterCount,
+                                   /** 本人现在能不能自爆（只给本人）。 */
+                                   boolean canSelfDestruct) {
     }
 
     /**

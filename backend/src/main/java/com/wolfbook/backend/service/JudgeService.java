@@ -118,6 +118,7 @@ public class JudgeService {
     private static final String EVENT_FORCE_OUT = "force_out";
     private static final String EVENT_JUDGE_PAUSED = "judge_paused";
     private static final String EVENT_JUDGE_RESUMED = "judge_resumed";
+    private static final String EVENT_SELF_DESTRUCT = "self_destruct";
     private static final TypeReference<Map<String, Object>> OBJECT_MAP = new TypeReference<>() {
     };
     private static final TypeReference<List<String>> STRING_LIST = new TypeReference<>() {
@@ -674,7 +675,10 @@ public class JudgeService {
         String phase = safeText(room.getCurrentPhase(), "");
         Integer selfSeat = Boolean.TRUE.equals(self.getPlaying()) ? self.getSeatNo() : null;
         if (PHASE_SHERIFF_SIGNUP.equals(phase)) {
-            return new WolfbookDtos.JudgeDayInfoView(selfSeat != null && Boolean.TRUE.equals(self.getSheriffCandidate()), false, false, null, 0, 0);
+            return new WolfbookDtos.JudgeDayInfoView(selfSeat != null && Boolean.TRUE.equals(self.getSheriffCandidate()), false, false, null, 0, 0, false);
+        }
+        if (SELF_DESTRUCT_PHASES.contains(phase)) {
+            return new WolfbookDtos.JudgeDayInfoView(null, false, false, null, 0, 0, canSelfDestruct(room, self));
         }
         if (!Set.of(PHASE_EXILE_VOTE, PHASE_VOTE_PK, PHASE_SHERIFF_VOTE, PHASE_SHERIFF_PK).contains(phase)) {
             return null;
@@ -691,7 +695,7 @@ public class JudgeService {
                 .orElse(null);
         int votedCount = (int) voted.stream().filter(eligible::contains).count();
         return new WolfbookDtos.JudgeDayInfoView(null, selfSeat != null && eligible.contains(selfSeat),
-                selfSeat != null && voted.contains(selfSeat), myVote, votedCount, eligible.size());
+                selfSeat != null && voted.contains(selfSeat), myVote, votedCount, eligible.size(), false);
     }
 
     /** 查看者本人的夜间私密信息（只在新流程房间）。法官有 nightActions 全量，不给。 */
@@ -1687,14 +1691,19 @@ public class JudgeService {
             room.setLatestAnnouncement(seatsText(pk) + "PK，其余玩家只能投给他们");
             setPhaseClock(room, JudgeDayClock.VOTE_SECONDS, now);
         } else {
-            int nextDay = safeInt(room.getCurrentDay(), 1) + 1;
-            room.setCurrentDay(nextDay);
-            room.setCurrentPhase(PHASE_NIGHT_ACTION);
-            room.setLatestAnnouncement("天黑请闭眼");
-            openNight(room, nextDay, now);
+            enterNight(room, "天黑请闭眼", now);
         }
         room.setUpdateTime(now);
         updateRoomGuarded(room, ROOM_STATUS_PLAYING, PHASE_VOTE_RESULT);
+    }
+
+    /** 进入下一夜：天数 +1、写公告、排好夜间步骤。调用方负责带条件写回房间。 */
+    private void enterNight(JudgeRoomEntity room, String announcement, LocalDateTime now) {
+        int nextDay = safeInt(room.getCurrentDay(), 1) + 1;
+        room.setCurrentDay(nextDay);
+        room.setCurrentPhase(PHASE_NIGHT_ACTION);
+        room.setLatestAnnouncement(announcement);
+        openNight(room, nextDay, now);
     }
 
     private void requirePhase(JudgeRoomEntity room, String phase) {
@@ -1883,6 +1892,13 @@ public class JudgeService {
                     mapOf("actorSeatNo", seat, "targetSeatNo", heir == null ? null : heir.getSeatNo()), Map.of(), VISIBILITY_PUBLIC, now);
             room.setLatestAnnouncement(heir == null ? seat + "号撕掉了警徽" : seat + "号把警徽移交给" + heir.getSeatNo() + "号");
         }
+        if (pending.isEmpty() && Boolean.TRUE.equals(phaseData.get("nightAfterPending"))) {
+            // 白天发言时自爆的警长移交完警徽：直接天黑
+            enterNight(room, safeText(room.getLatestAnnouncement(), "") + "，天黑请闭眼", now);
+            room.setUpdateTime(now);
+            updateRoomGuarded(room, ROOM_STATUS_PLAYING, PHASE_SKILL_PENDING);
+            return;
+        }
         if (pending.isEmpty()) {
             room.setCurrentPhase(safeText(asString(phaseData.get("resumePhase")), PHASE_DAY_ANNOUNCE));
             room.setStepDeadline(parseDeadline(Map.of("deadline", safeText(asString(phaseData.get("resumeDeadline")), ""))));
@@ -1896,6 +1912,66 @@ public class JudgeService {
         room.setPhaseData(writeJson(phaseData));
         room.setUpdateTime(now);
         updateRoomGuarded(room, ROOM_STATUS_PLAYING, PHASE_SKILL_PENDING);
+    }
+
+    // ---------- 自爆（玩家自己提交，只在新流程房间）----------
+
+    /** 能自爆的阶段：白天发言。 */
+    private static final Set<String> SELF_DESTRUCT_PHASES = Set.of(PHASE_DAY_SPEECH);
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public WolfbookDtos.JudgeRoomSnapshotView selfDestruct(String authorization, String roomId) {
+        roomId = resolveRoomId(roomId);
+        String openid = requireOpenid(authorization);
+        tick(roomId);
+        lockRoom(roomId);
+        JudgeRoomEntity room = getRoom(roomId);
+        if (!Boolean.TRUE.equals(room.getAutoJudgeEnabled())) {
+            throw new ApiException(4002, "这个房间不支持自爆");
+        }
+        requireNotPaused(room);
+        JudgeRoomPlayerEntity self = findPlayer(roomId, openid);
+        if (!canSelfDestruct(room, self)) {
+            throw new ApiException(4003, "你现在不能自爆");
+        }
+        List<JudgeRoomPlayerEntity> players = loadPlayers(roomId);
+        JudgeRoomPlayerEntity actor = findSeatPlayer(players, self.getSeatNo());
+        String phase = room.getCurrentPhase();
+        LocalDateTime now = LocalDateTime.now(APP_ZONE);
+        int dayNo = safeInt(room.getCurrentDay(), 1);
+        int seat = actor.getSeatNo();
+        markPlayersDead(players, List.of(seat), dayNo, phase, now);
+        addEvent(roomId, dayNo, phase, actor.getPlayerId(), List.of(), EVENT_SELF_DESTRUCT,
+                mapOf("actorSeatNo", seat, "duringSheriff", false), Map.of(), VISIBILITY_PUBLIC, now);
+        String announcement = seat + "号自爆";
+        room.setStepDeadline(null);
+        Optional<WinJudge.Verdict> verdict = verdictOf(room, players, null);
+        if (verdict.isPresent()) {
+            finishByVerdict(room, verdict.get(), announcement + "。" + verdict.get().reason(), now);
+        } else if (Boolean.TRUE.equals(actor.getSheriff())) {
+            // 自爆的警长可以移交警徽：只放一条移交待办（自爆不问技能），处理完直接天黑
+            room.setLatestAnnouncement(announcement);
+            room.setPhaseData(writeJson(mapOf("nightAfterPending", true,
+                    "pending", List.of(pendingEntry(seat, PENDING_BADGE, now.plusSeconds(BADGE_SECONDS))))));
+            room.setCurrentPhase(PHASE_SKILL_PENDING);
+            room.setStepDeadline(now.plusSeconds(BADGE_SECONDS));
+        } else {
+            enterNight(room, announcement + "，天黑请闭眼", now);
+        }
+        room.setUpdateTime(now);
+        updateRoomGuarded(room, ROOM_STATUS_PLAYING, phase);
+        return buildSnapshot(openid, roomId);
+    }
+
+    /** 本人现在能不能自爆：新流程、对局中、入座且活着、机制带自爆、在能自爆的阶段、没暂停。快照和提交共用。 */
+    private boolean canSelfDestruct(JudgeRoomEntity room, JudgeRoomPlayerEntity self) {
+        return self != null
+                && Boolean.TRUE.equals(room.getAutoJudgeEnabled())
+                && ROOM_STATUS_PLAYING.equals(room.getRoomStatus())
+                && Boolean.TRUE.equals(self.getPlaying()) && self.getSeatNo() != null && Boolean.TRUE.equals(self.getAlive())
+                && mechanicOf(self).map(Mechanic::canSelfDestruct).orElse(false)
+                && SELF_DESTRUCT_PHASES.contains(safeText(room.getCurrentPhase(), ""))
+                && !isPaused(room);
     }
 
     // ---------- 暂停 / 继续（只认法官，只在新流程房间）----------

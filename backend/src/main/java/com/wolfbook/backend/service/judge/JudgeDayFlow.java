@@ -128,7 +128,7 @@ public final class JudgeDayFlow {
                         integer(event.payload().get("eliminatedSeatNo")),
                         ints(event.result().get("pkSeatNos"))
                 ));
-                case "hunter_shot", "badge_passed", "idiot_revealed", "force_out" -> round.skills.add(new WolfbookDtos.JudgeSkillRecordView(
+                case "hunter_shot", "badge_passed", "idiot_revealed", "force_out", "self_destruct" -> round.skills.add(new WolfbookDtos.JudgeSkillRecordView(
                         event.type(),
                         integer(event.payload().get("actorSeatNo")),
                         integer(event.payload().get("targetSeatNo"))

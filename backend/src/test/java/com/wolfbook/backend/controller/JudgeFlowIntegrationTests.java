@@ -1321,6 +1321,141 @@ class JudgeFlowIntegrationTests {
         Assertions.assertFalse(game.player(day, target).path("alive").asBoolean(), "被刀的平民天亮出局");
     }
 
+    // ---- 自爆 ----
+
+    @Test
+    void wolfExplodesDuringDaySpeechAndNightFalls() throws Exception {
+        Game game = autoGame(false);
+        int wolf = toDaySpeech(game);
+        JsonNode response = game.call(game.players.get(wolf - 1), "/self-destruct", null);
+        Assertions.assertEquals(0, response.path("code").asInt(), response.toString());
+        JsonNode data = response.path("data");
+        Assertions.assertEquals("night_action", data.path("currentPhase").asText());
+        Assertions.assertEquals(2, data.path("currentDay").asInt());
+        Assertions.assertEquals(wolf + "号自爆，天黑请闭眼", data.path("latestAnnouncement").asText());
+        Assertions.assertFalse(game.player(data, wolf).path("alive").asBoolean());
+        JsonNode skills = data.path("rounds").get(0).path("skills");
+        Assertions.assertTrue(skills.toString().contains("\"kind\":\"self_destruct\""), skills.toString());
+        Assertions.assertTrue(skills.toString().contains("\"actorSeatNo\":" + wolf), skills.toString());
+    }
+
+    @Test
+    void onlyAliveSelfDestructSeatsMayExplode() throws Exception {
+        Game game = autoGame(false);
+        Map<String, List<Integer>> roles = game.seatsByRole();
+        int wolf = toDaySpeech(game);
+        int villager = roles.get("平民").stream().filter(seat -> {
+            try {
+                return game.player(game.snapshot(game.host), seat).path("alive").asBoolean();
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        }).findFirst().orElseThrow();
+        Assertions.assertEquals(4003, game.call(game.players.get(villager - 1), "/self-destruct", null).path("code").asInt(), "平民不能自爆");
+        int deadWolf = roles.get("狼人").stream().filter(seat -> seat != wolf).findFirst().orElseThrow();
+        markDead(game, List.of(deadWolf));
+        Assertions.assertEquals(4003, game.call(game.players.get(deadWolf - 1), "/self-destruct", null).path("code").asInt(), "死人不能自爆");
+
+        Assertions.assertEquals(0, game.advance(game.host, "{\"action\":\"pause\"}").path("code").asInt());
+        Assertions.assertEquals(4002, game.call(game.players.get(wolf - 1), "/self-destruct", null).path("code").asInt(), "暂停中不能自爆");
+        Assertions.assertEquals(0, game.advance(game.host, "{\"action\":\"resume\"}").path("code").asInt());
+
+        Assertions.assertEquals(0, game.advance(game.host, "{\"action\":\"start_vote\"}").path("code").asInt());
+        Assertions.assertEquals(4003, game.call(game.players.get(wolf - 1), "/self-destruct", null).path("code").asInt(), "投票阶段不能自爆");
+
+        Game legacy = startedGame();
+        int legacyWolf = legacy.seatsByRole().get("狼人").get(0);
+        Assertions.assertEquals(4002, legacy.call(legacy.players.get(legacyWolf - 1), "/self-destruct", null).path("code").asInt(), "旧流程房间不支持自爆");
+    }
+
+    @Test
+    void onlyTheWolfSeesItCanExplode() throws Exception {
+        Game game = autoGame(false);
+        int wolf = toDaySpeech(game);
+        int villager = game.seatsByRole().get("预言家").get(0);
+        Assertions.assertTrue(game.snapshot(game.players.get(wolf - 1)).path("dayInfo").path("canSelfDestruct").asBoolean());
+        Assertions.assertFalse(game.snapshot(game.players.get(villager - 1)).path("dayInfo").path("canSelfDestruct").asBoolean());
+        Assertions.assertFalse(game.snapshot(game.host).path("dayInfo").path("canSelfDestruct").asBoolean());
+    }
+
+    @Test
+    void lastWolfExplodingEndsTheGame() throws Exception {
+        Game game = autoGame(false);
+        int wolf = toDaySpeech(game);
+        markDead(game, game.seatsByRole().get("狼人").stream().filter(seat -> seat != wolf).toList());
+        JsonNode response = game.call(game.players.get(wolf - 1), "/self-destruct", null);
+        Assertions.assertEquals(0, response.path("code").asInt(), response.toString());
+        Assertions.assertEquals("finished", response.path("data").path("roomStatus").asText());
+        Assertions.assertEquals("好人", response.path("data").path("winnerCamp").asText());
+        Assertions.assertTrue(response.path("data").path("pending").isMissingNode() || response.path("data").path("pending").isNull());
+    }
+
+    @Test
+    void sheriffExplodesThenPassesTheBadgeThenNight() throws Exception {
+        for (boolean timeout : List.of(false, true)) {
+            Game game = autoGame(true);
+            int wolf = electWolfSheriff(game);
+            JsonNode response = game.call(game.players.get(wolf - 1), "/self-destruct", null);
+            Assertions.assertEquals(0, response.path("code").asInt(), response.toString());
+            Assertions.assertEquals("skill_pending", response.path("data").path("currentPhase").asText());
+            JsonNode own = game.snapshot(game.players.get(wolf - 1)).path("pending");
+            Assertions.assertEquals("badge", own.path("kind").asText(), "自爆的警长只移交警徽，不问技能：" + own);
+            int heir = game.seatsByRole().get("预言家").get(0);
+            JsonNode after = timeout ? game.expireDeadline()
+                    : game.skill(wolf, "{\"decision\":\"use\",\"targetSeatNo\":" + heir + "}");
+            Assertions.assertEquals("night_action", after.path("currentPhase").asText(), after.toString());
+            Assertions.assertEquals(2, after.path("currentDay").asInt());
+            if (!timeout) {
+                Assertions.assertEquals(heir, after.path("sheriffSeatNo").asInt());
+            }
+        }
+    }
+
+    @Test
+    void secondExplosionInTheSameDayIsRejected() throws Exception {
+        Game game = autoGame(false);
+        int wolf = toDaySpeech(game);
+        int other = game.seatsByRole().get("狼人").stream().filter(seat -> seat != wolf).findFirst().orElseThrow();
+        Assertions.assertEquals(0, game.call(game.players.get(wolf - 1), "/self-destruct", null).path("code").asInt());
+        Assertions.assertEquals(4003, game.call(game.players.get(other - 1), "/self-destruct", null).path("code").asInt());
+        Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM judge_action_events WHERE room_id = ? AND action_type = 'self_destruct'",
+                Integer.class, game.roomId);
+        Assertions.assertEquals(1, count);
+    }
+
+    /** 第一夜刀一个平民，处理完待办，进白天发言。返回一只活着的狼。 */
+    private int toDaySpeech(Game game) throws Exception {
+        Map<String, List<Integer>> roles = game.seatsByRole();
+        game.finishNight(roles.get("平民").get(0), null);
+        game.skipPending();
+        JsonNode speech = game.advance(game.host, "{\"action\":\"start_speech\"}");
+        Assertions.assertEquals("day_speech", speech.path("data").path("currentPhase").asText(), speech.toString());
+        return roles.get("狼人").get(0);
+    }
+
+    /** 第一夜刀一个平民，让一只狼和预言家上警，警下全投狼，进白天发言。返回当选警长的狼。 */
+    private int electWolfSheriff(Game game) throws Exception {
+        Map<String, List<Integer>> roles = game.seatsByRole();
+        int wolf = roles.get("狼人").get(0);
+        int seer = roles.get("预言家").get(0);
+        game.finishNight(roles.get("平民").get(0), null);
+        game.sheriff(wolf, "{\"candidate\":true}");
+        game.sheriff(seer, "{\"candidate\":true}");
+        Assertions.assertEquals("sheriff_speech", game.advance(game.host, "{\"action\":\"close_sheriff_signup\"}").path("data").path("currentPhase").asText());
+        Assertions.assertEquals("sheriff_vote", game.advance(game.host, "{\"action\":\"start_sheriff_vote\"}").path("data").path("currentPhase").asText());
+        for (int seat = 1; seat <= PLAYER_COUNT; seat++) {
+            if (seat != wolf && seat != seer) {
+                game.sheriff(seat, "{\"targetSeatNo\":" + wolf + "}");
+            }
+        }
+        game.advance(game.host, "{\"action\":\"resolve_sheriff_vote\"}");
+        game.skipPending();
+        JsonNode speech = game.advance(game.host, "{\"action\":\"start_speech\"}");
+        Assertions.assertEquals("day_speech", speech.path("data").path("currentPhase").asText(), speech.toString());
+        Assertions.assertEquals(wolf, speech.path("data").path("sheriffSeatNo").asInt());
+        return wolf;
+    }
+
     private void expire(Game game) throws Exception {
         jdbcTemplate.update("UPDATE judge_rooms SET step_deadline = ? WHERE room_id = ?",
                 java.sql.Timestamp.valueOf("2000-01-01 00:00:00"), game.roomId);

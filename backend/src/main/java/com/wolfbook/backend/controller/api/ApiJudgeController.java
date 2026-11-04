@@ -115,6 +115,14 @@ public class ApiJudgeController {
         return ApiResponse.success(judgeService.submitSheriff(authorization, roomId, request));
     }
 
+    @PostMapping("/rooms/{roomId}/self-destruct")
+    public ApiResponse<WolfbookDtos.JudgeRoomSnapshotView> selfDestruct(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable String roomId
+    ) {
+        return ApiResponse.success(judgeService.selfDestruct(authorization, roomId));
+    }
+
     @PostMapping("/rooms/{roomId}/skill")
     public ApiResponse<WolfbookDtos.JudgeRoomSnapshotView> skill(
             @RequestHeader("Authorization") String authorization,
