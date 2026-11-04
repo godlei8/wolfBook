@@ -78,6 +78,19 @@ public class AssistantSchemaInitializer implements ApplicationRunner {
                 )
                 """);
 
+        // 设置的发布版本：快照里 Key 一律是空串
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS assistant_config_versions (
+                  id INT PRIMARY KEY AUTO_INCREMENT,
+                  config_json JSON,
+                  model_id INT NULL,
+                  model_name VARCHAR(120) NULL,
+                  notes VARCHAR(500) NULL,
+                  published_by VARCHAR(100) NULL,
+                  create_time DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """);
+
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS assistant_sessions (
                   session_id VARCHAR(64) PRIMARY KEY,

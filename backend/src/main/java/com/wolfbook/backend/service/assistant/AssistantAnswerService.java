@@ -35,9 +35,13 @@ public class AssistantAnswerService {
     private static final Logger log = LoggerFactory.getLogger(AssistantAnswerService.class);
 
     static final String FAILED_ANSWER = "这次没答上来，换个问法或者稍后再问一次吧。";
+    // 试答带的历史：和小程序会话一样只看最近几轮，每条截断
+    static final int PLAYGROUND_MAX_TURNS = 20;
+    static final int PLAYGROUND_MAX_TURN_LENGTH = 2000;
 
     private final UserService userService;
     private final AssistantConfigService assistantConfigService;
+    private final AssistantModelService assistantModelService;
     private final AssistantConversationService assistantConversationService;
     private final AssistantAnswerPipeline pipeline;
     private final AssistantQueryLogMapper assistantQueryLogMapper;
@@ -48,6 +52,7 @@ public class AssistantAnswerService {
     public AssistantAnswerService(
             UserService userService,
             AssistantConfigService assistantConfigService,
+            AssistantModelService assistantModelService,
             AssistantConversationService assistantConversationService,
             AssistantAnswerPipeline pipeline,
             AssistantQueryLogMapper assistantQueryLogMapper,
@@ -56,6 +61,7 @@ public class AssistantAnswerService {
     ) {
         this.userService = userService;
         this.assistantConfigService = assistantConfigService;
+        this.assistantModelService = assistantModelService;
         this.assistantConversationService = assistantConversationService;
         this.pipeline = pipeline;
         this.assistantQueryLogMapper = assistantQueryLogMapper;
@@ -110,15 +116,24 @@ public class AssistantAnswerService {
         return emitter;
     }
 
-    /** 后台调试台：用当前生效的配置和模型答一题，不建会话、不落库、不写日志。 */
+    /**
+     * 后台调试台：用当前生效的配置和模型答一题，不建会话、不落库、不写日志。
+     * 带了草稿 config / modelId 就换上草稿的设置和模型（只在这一次试答里），带了 history 就当成同一段对话里的追问。
+     */
     public AssistantDtos.AdminPlaygroundResponse playground(AssistantDtos.AdminPlaygroundRequest request) {
         AssistantDtos.AdminAiConfig config = assistantConfigService.getRuntimeConfig();
+        if (request.config() != null) {
+            config = assistantConfigService.withDraft(config, request.config());
+        }
+        if (request.modelId() != null) {
+            config = AssistantConfigService.withProvider(config, assistantModelService.usableProvider(request.modelId()));
+        }
         long startAt = System.currentTimeMillis();
         AssistantAnswerPipeline.Outcome outcome = pipeline.run(
                 config,
                 request.message(),
                 request.pageContext(),
-                List.of(),
+                playgroundHistory(request.history()),
                 AssistantAnswerPipeline.AnswerSink.NONE
         );
         return new AssistantDtos.AdminPlaygroundResponse(
@@ -134,6 +149,24 @@ public class AssistantAnswerService {
                 outcome.timings(),
                 System.currentTimeMillis() - startAt
         );
+    }
+
+    /** 试答带的历史换成会话里的格式（角色大写）：丢掉不认识的角色和空内容，只留最近 20 条，每条截到 2000 字。 */
+    static List<AssistantConversationService.Turn> playgroundHistory(List<AssistantDtos.PlaygroundTurn> history) {
+        if (history == null) {
+            return List.of();
+        }
+        List<AssistantConversationService.Turn> turns = history.stream()
+                .filter(turn -> turn != null && turn.content() != null && !turn.content().isBlank())
+                .filter(turn -> "user".equalsIgnoreCase(turn.role()) || "assistant".equalsIgnoreCase(turn.role()))
+                .map(turn -> new AssistantConversationService.Turn(
+                        turn.role().toUpperCase(java.util.Locale.ROOT),
+                        turn.content().length() > PLAYGROUND_MAX_TURN_LENGTH
+                                ? turn.content().substring(0, PLAYGROUND_MAX_TURN_LENGTH)
+                                : turn.content()
+                ))
+                .toList();
+        return turns.size() > PLAYGROUND_MAX_TURNS ? turns.subList(turns.size() - PLAYGROUND_MAX_TURNS, turns.size()) : turns;
     }
 
     private Prepared prepare(String authorization, AssistantDtos.AssistantAskRequest request) {

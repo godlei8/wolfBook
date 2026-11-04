@@ -4,8 +4,22 @@ import assert from 'node:assert/strict'
 import {
   ADVANCED_FIELDS,
   PERSONA_FIELDS,
+  DRAFT_FIELDS,
+  KEY_FIELDS,
   aiPath,
+  applyVersionToDraft,
+  avgLatency,
   clampAdvanced,
+  configChanges,
+  dailyCounts,
+  neighborId,
+  normalizeQuestion,
+  searchLogs,
+  sessionThread,
+  slowest,
+  storableDraft,
+  topQuestions,
+  typeShare,
   countChanges,
   currentVersion,
   filterLogs,
@@ -69,17 +83,20 @@ const config = () => ({
   ui: { mascot: 'wolf', dockLabel: 'd', accentColor: '#FFC000' },
 })
 
-test('parseAiPathFallsBackToQa', () => {
-  assert.deepEqual(parseAiPath([]), { tab: 'qa', section: 'persona' })
-  assert.deepEqual(parseAiPath(['knowledge']), { tab: 'knowledge', section: 'persona' })
-  assert.deepEqual(parseAiPath(['settings', 'models']), { tab: 'settings', section: 'models' })
-  assert.deepEqual(parseAiPath(['settings', 'nope']), { tab: 'settings', section: 'persona' })
-  assert.deepEqual(parseAiPath(['nope']), { tab: 'qa', section: 'persona' })
-  assert.equal(aiPath('qa'), 'ai')
+test('parseAiPathPicksThePageAndKnowledgeTab', () => {
+  assert.deepEqual(parseAiPath([]), { page: 'compose', knowledgeTab: 'auto' })
+  assert.deepEqual(parseAiPath(['logs']), { page: 'logs', knowledgeTab: 'auto' })
+  assert.deepEqual(parseAiPath(['knowledge', 'uploads']), { page: 'knowledge', knowledgeTab: 'uploads' })
+  assert.deepEqual(parseAiPath(['knowledge', 'nope']), { page: 'knowledge', knowledgeTab: 'auto' })
+  assert.deepEqual(parseAiPath(['data']), { page: 'data', knowledgeTab: 'auto' })
+  // 上一版的地址落到编排
+  assert.deepEqual(parseAiPath(['settings', 'models']), { page: 'compose', knowledgeTab: 'auto' })
+  assert.deepEqual(parseAiPath(['nope']), { page: 'compose', knowledgeTab: 'auto' })
+  assert.equal(aiPath('compose'), 'ai')
+  assert.equal(aiPath('logs'), 'ai/logs')
   assert.equal(aiPath('knowledge'), 'ai/knowledge')
-  assert.equal(aiPath('settings'), 'ai/settings')
-  assert.equal(aiPath('settings', 'persona'), 'ai/settings')
-  assert.equal(aiPath('settings', 'advanced'), 'ai/settings/advanced')
+  assert.equal(aiPath('knowledge', 'auto'), 'ai/knowledge')
+  assert.equal(aiPath('knowledge', 'versions'), 'ai/knowledge/versions')
 })
 
 test('formatLogTimeByAge', () => {
@@ -112,7 +129,7 @@ test('filterLogsByKind', () => {
   assert.deepEqual(filterLogs(logs, 'failed'), [logs[0]])
   assert.deepEqual(filterLogs(logs, 'slow'), [logs[0], logs[1]])
   assert.deepEqual(filterLogs(logs, 'refused'), [logs[2]])
-  assert.deepEqual(logFilterCounts(logs), { all: 4, failed: 1, slow: 2, refused: 1 })
+  assert.deepEqual(logFilterCounts(logs, new Date(2026, 10, 3, 12, 0)), { all: 4, failed: 1, slow: 2, refused: 1, today: 4 })
 })
 
 test('noCurrentVersionMeansNothingOnline', () => {
@@ -244,4 +261,147 @@ test('pageNumbersCollapseLongRuns', async () => {
   assert.deepEqual(pageNumbers(25, 50), [1, '…', 24, 25, 26, '…', 50])
   assert.deepEqual(pageNumbers(50, 50), [1, '…', 48, 49, 50])
   assert.deepEqual(pageNumbers(4, 8), [1, 2, 3, 4, 5, '…', 8])
+})
+
+test('draftFieldsLeaveOutTheSwitchAndTheKeys', () => {
+  assert.equal(DRAFT_FIELDS.includes('base.enabled'), false)
+  assert.equal(DRAFT_FIELDS.includes('volcengine.embeddingApiKey'), false)
+  assert.equal(DRAFT_FIELDS.includes('prompt.systemPrompt'), true)
+  assert.equal(DRAFT_FIELDS.includes('retrieval.topK'), true)
+  assert.deepEqual(KEY_FIELDS, ['volcengine.embeddingApiKey', 'volcengine.searchApiKey'])
+})
+
+test('configChangesListEachChangedFieldAndTheModel', () => {
+  const before = config()
+  const after = config()
+  after.prompt.systemPrompt = '新人设'
+  after.safety.blockedKeywords = ['站边', '代打']
+  after.retrieval.topK = 6
+  after.base.enabled = false
+  after.volcengine.embeddingApiKey = 'sk-real'
+  const changes = configChanges(before, after, '官方', '学校')
+  assert.deepEqual(changes.map((c) => c.field), ['prompt.systemPrompt', 'safety.blockedKeywords', 'retrieval.topK', 'model'])
+  const kw = changes.find((c) => c.field === 'safety.blockedKeywords')
+  assert.equal(kw.label, '拦截词')
+  assert.equal(kw.before, '站边')
+  assert.equal(kw.after, '站边、代打')
+  assert.equal(changes.find((c) => c.field === 'prompt.systemPrompt').long, true)
+  assert.deepEqual(changes.find((c) => c.field === 'model'), { field: 'model', label: '模型', before: '官方', after: '学校', long: false })
+  assert.equal(configChanges(before, config(), '官方', '官方').length, 0)
+})
+
+test('applyVersionToDraftKeepsLiveKeysAndSwitch', () => {
+  const live = config()
+  live.volcengine.embeddingApiKey = '********ab12'
+  live.base.enabled = false
+  const old = config()
+  old.prompt.systemPrompt = '旧人设'
+  old.volcengine.embeddingApiKey = ''
+  old.base.enabled = true
+  const draft = applyVersionToDraft(old, live)
+  assert.equal(draft.prompt.systemPrompt, '旧人设')
+  assert.equal(draft.volcengine.embeddingApiKey, '********ab12')
+  assert.equal(draft.base.enabled, false)
+})
+
+test('storableDraftNeverHoldsARealKey', () => {
+  const live = config()
+  live.volcengine.searchApiKey = '********cd34'
+  const draft = config()
+  draft.volcengine.searchApiKey = 'sk-typed-but-not-saved'
+  draft.prompt.systemPrompt = '改过'
+  const stored = storableDraft(draft, live)
+  assert.equal(stored.volcengine.searchApiKey, '********cd34')
+  assert.equal(stored.prompt.systemPrompt, '改过')
+})
+
+test('sessionThreadGroupsBySessionInTimeOrder', () => {
+  const a = log('2026-10-28T17:49:41', { id: 1, sessionId: 's1' })
+  const b = log('2026-10-28T17:49:46', { id: 2, sessionId: 's1' })
+  const c = log('2026-10-28T17:49:50', { id: 3, sessionId: 's2' })
+  const lone = log('2026-10-28T17:49:52', { id: 4, sessionId: null })
+  assert.deepEqual(sessionThread([b, c, a, lone], b).map((x) => x.id), [1, 2])
+  assert.deepEqual(sessionThread([b, c, a, lone], lone).map((x) => x.id), [4])
+})
+
+test('searchLogsMatchesQuestionText', () => {
+  const logs = [log('2026-10-28T17:49:41', { userMessage: '女巫能不能自救' }), log('2026-10-28T17:49:42', { userMessage: '12人进阶推荐什么板子' })]
+  assert.equal(searchLogs(logs, ' 女巫 ').length, 1)
+  assert.equal(searchLogs(logs, '').length, 2)
+})
+
+test('neighborIdStepsWithoutWrapping', () => {
+  const ids = [10, 11, 12]
+  assert.equal(neighborId(ids, 11, 1), 12)
+  assert.equal(neighborId(ids, 11, -1), 10)
+  assert.equal(neighborId(ids, 12, 1), null)
+  assert.equal(neighborId(ids, 10, -1), null)
+  assert.equal(neighborId(ids, 99, 1), 10)
+})
+
+test('logFilterTodayUsesLocalDate', () => {
+  const now = new Date(2026, 10, 4, 9, 0)
+  const logs = [log('2026-11-04T08:00:00'), log('2026-11-03T23:00:00')]
+  assert.equal(filterLogs(logs, 'today', now).length, 1)
+  assert.equal(logFilterCounts(logs, now).today, 1)
+})
+
+test('dailyCountsFillEmptyDays', () => {
+  const now = new Date(2026, 10, 4, 9, 0)
+  const logs = [log('2026-11-04T08:00:00'), log('2026-11-04T08:10:00'), log('2026-11-01T08:00:00'), log('2026-10-01T08:00:00')]
+  const days = dailyCounts(logs, '7', now)
+  assert.equal(days.length, 7)
+  assert.deepEqual(days.map((d) => d.count), [0, 0, 0, 1, 0, 0, 2])
+  assert.equal(days[6].label, '11-04')
+  const all = dailyCounts(logs, 'all', now)
+  assert.deepEqual(all.map((d) => [d.label, d.count]), [['10-01', 1], ['11-01', 1], ['11-04', 2]])
+})
+
+test('typeShareCountsFailuresSeparately', () => {
+  const logs = [
+    log('2026-11-04T08:00:00', { answerType: 'RAG_ANSWER' }),
+    log('2026-11-04T08:00:00', { answerType: 'RAG_ANSWER', success: false }),
+    log('2026-11-04T08:00:00', { answerType: 'STRUCTURED_RECOMMENDATION' }),
+    log('2026-11-04T08:00:00', { answerType: 'REFUSAL' }),
+  ]
+  const share = Object.fromEntries(typeShare(logs).map((s) => [s.key, s.count]))
+  assert.deepEqual(share, { RAG_ANSWER: 1, STRUCTURED_RECOMMENDATION: 1, WEB_AUGMENTED_ANSWER: 0, REFUSAL: 1, FAILED: 1 })
+})
+
+test('topQuestionsMergeSameQuestion', () => {
+  assert.equal(normalizeQuestion(' 女巫能不能自救？ '), '女巫能不能自救')
+  const logs = [
+    log('2026-11-04T08:00:00', { userMessage: '女巫能不能自救' }),
+    log('2026-11-04T08:01:00', { userMessage: '女巫能不能自救？' }),
+    log('2026-11-04T08:02:00', { userMessage: '12人' }),
+  ]
+  assert.deepEqual(topQuestions(logs, 5), [{ text: '女巫能不能自救', count: 2 }, { text: '12人', count: 1 }])
+})
+
+test('slowestAndAverageSkipRefusals', () => {
+  const logs = [
+    log('2026-11-04T08:00:00', { id: 1, latencyMs: 1000 }),
+    log('2026-11-04T08:00:00', { id: 2, latencyMs: 3000 }),
+    log('2026-11-04T08:00:00', { id: 3, answerType: 'REFUSAL', latencyMs: 9000 }),
+  ]
+  assert.deepEqual(slowest(logs, 5).map((x) => x.id), [2, 1])
+  assert.equal(avgLatency(logs), 2000)
+  assert.equal(avgLatency([]), null)
+})
+
+test('configChangesCompareModelsById', () => {
+  const same = config()
+  // 两个模型同名：按 id 比，换了就算改动
+  assert.equal(configChanges(same, config(), '学校', '学校', 1, 2).length, 1)
+  // 线上模型改了名，id 没变：不算改动
+  assert.equal(configChanges(same, config(), '旧名字', '新名字', 3, 3).length, 0)
+})
+
+test('crashesAreFailuresNotRefusals', () => {
+  // 流程里出意外时日志记的是 REFUSAL + 失败
+  const crash = log('2026-11-04T08:00:00', { id: 9, answerType: 'REFUSAL', success: false, latencyMs: 15000 })
+  const refusal = log('2026-11-04T08:00:00', { id: 8, answerType: 'REFUSAL', latencyMs: 0 })
+  assert.deepEqual(filterLogs([crash, refusal], 'refused').map((x) => x.id), [8])
+  assert.deepEqual(slowest([crash, refusal], 5).map((x) => x.id), [9])
+  assert.equal(avgLatency([crash, refusal]), 15000)
 })
