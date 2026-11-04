@@ -645,7 +645,9 @@ public final class WolfbookDtos {
             /** 新流程房间（建房时 autoJudge = true）；false 是线上旧版小程序建的房间，客户端走旧主持台。 */
             boolean autoJudge,
             /** 白天只给查看者本人的信息（上警报名、投票）；不在这些阶段为 null。 */
-            JudgeDayInfoView dayInfo
+            JudgeDayInfoView dayInfo,
+            /** 今天有人警上自爆：公布完死讯（和死者的待办）直接天黑，房主的操作是「天黑」而不是「开始发言」。 */
+            boolean nightNext
     ) {
     }
 

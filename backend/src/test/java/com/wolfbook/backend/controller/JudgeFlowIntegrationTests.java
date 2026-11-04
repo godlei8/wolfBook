@@ -1423,6 +1423,171 @@ class JudgeFlowIntegrationTests {
         Assertions.assertEquals(1, count);
     }
 
+    @Test
+    void explodingOnStageDefersTheElection() throws Exception {
+        Game game = autoGame(true);
+        Map<String, List<Integer>> roles = game.seatsByRole();
+        int wolf = roles.get("狼人").get(0);
+        int knifed = roles.get("平民").get(0);
+        toSheriffSpeech(game, knifed, wolf, roles.get("预言家").get(0), roles.get("守卫").get(0));
+        JsonNode exploded = game.call(game.players.get(wolf - 1), "/self-destruct", null);
+        Assertions.assertEquals(0, exploded.path("code").asInt(), exploded.toString());
+        Assertions.assertEquals("skill_pending", exploded.path("data").path("currentPhase").asText(), "先问昨夜死者的技能");
+        JsonNode announce = game.skill(knifed, "{\"decision\":\"skip\"}");
+        Assertions.assertEquals("day_announce", announce.path("currentPhase").asText(), announce.toString());
+        Assertions.assertTrue(announce.path("nightNext").asBoolean());
+        String text = announce.path("latestAnnouncement").asText();
+        Assertions.assertTrue(text.contains(wolf + "号自爆，警长竞选推迟到明天"), text);
+        Assertions.assertTrue(text.contains("昨夜出局：" + knifed + "号"), text);
+        JsonNode night = game.advance(game.host, "{\"action\":\"start_night\"}");
+        Assertions.assertEquals(0, night.path("code").asInt(), night.toString());
+        Assertions.assertEquals("night_action", night.path("data").path("currentPhase").asText());
+        Assertions.assertEquals(2, night.path("data").path("currentDay").asInt());
+    }
+
+    @Test
+    void explodedAnnounceOnlyGoesToNight() throws Exception {
+        Game game = autoGame(true);
+        Map<String, List<Integer>> roles = game.seatsByRole();
+        int wolf = roles.get("狼人").get(0);
+        toSheriffSpeech(game, null, wolf, roles.get("预言家").get(0));
+        JsonNode exploded = game.call(game.players.get(wolf - 1), "/self-destruct", null);
+        Assertions.assertEquals("day_announce", exploded.path("data").path("currentPhase").asText(), "平安夜也停在公布死讯");
+        Assertions.assertTrue(exploded.path("data").path("nightNext").asBoolean());
+        Assertions.assertEquals(4002, game.advance(game.host, "{\"action\":\"start_speech\"}").path("code").asInt());
+
+        Game normal = autoGame(false);
+        normal.finishNight(normal.seatsByRole().get("平民").get(0), null);
+        normal.skipPending();
+        Assertions.assertEquals(4002, normal.advance(normal.host, "{\"action\":\"start_night\"}").path("code").asInt(), "没人自爆不能直接天黑");
+    }
+
+    @Test
+    void knifedWolfCanStillExplodeOnStage() throws Exception {
+        Game game = autoGame(true);
+        Map<String, List<Integer>> roles = game.seatsByRole();
+        int wolf = roles.get("狼人").get(0);
+        JsonNode speech = toSheriffSpeech(game, wolf, wolf, roles.get("预言家").get(0));
+        Assertions.assertTrue(game.player(speech, wolf).path("alive").asBoolean(), "昨夜死讯还没公布");
+        Assertions.assertTrue(game.snapshot(game.players.get(wolf - 1)).path("dayInfo").path("canSelfDestruct").asBoolean());
+        JsonNode data = game.call(game.players.get(wolf - 1), "/self-destruct", null).path("data");
+        Assertions.assertFalse(game.player(data, wolf).path("alive").asBoolean());
+        String text = data.path("latestAnnouncement").asText();
+        Assertions.assertEquals(1, text.split(wolf + "号", -1).length - 1, text);
+        Assertions.assertFalse(data.path("rounds").get(0).path("nightDeaths").toString().contains(String.valueOf(wolf)),
+                data.path("rounds").get(0).toString());
+    }
+
+    @Test
+    void deferredElectionResumesOnDayTwoWithTheSameCandidates() throws Exception {
+        Game game = autoGame(true);
+        Map<String, List<Integer>> roles = game.seatsByRole();
+        int wolf = roles.get("狼人").get(0);
+        int seer = roles.get("预言家").get(0);
+        int guard = roles.get("守卫").get(0);
+        List<Integer> villagers = roles.get("平民");
+        toSheriffSpeech(game, null, wolf, seer, guard, villagers.get(1));
+        game.sheriff(guard, "{\"withdraw\":true}");
+        game.call(game.players.get(wolf - 1), "/self-destruct", null);
+        game.advance(game.host, "{\"action\":\"start_night\"}");
+
+        JsonNode dayTwo = game.finishNight(villagers.get(2), null);
+        Assertions.assertEquals("sheriff_speech", dayTwo.path("currentPhase").asText(), dayTwo.toString());
+        Assertions.assertTrue(dayTwo.path("latestAnnouncement").asText().contains("昨天的警长竞选继续"), dayTwo.path("latestAnnouncement").asText());
+        Assertions.assertEquals(java.util.stream.Stream.of(seer, villagers.get(1)).sorted().toList().toString().replace(" ", ""),
+                dayTwo.path("sheriffCandidates").toString());
+        Assertions.assertTrue(game.player(dayTwo, villagers.get(2)).path("alive").asBoolean(), "第二晚死讯竞选完才公布");
+
+        Assertions.assertEquals("sheriff_vote", game.advance(game.host, "{\"action\":\"start_sheriff_vote\"}").path("data").path("currentPhase").asText());
+        for (int seat = 1; seat <= PLAYER_COUNT; seat++) {
+            // 上过警的（含退水的守卫）不能投；警下全投完会自动结算
+            if (seat != wolf && seat != seer && seat != guard && seat != villagers.get(1)) {
+                game.sheriff(seat, "{\"targetSeatNo\":" + seer + "}");
+            }
+        }
+        JsonNode elected = game.snapshot(game.host);
+        if ("sheriff_vote".equals(elected.path("currentPhase").asText())) {
+            elected = game.advance(game.host, "{\"action\":\"resolve_sheriff_vote\"}").path("data");
+        }
+        Assertions.assertEquals(seer, elected.path("sheriffSeatNo").asInt(), elected.toString());
+        Assertions.assertFalse(game.player(elected, villagers.get(2)).path("alive").asBoolean());
+    }
+
+    @Test
+    void secondExplosionOnStageLosesTheBadge() throws Exception {
+        Game game = autoGame(true);
+        Map<String, List<Integer>> roles = game.seatsByRole();
+        List<Integer> wolves = roles.get("狼人");
+        int seer = roles.get("预言家").get(0);
+        toSheriffSpeech(game, null, wolves.get(0), wolves.get(1), seer);
+        game.call(game.players.get(wolves.get(0) - 1), "/self-destruct", null);
+        game.advance(game.host, "{\"action\":\"start_night\"}");
+        JsonNode dayTwo = game.finishNight();
+        Assertions.assertEquals("sheriff_speech", dayTwo.path("currentPhase").asText(), dayTwo.toString());
+        JsonNode second = game.call(game.players.get(wolves.get(1) - 1), "/self-destruct", null).path("data");
+        Assertions.assertTrue(second.path("latestAnnouncement").asText().contains(wolves.get(1) + "号自爆，警徽流失"), second.path("latestAnnouncement").asText());
+        Assertions.assertEquals("day_announce", second.path("currentPhase").asText());
+        game.advance(game.host, "{\"action\":\"start_night\"}");
+        JsonNode dayThree = game.finishNight();
+        Assertions.assertEquals("day_announce", dayThree.path("currentPhase").asText(), "警徽流失后不再竞选");
+        Assertions.assertTrue(dayThree.path("sheriffSeatNo").isNull() || dayThree.path("sheriffSeatNo").isMissingNode());
+    }
+
+    @Test
+    void deferredElectionWithOneCandidateLeftElectsThem() throws Exception {
+        Game game = autoGame(true);
+        Map<String, List<Integer>> roles = game.seatsByRole();
+        int wolf = roles.get("狼人").get(0);
+        int seer = roles.get("预言家").get(0);
+        int villager = roles.get("平民").get(0);
+        toSheriffSpeech(game, null, wolf, seer, villager);
+        game.call(game.players.get(wolf - 1), "/self-destruct", null);
+        game.advance(game.host, "{\"action\":\"start_night\"}");
+        markDead(game, List.of(villager));
+        JsonNode dayTwo = game.finishNight();
+        Assertions.assertEquals("day_announce", dayTwo.path("currentPhase").asText(), dayTwo.toString());
+        Assertions.assertEquals(seer, dayTwo.path("sheriffSeatNo").asInt());
+    }
+
+    @Test
+    void deferredElectionWithNoneLeftLosesTheBadge() throws Exception {
+        Game game = autoGame(true);
+        Map<String, List<Integer>> roles = game.seatsByRole();
+        int wolf = roles.get("狼人").get(0);
+        int villager = roles.get("平民").get(0);
+        int other = roles.get("平民").get(1);
+        toSheriffSpeech(game, null, wolf, villager, other);
+        game.call(game.players.get(wolf - 1), "/self-destruct", null);
+        game.advance(game.host, "{\"action\":\"start_night\"}");
+        markDead(game, List.of(villager, other));
+        JsonNode dayTwo = game.finishNight();
+        Assertions.assertEquals("day_announce", dayTwo.path("currentPhase").asText(), dayTwo.toString());
+        Assertions.assertTrue(dayTwo.path("latestAnnouncement").asText().contains("警徽流失"), dayTwo.path("latestAnnouncement").asText());
+    }
+
+    @Test
+    void explodingAfterTheElectionIsPlain() throws Exception {
+        Game game = autoGame(true);
+        electWolfSheriff(game);
+        int other = game.seatsByRole().get("狼人").get(1);
+        JsonNode night = game.call(game.players.get(other - 1), "/self-destruct", null).path("data");
+        Assertions.assertEquals("night_action", night.path("currentPhase").asText(), night.toString());
+        JsonNode dayTwo = game.finishNight();
+        Assertions.assertEquals("day_announce", dayTwo.path("currentPhase").asText(), "竞选结束后的自爆不影响警徽");
+    }
+
+    /** 第一夜刀 knife（null = 平安夜），candidates 报名上警，截止进警上发言。返回警上发言时的房主快照。 */
+    private JsonNode toSheriffSpeech(Game game, Integer knife, int... candidates) throws Exception {
+        JsonNode signup = game.finishNight(knife, null);
+        Assertions.assertEquals("sheriff_signup", signup.path("currentPhase").asText(), signup.toString());
+        for (int seat : candidates) {
+            game.sheriff(seat, "{\"candidate\":true}");
+        }
+        JsonNode speech = game.advance(game.host, "{\"action\":\"close_sheriff_signup\"}");
+        Assertions.assertEquals("sheriff_speech", speech.path("data").path("currentPhase").asText(), speech.toString());
+        return speech.path("data");
+    }
+
     /** 第一夜刀一个平民，处理完待办，进白天发言。返回一只活着的狼。 */
     private int toDaySpeech(Game game) throws Exception {
         Map<String, List<Integer>> roles = game.seatsByRole();
