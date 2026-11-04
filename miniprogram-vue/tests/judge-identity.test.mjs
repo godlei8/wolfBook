@@ -23,3 +23,10 @@ test('noIdentityForTheJudgeOrBeforeTheDeal', () => {
   assert.equal(identityCard(room({ seatNo: 2, roleName: null }, { roomStatus: 'lobby' }), board), null)
   assert.equal(identityCard(room(null), board), null)
 })
+
+test('onlyTheSnapshotDecidesTheSelfDestructButton', () => {
+  const wolf = { seatNo: 4, roleName: '狼人', faction: '狼人', alive: true }
+  assert.equal(identityCard(room(wolf, { dayInfo: { canSelfDestruct: true } }), board).canSelfDestruct, true)
+  assert.equal(identityCard(room(wolf, { dayInfo: { canSelfDestruct: false } }), board).canSelfDestruct, false)
+  assert.equal(identityCard(room(wolf, { dayInfo: null }), board).canSelfDestruct, false)
+})

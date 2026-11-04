@@ -13,5 +13,7 @@ export function identityCard(snapshot, board) {
     wolf: self.faction === '狼人',
     art: role?.fullIllustration || '',
     alive: self.alive !== false,
+    // 自爆按钮只放在身份弹层里：别人看不到谁的弹层多一个按钮；能不能爆只看本人快照
+    canSelfDestruct: Boolean(snapshot.dayInfo?.canSelfDestruct),
   }
 }

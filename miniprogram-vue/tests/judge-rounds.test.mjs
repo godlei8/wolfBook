@@ -85,3 +85,8 @@ test('resultCardsMarkTheWinners', () => {
   assert.deepEqual(wolves.map((card) => card.winner), [false, true, false])
   assert.deepEqual(resultCards({ players, winnerCamp: '流局', winVerdict: { camp: '流局' } }, board).map((card) => card.winner), [false, false, false])
 })
+
+test('roundsShowSelfDestruct', () => {
+  const rows = roundRows({ roomStatus: 'playing', rounds: [{ dayNo: 1, nightDeaths: [], skills: [{ kind: 'self_destruct', actorSeatNo: 5, targetSeatNo: null }] }] })
+  assert.ok(rows[0].skills.includes('5 号自爆'), JSON.stringify(rows[0].skills))
+})

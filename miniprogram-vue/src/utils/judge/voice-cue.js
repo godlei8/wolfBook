@@ -34,7 +34,9 @@ function nightCue(snapshot, now) {
   const left = remaining(snapshot, now)
   if (left !== null && left > 0 && left <= 10) return cue(snapshot, `night:${step.index}:warn`, ['请尽快行动'])
   const open = `${step.roleName}请睁眼，${NIGHT_HINTS[step.kind] || '请行动'}`
-  return cue(snapshot, `night:${step.index}`, step.index === 0 ? ['天黑请闭眼', open] : [open])
+  // 白天发言时有人自爆，入夜那句由公告「X号自爆，天黑请闭眼」代替
+  const exploded = (snapshot.latestAnnouncement || '').includes('自爆') ? snapshot.latestAnnouncement : ''
+  return cue(snapshot, `night:${step.index}`, step.index === 0 ? [exploded || '天黑请闭眼', open] : [open])
 }
 
 function dayCue(snapshot, now) {
@@ -44,13 +46,18 @@ function dayCue(snapshot, now) {
       return cue(snapshot, phase, ['天亮了', '现在开始上警，想竞选警长的请在手机上报名'])
     case 'sheriff_speech': {
       const speaker = speakerOf(snapshot)
-      return cue(snapshot, `${phase}:${snapshot.speech?.index || 0}`, [speaker ? `请 ${speaker} 号警上发言` : '警上发言'])
+      const index = snapshot.speech?.index || 0
+      // 昨天警上有人自爆，今天接着竞选
+      const resumed = (snapshot.currentDay || 1) > 1 && index === 0 ? '昨天的警长竞选继续' : ''
+      return cue(snapshot, `${phase}:${index}`, [resumed, speaker ? `请 ${speaker} 号警上发言` : '警上发言'])
     }
     case 'sheriff_vote':
       return cue(snapshot, phase, ['请警下玩家投票选警长'])
     case 'sheriff_pk':
       return cue(snapshot, phase, ['警长平票，进入 PK 投票'])
     case 'day_announce': {
+      // 警上自爆：先报公告、等遗言，「天黑请闭眼」留给房主点了天黑之后夜里第一步
+      if (snapshot.nightNext) return cue(snapshot, `${phase}:explode`, [snapshot.latestAnnouncement, '请出局的玩家发表遗言，房主再点天黑'])
       const panel = announcePanel(snapshot)
       const round = (snapshot.rounds || []).find((item) => item.dayNo === (snapshot.currentDay || 1))
       // 当天上过警的话「天亮了」已经在上警前播过

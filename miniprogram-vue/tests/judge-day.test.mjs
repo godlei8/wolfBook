@@ -94,3 +94,10 @@ test('speechClockWarnsAtThirtyOnlyForLongSpeeches', () => {
   assert.equal(speechPanel(room('day_speech', me(1), { rules: { speechSeconds: 120 } })).warnAt, 30)
   assert.equal(speechPanel(room('day_speech', me(1), { rules: { speechSeconds: 30 } })).warnAt, 10)
 })
+
+test('explodedDayAnnounceOnlyOffersNight', () => {
+  const host = (extra = {}) => hostActions(room('day_announce', me(1), { host: true, ...extra })).map((item) => item.action)
+  assert.deepEqual(host({ nightNext: true }), ['start_night'])
+  assert.deepEqual(host({ nightNext: true, judgeMode: 'joined' }), ['start_night', 'finish'])
+  assert.deepEqual(host({ nightNext: false }), ['start_speech'])
+})

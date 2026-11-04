@@ -98,7 +98,7 @@ function choose(option) {
         <block v-else>
           <text class="nt-game__lead">天亮了</text>
           <text v-if="panel.announcement" class="nt-game__hint">{{ panel.announcement }}</text>
-          <text class="nt-game__hint">房主点「开始发言」进入白天发言。</text>
+          <text class="nt-game__hint">{{ panel.hint }}</text>
         </block>
       </view>
     </view>

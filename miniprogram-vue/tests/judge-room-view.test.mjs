@@ -102,3 +102,8 @@ test('navBarShowsTheRoomNotThePhase', () => {
   assert.equal(navTitle({ roomStatus: 'finished', roomCode: '4601' }), '')
   assert.equal(navTitle(null), '法官房间')
 })
+
+test('deferredSheriffSpeechSaysItContinues', () => {
+  assert.equal(phaseTitle({ roomStatus: 'playing', currentPhase: 'sheriff_speech', currentDay: 2 }), '第 2 天 · 昨天的竞选继续')
+  assert.equal(phaseTitle({ roomStatus: 'playing', currentPhase: 'sheriff_speech', currentDay: 1 }), '第 1 天 · 警上发言')
+})

@@ -286,6 +286,7 @@ function onAct(event) {
     skill: () => api.submitJudgeSkill(id, { decision: event.decision, targetSeatNo: event.targetSeatNo }),
     sheriff: () => api.submitJudgeSheriff(id, event.payload),
     vote: () => api.submitJudgeVote(id, { targetSeatNo: event.targetSeatNo }),
+    selfDestruct: () => api.selfDestructJudge(id),
   }
   const task = tasks[event?.kind]
   if (task) runAction(task)
@@ -303,6 +304,19 @@ function tapHostItem(item) {
     confirmText: '结束',
     success: (result) => {
       if (result.confirm) onAct({ kind: 'advance', payload: item.payload })
+    },
+  })
+}
+
+function confirmSelfDestruct() {
+  uni.showModal({
+    title: '自爆',
+    content: '确定自爆？自爆后直接出局，没有遗言',
+    confirmText: '自爆',
+    success: (result) => {
+      if (!result.confirm) return
+      identityOpen.value = false
+      onAct({ kind: 'selfDestruct' })
     },
   })
 }
@@ -444,6 +458,7 @@ onUnload(() => {
         <text class="jr-identity__seat">{{ identity.seatNo }} 号{{ identity.alive ? '' : ' · 已出局' }}</text>
         <text class="jr-identity__role serif">{{ identity.roleName }}</text>
         <text class="jr-identity__camp" :class="{ 'jr-identity__camp--wolf': identity.wolf }">{{ identity.camp }}</text>
+        <view v-if="identity.canSelfDestruct" class="nt-btn jr-identity__explode" @tap="confirmSelfDestruct">自爆</view>
         <view class="nt-btn nt-btn--ghost jr-identity__close" @tap="identityOpen = false">盖上</view>
       </view>
     </view>
@@ -639,6 +654,13 @@ onUnload(() => {
 
 .jr-identity__camp--wolf {
   color: var(--camp-wolf);
+}
+
+.jr-identity__explode {
+  margin-top: 24rpx;
+  width: 100%;
+  background: var(--camp-wolf);
+  color: var(--text);
 }
 
 .jr-identity__close {

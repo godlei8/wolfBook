@@ -1,6 +1,7 @@
 // 电子法官联调脚本：用多个 Mock 账号真打本地后端（start-backend-dev.ps1，test profile 任意 code 都能登录）跑完整局，
 // 每一轮把每个人的快照交给小程序的视图逻辑（utils/judge/*），检查零场外和请求格式。只对本地跑。
-// 用法：node scripts/judge-e2e.mjs [http://127.0.0.1:8088] [observer|joined|wolfking|both]（both 三局都跑；狼王守卫要先在本地库跑 deploy/sql/2026-11-02-wolf-king-mechanic.sql）
+// 用法：node scripts/judge-e2e.mjs [http://127.0.0.1:8088] [observer|joined|wolfking|explode|both]（both 四局都跑；狼王守卫要先在本地库跑 deploy/sql/2026-11-02-wolf-king-mechanic.sql）
+// explode：无法官预女猎白，第一天两只狼上警、警上一只自爆（竞选推迟），第二天另一只再爆（警徽流失）。
 import { phaseTitle, pickView, countdown } from '../src/utils/judge/room-view.js'
 import { isStepHolder, nightArt, nightPanel, seatBadges } from '../src/utils/judge/night-panel.js'
 import { stageLayout } from '../src/utils/judge/stage.js'
@@ -11,6 +12,7 @@ import { hostActions, votePanel } from '../src/utils/judge/day.js'
 import { voiceCue } from '../src/utils/judge/voice-cue.js'
 import { roundRows, verdictText } from '../src/utils/judge/rounds.js'
 import { godSeats, tonightRows } from '../src/utils/judge/judge-bar.js'
+import { identityCard } from '../src/utils/judge/identity.js'
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8088'
 const MODE = process.argv[3] || 'both'
@@ -79,8 +81,9 @@ function aliveWolfSeats(snaps) {
     .map((p) => p.seatNo)
 }
 
-async function runGame({ mode, keyword, count }) {
-  console.log(`\n=== ${mode === 'observer' ? '有法官' : '无法官'} · ${keyword} · ${count} 人 ===`)
+async function runGame({ mode, keyword, count, explode = false }) {
+  console.log(`\n=== ${mode === 'observer' ? '有法官' : '无法官'} · ${keyword} · ${count} 人${explode ? ' · 自爆' : ''} ===`)
+  let explosions = 0
   const run = Date.now().toString(36)
   const board = await findBoard(keyword)
   const host = await login(`e2e-${run}-host`)
@@ -139,6 +142,8 @@ async function runGame({ mode, keyword, count }) {
       console.log(`结束：${verdict.title} · ${verdict.reason}；记录 ${rows.length} 天，第 1 天夜里 ${rows[0]?.nightActions.length || 0} 条行动`)
       if (!rows.length) fail('结束后没有对局记录')
       if (!rows.some((row) => row.nightActions.length)) fail('结束后对局记录没有夜间行动')
+      if (explode && explosions < 2) fail(`自爆局只爆了 ${explosions} 次`)
+      if (explode && !rows.some((row) => row.skills.some((text) => text.includes('自爆')))) fail('对局记录里没有自爆')
       return
     }
     if (hostSnap.judgeViewer) {
@@ -146,6 +151,10 @@ async function runGame({ mode, keyword, count }) {
       if (view === 'night' && !tonightRows(hostSnap).length) fail('法官看不到今晚汇总')
     }
     const wolves = aliveWolfSeats(snaps)
+    for (const s of snaps) {
+      // 零场外：能不能自爆只在本人快照里，好人永远不是 true
+      if (s.dayInfo?.canSelfDestruct && !wolves.includes(s.selfPlayer?.seatNo)) fail(`${s.selfPlayer?.seatNo} 号不是狼却能自爆`)
+    }
 
     if (view === 'night') {
       checkNightScreens(snaps.map((s, i) => (sameStep[i] ? s : null)), judgeIndex)
@@ -181,7 +190,11 @@ async function runGame({ mode, keyword, count }) {
         let signed = 0
         for (let i = 0; i < everyone.length; i += 1) {
           const panel = sheriffPanel(snaps[i])
-          if (panel.canSignUp && !panel.candidate && signed < 2 && snaps[i].selfPlayer.seatNo <= 2) {
+          const seat = snaps[i].selfPlayer.seatNo
+          // 自爆局：再让两只狼和三个好人上警（第二天还要有人接着竞选）
+          const goods = (hostSnap.players || []).filter((p) => p.seatNo && p.alive && !wolves.includes(p.seatNo)).map((p) => p.seatNo)
+          const wanted = seat <= 2 || (explode && (wolves.slice(0, 2).includes(seat) || goods.slice(1, 4).includes(seat)))
+          if (panel.canSignUp && !panel.candidate && wanted) {
             await act(everyone[i], `/api/judge/rooms/${roomId}/sheriff`, { candidate: true }, 'sheriff signup')
             signed += 1
           }
@@ -189,7 +202,20 @@ async function runGame({ mode, keyword, count }) {
         }
         if (signed >= 2) await hostDo(host, roomId, hostSnap, 'close_sheriff_signup')
       } else if (stage === 'speech') {
-        await hostDo(host, roomId, hostSnap, 'start_sheriff_vote')
+        if (explode && hostSnap.currentDay > 1 && explosions === 0) fail('第二天接着竞选，但第一天没有自爆过')
+        const exploder = explode && explosions < 2
+          ? snaps.findIndex((s) => (hostSnap.sheriffCandidates || []).includes(s.selfPlayer?.seatNo) && identityCard(s, board)?.canSelfDestruct)
+          : -1
+        if (exploder >= 0) {
+          const result = await act(everyone[exploder], `/api/judge/rooms/${roomId}/self-destruct`, undefined, 'self-destruct')
+          explosions += 1
+          const text = result.data?.latestAnnouncement || ''
+          const expected = explosions === 1 ? '警长竞选推迟到明天' : '警徽流失'
+          if (!text.includes(expected)) fail(`第 ${explosions} 次警上自爆公告应含「${expected}」：${text}`)
+          console.log(`  ${snaps[exploder].selfPlayer.seatNo} 号警上自爆：${text}`)
+        } else {
+          await hostDo(host, roomId, hostSnap, 'start_sheriff_vote')
+        }
       } else {
         for (let i = 0; i < everyone.length; i += 1) {
           const panel = sheriffPanel(snaps[i])
@@ -203,7 +229,7 @@ async function runGame({ mode, keyword, count }) {
         const panel = announcePanel(snaps[i])
         if (panel.canChooseOrder) await act(everyone[i], `/api/judge/rooms/${roomId}/sheriff`, { speechOrder: panel.orderOptions[1].value }, 'speech order')
       }
-      await hostDo(host, roomId, hostSnap, 'start_speech')
+      await hostDo(host, roomId, hostSnap, hostSnap.nightNext ? 'start_night' : 'start_speech')
     } else if (view === 'speech') {
       await hostDo(host, roomId, hostSnap, 'start_vote')
     } else if (view === 'vote') {
@@ -234,6 +260,7 @@ const games = []
 if (MODE === 'both' || MODE === 'observer') games.push({ mode: 'observer', keyword: '守卫九人局', count: 9 })
 if (MODE === 'both' || MODE === 'joined') games.push({ mode: 'joined', keyword: '预女猎白', count: 12 })
 if (MODE === 'both' || MODE === 'wolfking') games.push({ mode: 'joined', keyword: '狼王守卫', count: 12 })
+if (MODE === 'both' || MODE === 'explode') games.push({ mode: 'joined', keyword: '预女猎白', count: 12, explode: true })
 for (const game of games) await runGame(game)
 console.log(`\n走过的视图：${[...seen].join(' ')}；房主播报台词出现 ${narrations} 次`)
 console.log(problems.length ? `\n${problems.length} 个问题` : '\n没有发现问题')

@@ -84,7 +84,11 @@ const PHASE_ACTIONS = {
 /** 房主的白天操作栏。无法官房主多一个「强制结束」（记流局，二次确认）；有法官时不能流局。暂停中全部不可点。 */
 export function hostActions(snapshot) {
   if (!snapshot?.host || snapshot.roomStatus !== 'playing') return []
-  const items = (PHASE_ACTIONS[snapshot.currentPhase] || []).map(([action, label]) => ({
+  // 警上自爆那天公布完死讯直接天黑
+  const phaseActions = snapshot.currentPhase === 'day_announce' && snapshot.nightNext
+    ? [['start_night', '天黑']]
+    : PHASE_ACTIONS[snapshot.currentPhase] || []
+  const items = phaseActions.map(([action, label]) => ({
     action,
     label,
     disabled: Boolean(snapshot.paused),

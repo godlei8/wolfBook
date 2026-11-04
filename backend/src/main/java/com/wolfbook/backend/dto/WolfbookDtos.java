@@ -358,7 +358,8 @@ public final class WolfbookDtos {
     }
 
     /** 后台角色编辑页的「技能机制」下拉：引擎认识的机制，按声明顺序。 */
-    public record MechanicView(String code, String label, String brief, Integer nightPriority, boolean wolfTeam) {
+    public record MechanicView(String code, String label, String brief, Integer nightPriority, boolean wolfTeam,
+                               boolean canSelfDestruct) {
     }
 
     /** 角色详情里「出现在这些板子」：wakeOrder 是该角色在这个板子夜间顺序里第几个醒来（没写夜间顺序时为 null），lineup 是板子里另外几个角色。 */
@@ -644,7 +645,9 @@ public final class WolfbookDtos {
             /** 新流程房间（建房时 autoJudge = true）；false 是线上旧版小程序建的房间，客户端走旧主持台。 */
             boolean autoJudge,
             /** 白天只给查看者本人的信息（上警报名、投票）；不在这些阶段为 null。 */
-            JudgeDayInfoView dayInfo
+            JudgeDayInfoView dayInfo,
+            /** 今天有人警上自爆：公布完死讯（和死者的待办）直接天黑，房主的操作是「天黑」而不是「开始发言」。 */
+            boolean nightNext
     ) {
     }
 
@@ -654,7 +657,9 @@ public final class WolfbookDtos {
      * votedCount / voterCount 已投人数和能投人数（公开进度，不含投给谁）。
      */
     public record JudgeDayInfoView(Boolean sheriffCandidate, boolean canVote, boolean voted, Integer myVote,
-                                   int votedCount, int voterCount) {
+                                   int votedCount, int voterCount,
+                                   /** 本人现在能不能自爆（只给本人）。 */
+                                   boolean canSelfDestruct) {
     }
 
     /**

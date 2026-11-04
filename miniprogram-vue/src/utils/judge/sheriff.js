@@ -28,8 +28,11 @@ export function sheriffPanel(snapshot) {
     canSignUp: stage === 'signup' && alive,
     candidate: Boolean(info.sheriffCandidate),
     canWithdraw: stage === 'speech' && alive && candidates.includes(selfSeat),
-    canVote: voting && alive && Boolean(info.canVote) && !candidates.includes(selfSeat),
-    reason: snapshot?.judgeViewer ? '法官不投票' : candidates.includes(selfSeat) ? '你在警上，不能投票' : '你这一轮不能投票',
+    // 第一轮只有警下投；PK 时还在警上、不在 PK 的人也能投（后端 dayInfo.canVote 已经算好，这里只挡掉 PK 的人）
+    canVote: voting && alive && Boolean(info.canVote) && !(stage === 'pk' ? targets : candidates).includes(selfSeat),
+    reason: snapshot?.judgeViewer ? '法官不投票'
+      : stage === 'pk' && targets.includes(selfSeat) ? '你在 PK，不能投票'
+        : candidates.includes(selfSeat) ? '你在警上，不能投票' : '你这一轮不能投票',
     targets,
     candidates,
     speakerSeat: stage === 'speech' ? speakerOf(snapshot) : null,
@@ -65,5 +68,7 @@ export function announcePanel(snapshot) {
     sheriffSeat,
     canChooseOrder,
     orderOptions,
+    // 警上有人自爆的那天公布完死讯直接天黑
+    hint: snapshot?.nightNext ? '有遗言的玩家发表遗言，房主点「天黑」进入黑夜。' : '房主点「开始发言」进入白天发言。',
   }
 }
