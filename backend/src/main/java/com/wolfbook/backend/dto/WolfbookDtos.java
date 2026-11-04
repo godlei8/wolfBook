@@ -358,7 +358,8 @@ public final class WolfbookDtos {
     }
 
     /** 后台角色编辑页的「技能机制」下拉：引擎认识的机制，按声明顺序。 */
-    public record MechanicView(String code, String label, String brief, Integer nightPriority, boolean wolfTeam) {
+    public record MechanicView(String code, String label, String brief, Integer nightPriority, boolean wolfTeam,
+                               boolean canSelfDestruct) {
     }
 
     /** 角色详情里「出现在这些板子」：wakeOrder 是该角色在这个板子夜间顺序里第几个醒来（没写夜间顺序时为 null），lineup 是板子里另外几个角色。 */

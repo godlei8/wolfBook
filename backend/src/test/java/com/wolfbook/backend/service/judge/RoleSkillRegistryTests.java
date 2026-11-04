@@ -105,6 +105,14 @@ class RoleSkillRegistryTests {
         assertEquals("check", RoleSkillRegistry.LEGACY_ACTIONS.get("查验"));
     }
 
+    @Test
+    void onlyWolfAndWolfKingCanSelfDestruct() {
+        Set<Mechanic> exploders = Set.of(Mechanic.WOLF, Mechanic.WOLF_KING);
+        for (Mechanic mechanic : Mechanic.values()) {
+            assertEquals(exploders.contains(mechanic), mechanic.canSelfDestruct(), mechanic.code());
+        }
+    }
+
     private static RoleEntity role(String name, String faction, String mechanic) {
         RoleEntity role = new RoleEntity();
         role.setName(name);

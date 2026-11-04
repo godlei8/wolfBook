@@ -259,7 +259,7 @@ public class AdminService {
     public List<WolfbookDtos.MechanicView> listMechanics() {
         return Arrays.stream(Mechanic.values())
                 .map(mechanic -> new WolfbookDtos.MechanicView(mechanic.code(), mechanic.label(), mechanic.brief(),
-                        mechanic.nightPriority(), mechanic.wolfTeam()))
+                        mechanic.nightPriority(), mechanic.wolfTeam(), mechanic.canSelfDestruct()))
                 .toList();
     }
 
