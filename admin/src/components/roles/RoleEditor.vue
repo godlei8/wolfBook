@@ -409,7 +409,7 @@ async function remove() {
           <select v-model.number="relation.roleId" class="nt-input relation__role" :aria-label="`第 ${index + 1} 个关系的角色`">
             <option v-for="option in relationOptions(relation.roleId)" :key="option.id" :value="option.id">{{ option.name }}{{ option.alias ? ` · ${option.alias}` : '' }}</option>
           </select>
-          <input v-model="relation.label" class="nt-input" maxlength="20" :aria-label="`第 ${index + 1} 个关系的说明`" placeholder="一句话关系，比如：心上人、宿敌" />
+          <input v-model="relation.label" class="nt-input" maxlength="40" :aria-label="`第 ${index + 1} 个关系的说明`" placeholder="一句话关系，比如：心上人、宿敌" />
           <button type="button" class="nt-iconbtn" :aria-label="`删除第 ${index + 1} 个关系`" title="删除" @click="form.relations.splice(index, 1)">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
           </button>

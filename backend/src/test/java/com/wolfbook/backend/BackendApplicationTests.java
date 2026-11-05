@@ -61,8 +61,8 @@ class BackendApplicationTests {
         // 守卫九人局：狼人、预言家、女巫、守卫、平民都登记了 → 可以开无法官
         mockMvc.perform(get("/api/boards/3"))
                 .andExpect(jsonPath("$.data.judgeSupportLevel").value("full"));
-        // 黑狼王织梦人：黑狼王、织梦人没登记 → 只能有法官
-        mockMvc.perform(get("/api/boards/6"))
+        // 狼美人骑士：狼美人、骑士还没有机制 → 只能有法官
+        mockMvc.perform(get("/api/boards/1"))
                 .andExpect(jsonPath("$.data.judgeSupportLevel").value("partial"));
     }
 
@@ -1009,6 +1009,14 @@ class BackendApplicationTests {
         // 失败的保存不应覆盖已有内容
         mockMvc.perform(get("/api/world"))
                 .andExpect(jsonPath("$.data.townName").value("灰铃镇"));
+
+        // AI 助手的世界观资料带上「规则对照表」：问「女巫为什么不能自救」能按世界观答
+        assistantKnowledgeService.rebuildStructuredKnowledge();
+        String worldDoc = jdbcTemplate.queryForObject(
+                "SELECT content_text FROM assistant_documents WHERE source_key = 'WORLD:1'", String.class);
+        Assertions.assertTrue(worldDoc.contains("山谷小镇"), worldDoc);
+        Assertions.assertTrue(worldDoc.contains("规则为什么是这样"), worldDoc);
+        Assertions.assertTrue(worldDoc.contains("女巫一晚一瓶、不能自救：本事一夜只动一次"), worldDoc);
     }
 
     @Test

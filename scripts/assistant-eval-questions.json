@@ -7,8 +7,8 @@
 
   { "id": "rec-12-adv", "group": "推荐", "question": "12人进阶推荐什么板子", "expect": "推荐 12 人进阶板子，介绍内容和阵容一致，不编造阵容" },
   { "id": "rec-9-new", "group": "推荐", "question": "9个人新手玩什么好？", "expect": "守卫九人局" },
-  { "id": "rec-fun", "group": "推荐", "question": "有没有适合朋友聚会娱乐的板子？", "expect": "偏娱乐的板子，比如爱神混情局或守卫九人局" },
-  { "id": "rec-third", "group": "推荐", "question": "想玩有第三方阵营的板子", "expect": "爱神混情局" },
+  { "id": "rec-fun", "group": "推荐", "question": "有没有适合朋友聚会娱乐的板子？", "expect": "偏娱乐的板子，比如守卫九人局" },
+  { "id": "rec-third", "group": "推荐", "question": "想玩有第三方阵营的板子", "expect": "如实说站内现在没有第三方板子，可以推荐别的，不编造第三方板子" },
 
   { "id": "board-witch", "group": "板子规则（不该被当成推荐）", "question": "预女猎白这个板子女巫能自救吗？", "expect": "回答规则，不是推荐板子" },
   { "id": "board-knight", "group": "板子规则（不该被当成推荐）", "question": "狼美人骑士板子里骑士怎么决斗？", "expect": "解释骑士决斗，不是推荐板子" },

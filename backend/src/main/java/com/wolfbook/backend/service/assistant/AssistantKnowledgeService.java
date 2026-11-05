@@ -27,6 +27,7 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import jakarta.annotation.PreDestroy;
@@ -706,7 +707,25 @@ public class AssistantKnowledgeService {
             }
             builder.append('\n');
         }
+        List<String> rules = worldRuleLines();
+        if (!rules.isEmpty()) {
+            builder.append("规则为什么是这样（世界观里的原因，规则本身以板子规则为准）：\n");
+            rules.forEach(line -> builder.append(line).append('\n'));
+        }
         return builder.toString();
+    }
+
+    /** 世界观「规则对照表」：resources/prompts/world-rules.md，由 scripts/world-lore-sql.py 从 docs/design/world-lore.md 生成。 */
+    private static List<String> worldRuleLines() {
+        try {
+            return new ClassPathResource("prompts/world-rules.md").getContentAsString(StandardCharsets.UTF_8).lines()
+                    .map(String::strip)
+                    .filter(line -> !line.isEmpty() && !line.startsWith("<!--"))
+                    .toList();
+        } catch (IOException exception) {
+            log.warn("Missing prompts/world-rules.md, world knowledge goes without the rule table");
+            return List.of();
+        }
     }
 
     private AssistantDtos.AdminDocumentView toView(AssistantDocumentEntity entity) {

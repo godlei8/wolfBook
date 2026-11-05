@@ -69,7 +69,7 @@ final class BoardRecommender {
                         .thenComparing(candidate -> StringUtils.hasText(candidate.board().backgroundImage()) ? 0 : 1)
                         .thenComparing(candidate -> candidate.board().id()))
                 .toList();
-        // 有对得上条件的就只给对得上的（「想玩第三方」只回爱神混情局，不硬凑三个）；一个都对不上才给热门的
+        // 有对得上条件的就只给对得上的（「想玩第三方」只回带第三方标签的板子，不硬凑三个）；一个都对不上才给热门的
         List<Candidate> matched = ranked.stream().filter(candidate -> candidate.score() > 0).limit(LIMIT).toList();
         return matched.isEmpty() ? ranked.stream().limit(LIMIT).toList() : matched;
     }

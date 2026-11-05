@@ -47,10 +47,7 @@ public class DatabaseSeeder {
             Map.entry("黑狼王", "#7A1A22"),
             Map.entry("机械狼", "#9A6A3A"),
             Map.entry("石像鬼", "#6B7280"),
-            Map.entry("通灵师", "#2A8FB8"),
-            Map.entry("织梦人", "#3F3DA8"),
-            Map.entry("爱神", "#F28CB8"),
-            Map.entry("老酒鬼", "#D9902A")
+            Map.entry("通灵师", "#2A8FB8")
     );
 
     public DatabaseSeeder(
@@ -121,9 +118,6 @@ public class DatabaseSeeder {
         saveRole(12, "机械狼", null, "狼人", "功能狼", "可在特定时机继承神职能力，是常见的高配狼队角色。", "具备较强的后期成长性与伪装空间。", faq("机械狼何时能学习技能？", "通常在满足对应条件后继承已出局神职技能。"), "https://picsum.photos/seed/mechwolf/300/300", "https://picsum.photos/seed/mechwolffull/700/900");
         saveRole(13, "石像鬼", null, "狼人", "功能狼", "夜间可获取额外视角信息，帮助狼队建立站边优势。", "偏运营和信息压制的狼人角色。", faq("石像鬼是否等同预言家？", "不是，它提供的是狼队视角强化而非好人查验。"), "https://picsum.photos/seed/gargoyle/300/300", "https://picsum.photos/seed/gargoylefull/700/900");
         saveRole(14, "通灵师", null, "好人", "神职", "可通过灵视获取额外身份信息，常见于高配板。", "信息神的一种，擅长补足预言家之外的查验链。", faq("通灵师和预言家定位一样吗？", "都偏信息位，但触发方式和信息结构通常不同。"), "https://picsum.photos/seed/spiritseer/300/300", "https://picsum.photos/seed/spiritseerfull/700/900");
-        saveRole(15, "织梦人", null, "好人", "神职", "可在夜间连接玩家关系，改变信息与生死联动。", "极具策略性的高配神职。", faq("织梦人连线失败会怎样？", "通常不会公开失败结果，但会影响后续判断链。"), "https://picsum.photos/seed/dreamweaver/300/300", "https://picsum.photos/seed/dreamweaverfull/700/900");
-        saveRole(16, "爱神", null, "第三方", "第三方", "可在开局指定情侣关系，部分局中情侣拥有独立胜利条件。", "常见的第三方机制角色，改变基础阵营博弈。", faq("情侣一定是第三方吗？", "取决于具体板规，有些板型中情侣会形成独立目标。"), "https://picsum.photos/seed/cupid/300/300", "https://picsum.photos/seed/cupidfull/700/900");
-        saveRole(17, "老酒鬼", null, "好人", "平民", "拥有较强抗伤或延迟结算能力，常见于功能板。", "属于能扰动刀口节奏的特殊民职。", faq("老酒鬼是否算神职？", "通常不算，会归为好人阵营的平民类。"), "https://picsum.photos/seed/drunk/300/300", "https://picsum.photos/seed/drunkfull/700/900");
     }
 
     /** 种子角色里引擎认识的 8 个写上技能机制（骑士、狼美人这些还没有机制）。 */
@@ -203,9 +197,7 @@ public class DatabaseSeeder {
         ));
         saveBoard(4, "白狼王骑士", 12, "进阶", List.of("经典", "高配"), "https://picsum.photos/seed/board4/900/600", List.of("白狼王在关键轮次具备强换人能力。", "骑士的白天决斗会极大放大轮次收益。"), List.of("警上要格外关注冲票和自爆节奏。"), faq("白狼王一定会和骑士形成对冲吗？", "不一定，但这类板型更强调白天强势角色的互博。"), "屠边", "对抗板", List.of(roleRef(6, 3), roleRef(10, 1), roleRef(1, 1), roleRef(2, 1), roleRef(5, 1), roleRef(4, 1), roleRef(9, 4)));
         saveBoard(5, "机械狼通灵师", 12, "烧脑", List.of("高配", "烧脑"), "https://picsum.photos/seed/board5/900/600", List.of("机械狼拥有高上限的学习空间。", "通灵师会补充额外信息链，提升对局复杂度。"), List.of("复盘时建议单独整理技能继承与信息来源。"), faq("机械狼是否总能学到关键技能？", "取决于场上死亡顺序和狼队运营。"), "屠边", "高配板", List.of(roleRef(6, 3), roleRef(12, 1), roleRef(14, 1), roleRef(2, 1), roleRef(3, 1), roleRef(4, 1), roleRef(9, 4)));
-        saveBoard(6, "黑狼王织梦人", 12, "烧脑", List.of("高配", "功能"), "https://picsum.photos/seed/board6/900/600", List.of("黑狼王强化白天置换能力。", "织梦人会改变玩家之间的生死与信息联动。"), List.of("这类板型更适合熟悉轮次管理的玩家。"), faq("织梦人的优先级高吗？", "通常很高，因为连结关系会显著影响后续票型判断。"), "屠边", "高配板", List.of(roleRef(6, 3), roleRef(11, 1), roleRef(1, 1), roleRef(2, 1), roleRef(3, 1), roleRef(15, 1), roleRef(9, 4)));
         saveBoard(8, "狼王守卫", 12, "进阶", List.of("经典", "标准"), "https://picsum.photos/seed/board8/900/600", List.of("狼王出局时可以开枪带走一人，被毒不能开枪。", "守卫可以守自己，不能连续两晚守同一人。"), List.of("狼王开枪的时机往往决定轮次，好人要提前想好怎么出狼王。"), faq("狼王被毒了还能开枪吗？", "不能，被毒、被法官点杀都不能开枪。"), "屠边", "标准板", List.of(roleRef(1, 1), roleRef(2, 1), roleRef(3, 1), roleRef(4, 1), roleRef(11, 1), roleRef(6, 3), roleRef(9, 4)));
-        saveBoard(7, "爱神混情局", 12, "进阶", List.of("娱乐", "第三方"), "https://picsum.photos/seed/board7/900/600", List.of("爱神开局连线会打破基础站边结构。", "情侣关系会让部分回合出现独立胜负目标。"), List.of("发言时要额外关注不合常理的保人与互踩。"), faq("爱神局一定会出现第三方胜利吗？", "不一定，但情侣关系会显著改变局势。"), "屠边", "机制板", List.of(roleRef(6, 4), roleRef(16, 1), roleRef(1, 1), roleRef(2, 1), roleRef(3, 1), roleRef(9, 4)));
     }
 
     private void seedCommunity() {
