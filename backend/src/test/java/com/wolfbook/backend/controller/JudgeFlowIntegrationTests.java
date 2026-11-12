@@ -2168,6 +2168,53 @@ class JudgeFlowIntegrationTests {
                 "学猎人的当晚被女巫毒死：不能开枪");
     }
 
+    // ---- 审稿后修复 ----
+
+    @Test
+    void legacyRoomJudgeCanRecordForTheMechWolf() throws Exception {
+        // 旧版小程序建的房间（没开新流程）：法官替机械狼代记任意动作照旧能记
+        Game legacy = lobbyGame("{\"boardId\":" + MECH_WOLF_BOARD_ID + ",\"judgeMode\":\"observer\"}", 12);
+        legacy.readyAll();
+        legacy.start();
+        Map<String, List<Integer>> seats = legacy.seatsByRole();
+        legacy.record(seats.get("机械狼").get(0), "行动", seats.get("平民").get(0));
+    }
+
+    @Test
+    void mechWolfCannotRepeatAnActionOrLeaveTheTargetOut() throws Exception {
+        Game game = mechWolfGame();
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int mech = seats.get("机械狼").get(0);
+        JsonNode twice = nightMulti(game, mech, "[" + act("learn", seats.get("女巫").get(0)) + "," + act("learn", seats.get("守卫").get(0)) + "]");
+        Assertions.assertEquals(4000, twice.path("code").asInt(), twice.toString());
+        JsonNode noTarget = nightMulti(game, mech, "[{\"actionType\":\"learn\"}]");
+        Assertions.assertEquals(4000, noTarget.path("code").asInt(), noTarget.toString());
+        Assertions.assertEquals(0, nightMulti(game, mech, "[" + act("learn", seats.get("女巫").get(0)) + "]").path("code").asInt());
+    }
+
+    @Test
+    void judgeSeesEachOfTheMechWolfsActions() throws Exception {
+        Game game = lobbyGame("{\"boardId\":" + MECH_WOLF_BOARD_ID + ",\"judgeMode\":\"observer\",\"autoJudge\":true,\"sheriffEnabled\":false}", 12);
+        game.readyAll();
+        game.start();
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int mech = seats.get("机械狼").get(0);
+        int witch = seats.get("女巫").get(0);
+        int villager = seats.get("平民").get(0);
+        markDead(game, seats.get("狼人"));
+        Assertions.assertEquals(0, nightMulti(game, mech, "[" + act("learn", witch) + "," + act("kill", villager) + "]").path("code").asInt());
+        JsonNode actions = game.snapshot(game.host).path("nightActions");
+        List<String> mine = new ArrayList<>();
+        for (JsonNode action : actions) {
+            if (action.path("actorSeatNo").asInt() == mech) {
+                mine.add(action.path("actionType").asText() + ":" + action.path("targetSeatNo").asInt());
+            }
+        }
+        Assertions.assertEquals(List.of("learn:" + witch, "kill:" + villager), mine, actions.toString());
+        JsonNode mechView = game.player(game.snapshot(game.host), mech);
+        Assertions.assertEquals("mech_wolf", mechView.path("mechanic").asText(), "法官看得到各座位的机制");
+    }
+
     // ---- helpers ----
 
     /** 种子板子 2「预女猎白」：12 人，4 狼、预言家、女巫、猎人、白痴、4 平民；夜间顺序 狼人 → 女巫 → 预言家 → 猎人。 */

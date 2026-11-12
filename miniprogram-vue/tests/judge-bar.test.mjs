@@ -79,3 +79,25 @@ test('tonightRowsFollowTheBoardNightOrder', () => {
   assert.equal(rows.find((row) => row.role === '女巫').state, '还没轮到')
   assert.equal(tonightRows(snapshot).find((row) => row.role === '预言家').state, '还没轮到', '没有板子时按通用顺序')
 })
+
+test('judgeSeesTheMechWolfInItsOwnRow', async () => {
+  const { tonightRows } = await import('../src/utils/judge/judge-bar.js')
+  const snapshot = {
+    judgeViewer: true, currentDay: 2, currentPhase: 'night_action', currentStep: { index: 3, kind: 'witch', roleName: '女巫' },
+    players: [
+      { seatNo: 1, roleName: '狼人', faction: '狼人', mechanic: 'wolf', alive: true },
+      { seatNo: 6, roleName: '机械狼', faction: '狼人', mechanic: 'mech_wolf', alive: true },
+      { seatNo: 2, roleName: '女巫', faction: '好人', mechanic: 'witch', alive: true },
+    ],
+    nightActions: [
+      { dayNo: 2, actorSeatNo: 1, actionType: 'kill', targetSeatNo: 2 },
+      { dayNo: 2, actorSeatNo: 6, actionType: 'learn', targetSeatNo: 2 },
+      { dayNo: 2, actorSeatNo: 6, actionType: 'poison', targetSeatNo: 1 },
+    ],
+  }
+  const rows = tonightRows(snapshot)
+  const wolf = rows.find((row) => row.role === '狼人')
+  assert.deepEqual(wolf.seats, [1], '机械狼不在狼队那一行')
+  const mech = rows.find((row) => row.role === '机械狼')
+  assert.equal(mech.state, '学习 2 号 · 毒 1 号')
+})

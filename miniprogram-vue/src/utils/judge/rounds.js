@@ -3,7 +3,7 @@ import { campOf } from './judge-bar.js'
 
 const seats = (list) => (list || []).join('、')
 
-const NIGHT_VERBS = { kill: '刀', save: '救', poison: '毒', check: '查验', guard: '守', 刀人: '刀', 解药: '救', 毒药: '毒', 查验: '查验', 守护: '守' }
+const NIGHT_VERBS = { kill: '刀', kill_pierce: '破盾刀', learn: '学习', save: '救', poison: '毒', check: '查验', guard: '守', 刀人: '刀', 解药: '救', 毒药: '毒', 查验: '查验', 守护: '守' }
 
 function sheriffText(sheriff) {
   if (!sheriff) return ''

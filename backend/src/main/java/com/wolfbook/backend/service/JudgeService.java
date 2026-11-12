@@ -1426,10 +1426,18 @@ public class JudgeService {
         }
         List<Map<String, Object>> actions = new ArrayList<>();
         List<String> targetIds = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
         for (WolfbookDtos.JudgeNightActionItem item : items) {
             JudgeRoomPlayerEntity target = item.targetSeatNo() == null ? null : requireAliveSeat(players, item.targetSeatNo());
             String label = safeText(item.actionType(), NightResolver.NONE);
             String action = RoleSkillRegistry.LEGACY_ACTIONS.getOrDefault(label, label);
+            // 一次提交里同一件事只能做一次；除了「不行动」都要有目标
+            if (!seen.add(action) || (NightResolver.NONE.equals(action) && items.size() > 1)) {
+                throw new ApiException(4000, "同一件事只能做一次");
+            }
+            if (!NightResolver.NONE.equals(action) && target == null) {
+                throw new ApiException(4000, "请选择目标");
+            }
             validateNightAction(room, players, player, target, action);
             actions.add(mapOf("action", action, "targetSeatNo", target == null ? null : target.getSeatNo()));
             if (target != null) {
@@ -1467,6 +1475,10 @@ public class JudgeService {
             }
         }
         if (!NightResolver.NONE.equals(action) && target == null) {
+            return;
+        }
+        if (kind == NightKind.MECH_WOLF && !Boolean.TRUE.equals(room.getAutoJudgeEnabled())) {
+            // 旧流程房间：法官代记机械狼什么都照记（旧主持台把它当只播报的角色），行为不变
             return;
         }
         Map<Integer, NightResolver.SeatState> seats = seatStates(players);
@@ -2744,7 +2756,7 @@ public class JudgeService {
                 revealRole ? trimToNull(player.getFaction()) : null,
                 player.getDeathDay(),
                 trimToNull(player.getDeathPhase()),
-                self && revealRole ? mechanicOf(player).map(Mechanic::code).orElse(null) : null
+                revealRole ? mechanicOf(player).map(Mechanic::code).orElse(null) : null
         );
     }
 
@@ -2842,7 +2854,7 @@ public class JudgeService {
                 .filter(event -> EVENT_NIGHT_SUBMIT.equals(event.getActionType()))
                 .filter(event -> Objects.equals(safeInt(event.getDayNo(), 1), safeInt(room.getCurrentDay(), 1)))
                 .filter(event -> PHASE_NIGHT_ACTION.equals(event.getPhase()))
-                .map(event -> toNightActionView(event, playersById))
+                .flatMap(event -> toNightActionViews(event, playersById).stream())
                 .toList();
     }
 
@@ -2856,8 +2868,36 @@ public class JudgeService {
         return events.stream()
                 .filter(event -> EVENT_NIGHT_SUBMIT.equals(event.getActionType()))
                 .sorted(Comparator.comparing(JudgeActionEventEntity::getCreateTime))
-                .map(event -> toNightActionView(event, playersById))
+                .flatMap(event -> toNightActionViews(event, playersById).stream())
                 .toList();
+    }
+
+    /** 一条夜间提交展开成法官 / 对局记录里的行：机械狼一次提交的多件事各占一行。 */
+    private List<WolfbookDtos.JudgeNightActionView> toNightActionViews(
+            JudgeActionEventEntity event,
+            Map<String, JudgeRoomPlayerEntity> playersById
+    ) {
+        Map<String, Object> payload = readMap(event.getPayloadJson());
+        if (!(payload.get("actions") instanceof List<?> items)) {
+            return List.of(toNightActionView(event, playersById));
+        }
+        JudgeRoomPlayerEntity actor = playersById.get(event.getActorPlayerId());
+        List<WolfbookDtos.JudgeNightActionView> views = new ArrayList<>();
+        for (Object item : items) {
+            if (item instanceof Map<?, ?> map) {
+                views.add(new WolfbookDtos.JudgeNightActionView(
+                        event.getActorPlayerId(),
+                        actor == null ? null : actor.getSeatNo(),
+                        actor == null ? "未知玩家" : safeText(actor.getNickname(), "未知玩家"),
+                        asPositiveInteger(map.get("targetSeatNo")),
+                        safeText(asString(map.get("action")), NightResolver.NONE),
+                        "",
+                        safeInt(event.getDayNo(), 1),
+                        event.getCreateTime()
+                ));
+            }
+        }
+        return views;
     }
 
     private WolfbookDtos.JudgeNightActionView toNightActionView(

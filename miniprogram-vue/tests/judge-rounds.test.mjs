@@ -90,3 +90,19 @@ test('roundsShowSelfDestruct', () => {
   const rows = roundRows({ roomStatus: 'playing', rounds: [{ dayNo: 1, nightDeaths: [], skills: [{ kind: 'self_destruct', actorSeatNo: 5, targetSeatNo: null }] }] })
   assert.ok(rows[0].skills.includes('5 号自爆'), JSON.stringify(rows[0].skills))
 })
+
+test('mechWolfNightActionsReadInTheRecord', async () => {
+  const { roundRows } = await import('../src/utils/judge/rounds.js')
+  const snapshot = {
+    roomStatus: 'finished',
+    players: [{ seatNo: 6, roleName: '机械狼' }],
+    rounds: [{ dayNo: 1, nightDeaths: [], exile: [], skills: [] }],
+    nightHistory: [
+      { dayNo: 1, actorSeatNo: 6, actionType: 'learn', targetSeatNo: 2 },
+      { dayNo: 1, actorSeatNo: 6, actionType: 'kill_pierce', targetSeatNo: 3 },
+    ],
+  }
+  const text = JSON.stringify(roundRows(snapshot))
+  assert.ok(text.includes('6 号机械狼 学习 2 号'), text)
+  assert.ok(text.includes('6 号机械狼 破盾刀 3 号'), text)
+})

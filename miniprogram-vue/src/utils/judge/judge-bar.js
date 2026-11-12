@@ -55,9 +55,26 @@ export function godSeats(snapshot) {
 }
 
 // 没配夜间顺序时的通用顺序（和后端机制优先级一致）；用来判断某个角色「还没轮到」还是「没有行动」。
-const ROLE_ORDER = { 守卫: 1, 狼人: 2, 女巫: 3, 预言家: 4, 猎人: 5 }
-const KIND_ORDER = { guard: 1, wolf: 2, witch: 3, seer: 4, hunter: 5 }
-const VERBS = { save: '救', poison: '毒', check: '查验', guard: '守', kill: '刀' }
+const ROLE_ORDER = { 机械狼: 0.5, 守卫: 1, 狼人: 2, 女巫: 3, 预言家: 4, 通灵师: 4, 猎人: 5, 白痴: 6 }
+const KIND_ORDER = { mech_wolf: 0.5, guard: 1, wolf: 2, witch: 3, seer: 4, psychic: 4, hunter: 5, idle: 6 }
+const VERBS = { save: '救', poison: '毒', check: '查验', guard: '守', kill: '刀', kill_pierce: '破盾刀', learn: '学习' }
+
+/** 跟狼队一起睁眼的座位：有机制看机制（机械狼单独一步），没有按阵营。 */
+function inWolfTeam(player) {
+  if (player?.mechanic) return player.mechanic === 'wolf' || player.mechanic === 'wolf_king'
+  return player?.faction === '狼人'
+}
+
+/** 每个座位今晚的全部行动（机械狼一次可以交几件事）。 */
+function allBySeat(actions) {
+  const bySeat = new Map()
+  for (const action of actions) {
+    if (!action.actorSeatNo) continue
+    if (!bySeat.has(action.actorSeatNo)) bySeat.set(action.actorSeatNo, [])
+    bySeat.get(action.actorSeatNo).push(action)
+  }
+  return bySeat
+}
 
 function knifeText(bySeat, wolves) {
   const counts = new Map()
@@ -100,7 +117,7 @@ export function tonightRows(snapshot, board = null) {
   const currentOrder = ranking.current
   const rows = []
 
-  const wolves = alive.filter((player) => player.faction === '狼人').map((player) => player.seatNo).sort((a, b) => a - b)
+  const wolves = alive.filter(inWolfTeam).map((player) => player.seatNo).sort((a, b) => a - b)
   if (wolves.length) {
     const picks = wolves.map((seat) => {
       const action = bySeat.get(seat)
@@ -111,14 +128,15 @@ export function tonightRows(snapshot, board = null) {
   }
 
   const byRole = new Map()
+  const everything = allBySeat(tonight(snapshot))
   for (const player of alive) {
-    if (player.faction === '狼人') continue
+    if (inWolfTeam(player)) continue
     if (ranking.orderOf(player.roleName) === 99 && !bySeat.has(player.seatNo)) continue
     if (!byRole.has(player.roleName)) byRole.set(player.roleName, [])
     byRole.get(player.roleName).push(player.seatNo)
   }
   for (const [role, seats] of byRole) {
-    const done = seats.map((seat) => bySeat.get(seat)).filter(Boolean)
+    const done = seats.flatMap((seat) => everything.get(seat) || [])
     let state
     if (done.length) {
       state = done

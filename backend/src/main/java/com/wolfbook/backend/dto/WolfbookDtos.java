@@ -560,7 +560,7 @@ public final class WolfbookDtos {
             String faction,
             Integer deathDay,
             String deathPhase,
-            /** 本人自己的技能机制（只在 self 那一条下发，面板据此禁用狼王自刀等）。 */
+            /** 座位的技能机制：和角色名一样，只在看得到身份时下发（本人、法官、对局结束后）。 */
             @JsonInclude(JsonInclude.Include.NON_NULL) String mechanic
     ) {
     }
