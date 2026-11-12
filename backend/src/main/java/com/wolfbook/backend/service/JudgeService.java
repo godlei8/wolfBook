@@ -487,6 +487,10 @@ public class JudgeService {
         }
 
         List<JudgeRoomPlayerEntity> players = loadPlayers(roomId);
+        if (request.actions() != null && !request.actions().isEmpty()) {
+            submitMultiNightAction(room, players, requireAlivePlayingPlayer(roomId, openid), request.actions());
+            return buildSnapshot(openid, roomId);
+        }
         JudgeRoomPlayerEntity player;
         if (request.actorSeatNo() != null) {
             // 线下面杀：玩家闭眼指人，由法官替这个座位记下夜间行动（只有旧流程房间；新流程玩家自己操作）
@@ -884,10 +888,18 @@ public class JudgeService {
         List<NightPlan.NightStep> steps = nightSteps(room, dayNo);
         Map<String, Object> phaseData = new LinkedHashMap<>(readMap(room.getPhaseData()));
         if (current < steps.size() && steps.get(current).kind() == NightKind.WOLF) {
-            List<Integer> picks = tonightSubmissions(room, players).stream()
+            List<NightResolver.Submission> tonight = tonightSubmissions(room, players);
+            List<Integer> picks = tonight.stream()
                     .filter(submission -> submission.kind() == NightKind.WOLF && NightResolver.KILL.equals(submission.action()))
                     .map(NightResolver.Submission::targetSeat)
                     .toList();
+            if (picks.stream().noneMatch(Objects::nonNull) && NightResolver.armed(seatStates(players))) {
+                // 狼队全出局：普通刀口是带刀机械狼在自己那一步选的
+                picks = tonight.stream()
+                        .filter(submission -> submission.kind() == NightKind.MECH_WOLF && NightResolver.KILL.equals(submission.action()))
+                        .map(NightResolver.Submission::targetSeat)
+                        .toList();
+            }
             phaseData.put("knifeDecided", true);
             phaseData.put("knifeSeat", NightResolver.tallyKnife(picks, random));
         }
@@ -957,7 +969,7 @@ public class JudgeService {
         } else {
             deadSeatNos = outcome.deadSeats();
         }
-        applyNightStatus(players, submissions, outcome, now);
+        applyNightStatus(players, submissions, outcome, dayNo, now);
         for (Map.Entry<Integer, String> entry : outcome.feedback().entrySet()) {
             JudgeRoomPlayerEntity actor = findSeatPlayer(players, entry.getKey());
             if (actor != null) {
@@ -1246,7 +1258,7 @@ public class JudgeService {
                                                               List<JudgeActionEventEntity> events) {
         Map<String, JudgeRoomPlayerEntity> playersById = players.stream()
                 .collect(Collectors.toMap(JudgeRoomPlayerEntity::getPlayerId, player -> player));
-        Map<Integer, NightResolver.Submission> bySeat = new LinkedHashMap<>();
+        Map<Integer, List<NightResolver.Submission>> bySeat = new LinkedHashMap<>();
         for (JudgeActionEventEntity event : events) {
             if (!EVENT_NIGHT_SUBMIT.equals(event.getActionType())
                     || !Objects.equals(safeInt(event.getDayNo(), 1), safeInt(room.getCurrentDay(), 1))
@@ -1258,12 +1270,24 @@ public class JudgeService {
                 continue;
             }
             Map<String, Object> payload = readMap(event.getPayloadJson());
-            String label = safeText(asString(payload.get("actionType")), "");
-            String action = safeText(asString(payload.get("action")), RoleSkillRegistry.LEGACY_ACTIONS.getOrDefault(label, label));
-            bySeat.put(actor.getSeatNo(), new NightResolver.Submission(actor.getSeatNo(), nightKindOf(actor), action,
-                    asPositiveInteger(payload.get("targetSeatNo"))));
+            NightKind kind = nightKindOf(actor);
+            List<NightResolver.Submission> mine = new ArrayList<>();
+            if (payload.get("actions") instanceof List<?> items) {
+                // 机械狼一次提交的多个行动
+                for (Object item : items) {
+                    if (item instanceof Map<?, ?> map) {
+                        mine.add(new NightResolver.Submission(actor.getSeatNo(), kind, safeText(asString(map.get("action")), NightResolver.NONE),
+                                asPositiveInteger(map.get("targetSeatNo"))));
+                    }
+                }
+            } else {
+                String label = safeText(asString(payload.get("actionType")), "");
+                String action = safeText(asString(payload.get("action")), RoleSkillRegistry.LEGACY_ACTIONS.getOrDefault(label, label));
+                mine.add(new NightResolver.Submission(actor.getSeatNo(), kind, action, asPositiveInteger(payload.get("targetSeatNo"))));
+            }
+            bySeat.put(actor.getSeatNo(), mine);
         }
-        return List.copyOf(bySeat.values());
+        return bySeat.values().stream().flatMap(List::stream).toList();
     }
 
     private Map<Integer, NightResolver.SeatState> seatStates(List<JudgeRoomPlayerEntity> players) {
@@ -1281,7 +1305,11 @@ public class JudgeService {
                             Boolean.TRUE.equals(player.getAlive()),
                             !Boolean.FALSE.equals(status.get("antidote")),
                             !Boolean.FALSE.equals(status.get("poison")),
-                            asPositiveInteger(status.get("lastGuardSeat"))
+                            asPositiveInteger(status.get("lastGuardSeat")),
+                            Mechanic.fromCode(asString(status.get("mechLearned"))).orElse(null),
+                            trimToNull(asString(status.get("mechLearnedRole"))),
+                            asPositiveInteger(status.get("mechLearnedDay")),
+                            !Boolean.FALSE.equals(status.get("mechPoison"))
                     ));
                 });
         return seats;
@@ -1289,7 +1317,7 @@ public class JudgeService {
 
     /** 把今晚的用药、守护、猎人能否开枪写回座位状态。 */
     private void applyNightStatus(List<JudgeRoomPlayerEntity> players, List<NightResolver.Submission> submissions,
-                                  NightResolver.Outcome outcome, LocalDateTime now) {
+                                  NightResolver.Outcome outcome, int dayNo, LocalDateTime now) {
         for (JudgeRoomPlayerEntity player : players) {
             if (player.getSeatNo() == null || !Boolean.TRUE.equals(player.getPlaying())) {
                 continue;
@@ -1309,6 +1337,28 @@ public class JudgeService {
                 status.put("canShoot", false);
                 changed = true;
             }
+            NightResolver.Learned learned = outcome.learnedTonight().get(seat);
+            if (learned != null) {
+                status.put("mechLearned", learned.mechanic().code());
+                status.put("mechLearnedRole", learned.roleName());
+                status.put("mechLearnedDay", dayNo);
+                changed = true;
+            }
+            if (outcome.mechPoisonUsedBy().contains(seat)) {
+                status.put("mechPoison", false);
+                changed = true;
+            }
+            if (nightKindOf(player) == NightKind.MECH_WOLF && "guard".equals(asString(status.get("mechLearned")))
+                    && dayNo > safeInt(asPositiveInteger(status.get("mechLearnedDay")), dayNo)) {
+                // 学到守卫的机械狼：和守卫一样记上一夜守了谁（不能连守）
+                Integer guarded = submissions.stream()
+                        .filter(submission -> submission.actorSeat() == seat && NightResolver.GUARD.equals(submission.action()))
+                        .map(NightResolver.Submission::targetSeat)
+                        .findFirst()
+                        .orElse(null);
+                status.put("lastGuardSeat", guarded);
+                changed = true;
+            }
             if (nightKindOf(player) == NightKind.GUARD) {
                 Integer guarded = submissions.stream()
                         .filter(submission -> submission.actorSeat() == seat && NightResolver.GUARD.equals(submission.action()))
@@ -1324,6 +1374,31 @@ public class JudgeService {
                 judgeRoomPlayerMapper.updateById(player);
             }
         }
+    }
+
+    /** 机械狼一次提交多个行动：逐项校验，整组存成一条提交（覆盖今晚之前的提交）。只在新流程房间。 */
+    private void submitMultiNightAction(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players, JudgeRoomPlayerEntity player,
+                                       List<WolfbookDtos.JudgeNightActionItem> items) {
+        if (!Boolean.TRUE.equals(room.getAutoJudgeEnabled()) || mechanicOf(player).orElse(null) != Mechanic.MECH_WOLF) {
+            throw new ApiException(4000, "只有机械狼可以一次提交多个行动");
+        }
+        List<Map<String, Object>> actions = new ArrayList<>();
+        List<String> targetIds = new ArrayList<>();
+        for (WolfbookDtos.JudgeNightActionItem item : items) {
+            JudgeRoomPlayerEntity target = item.targetSeatNo() == null ? null : requireAliveSeat(players, item.targetSeatNo());
+            String label = safeText(item.actionType(), NightResolver.NONE);
+            String action = RoleSkillRegistry.LEGACY_ACTIONS.getOrDefault(label, label);
+            validateNightAction(room, players, player, target, action);
+            actions.add(mapOf("action", action, "targetSeatNo", target == null ? null : target.getSeatNo()));
+            if (target != null) {
+                targetIds.add(target.getPlayerId());
+            }
+        }
+        deletePhaseEvent(room.getRoomId(), room.getCurrentDay(), room.getCurrentPhase(), player.getPlayerId(), EVENT_NIGHT_SUBMIT);
+        LocalDateTime now = LocalDateTime.now(APP_ZONE);
+        addEvent(room.getRoomId(), room.getCurrentDay(), room.getCurrentPhase(), player.getPlayerId(), targetIds, EVENT_NIGHT_SUBMIT,
+                mapOf("actionType", "multi", "action", "multi", "actions", actions), Map.of(), VISIBILITY_JUDGE_ONLY, now);
+        touchRoom(room.getRoomId(), now);
     }
 
     /**

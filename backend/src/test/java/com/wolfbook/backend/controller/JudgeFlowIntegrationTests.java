@@ -1908,6 +1908,136 @@ class JudgeFlowIntegrationTests {
         Assertions.assertEquals("day_announce", game.expireDeadline().path("currentPhase").asText(), "技能询问超时当作不发动");
     }
 
+    // ---- 通灵师机械狼人（种子板子 5，无法官）----
+
+    private static final int MECH_WOLF_BOARD_ID = 5;
+
+    private Game mechWolfGame() throws Exception {
+        return joinedGame(MECH_WOLF_BOARD_ID, 12);
+    }
+
+    /** 机械狼一次提交多个行动。actions 形如 [{"actionType":"learn","targetSeatNo":3}]。返回整个响应。 */
+    private JsonNode nightMulti(Game game, int seat, String actions) throws Exception {
+        return game.call(game.players.get(seat - 1), "/night-action", "{\"actions\":" + actions + "}");
+    }
+
+    private String act(String action, int target) {
+        return "{\"actionType\":\"" + action + "\",\"targetSeatNo\":" + target + "}";
+    }
+
+    /** 天亮后：待办跳过，发言、投票没人投（无人出局），票型公布后入夜。 */
+    private JsonNode toNextNight(Game game) throws Exception {
+        game.skipPending();
+        game.advance(game.host, "{\"action\":\"start_speech\"}");
+        game.advance(game.host, "{\"action\":\"start_vote\"}");
+        game.advance(game.host, "{\"action\":\"resolve_vote\"}");
+        JsonNode night = game.advance(game.host, "{\"action\":\"continue\"}").path("data");
+        Assertions.assertEquals("night_action", night.path("currentPhase").asText(), night.toString());
+        return night;
+    }
+
+    private Map<String, Object> statusOf(Game game, int seat) throws Exception {
+        String json = jdbcTemplate.queryForObject("SELECT status_json FROM judge_room_players WHERE room_id = ? AND seat_no = ?",
+                String.class, game.roomId, seat);
+        return json == null ? Map.of() : objectMapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
+        });
+    }
+
+    @Test
+    void mechWolfBoardIsFullAndJoinable() throws Exception {
+        String board = mockMvc.perform(get("/api/boards/" + MECH_WOLF_BOARD_ID)).andReturn().getResponse().getContentAsString();
+        Assertions.assertEquals("full", objectMapper.readTree(board).path("data").path("judgeSupportLevel").asText(), board);
+        Game game = mechWolfGame();
+        Assertions.assertEquals("playing", game.snapshot(game.host).path("roomStatus").asText());
+    }
+
+    @Test
+    void mechWolfWakesFirstAndLearns() throws Exception {
+        Game game = mechWolfGame();
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int mech = seats.get("机械狼").get(0);
+        int witch = seats.get("女巫").get(0);
+        Assertions.assertEquals("mech_wolf", game.snapshot(game.host).path("currentStep").path("kind").asText());
+        JsonNode other = nightMulti(game, witch, "[" + act("learn", mech) + "]");
+        Assertions.assertEquals(4000, other.path("code").asInt(), other.toString());
+        JsonNode learned = nightMulti(game, mech, "[" + act("learn", witch) + "]");
+        Assertions.assertEquals(0, learned.path("code").asInt(), learned.toString());
+    }
+
+    @Test
+    void mechWolfCannotLearnItselfOrTheDead() throws Exception {
+        Game game = mechWolfGame();
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int mech = seats.get("机械狼").get(0);
+        int villager = seats.get("平民").get(0);
+        Assertions.assertEquals(4000, nightMulti(game, mech, "[" + act("learn", mech) + "]").path("code").asInt());
+        markDead(game, List.of(villager));
+        Assertions.assertEquals(4000, nightMulti(game, mech, "[" + act("learn", villager) + "]").path("code").asInt());
+    }
+
+    @Test
+    void learnedSkillStartsTheNextNight() throws Exception {
+        Game game = mechWolfGame();
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int mech = seats.get("机械狼").get(0);
+        int witch = seats.get("女巫").get(0);
+        int villager = seats.get("平民").get(0);
+        JsonNode sameNight = nightMulti(game, mech, "[" + act("learn", witch) + "," + act("poison", villager) + "]");
+        Assertions.assertEquals(4000, sameNight.path("code").asInt(), "学的当晚还不能用：" + sameNight);
+        Assertions.assertEquals(0, nightMulti(game, mech, "[" + act("learn", witch) + "]").path("code").asInt());
+        game.finishNight();
+        Assertions.assertEquals("witch", statusOf(game, mech).get("mechLearned"));
+        toNextNight(game);
+        Assertions.assertEquals(0, nightMulti(game, mech, "[" + act("poison", villager) + "]").path("code").asInt());
+        JsonNode day = game.finishNight();
+        Assertions.assertFalse(game.player(day, villager).path("alive").asBoolean(), day.toString());
+        Assertions.assertEquals(Boolean.FALSE, statusOf(game, mech).get("mechPoison"));
+    }
+
+    @Test
+    void mechWolfKnifesOnceTheWolvesAreGone() throws Exception {
+        Game game = mechWolfGame();
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int mech = seats.get("机械狼").get(0);
+        int witch = seats.get("女巫").get(0);
+        int villager = seats.get("平民").get(0);
+        markDead(game, seats.get("狼人"));
+        Assertions.assertEquals(0, nightMulti(game, mech, "[" + act("kill", villager) + "]").path("code").asInt());
+        JsonNode view = game.snapshot(game.host);
+        for (int i = 0; i < 6 && !"witch".equals(view.path("currentStep").path("kind").asText()); i++) {
+            view = game.expireDeadline();
+        }
+        Assertions.assertEquals(villager, game.snapshot(game.players.get(witch - 1)).path("nightInfo").path("knifeSeat").asInt());
+        JsonNode day = game.finishNight();
+        Assertions.assertFalse(game.player(day, villager).path("alive").asBoolean(), day.toString());
+    }
+
+    @Test
+    void mechWolfCannotKnifeWhileAWolfLives() throws Exception {
+        Game game = mechWolfGame();
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int mech = seats.get("机械狼").get(0);
+        Assertions.assertEquals(4000, nightMulti(game, mech, "[" + act("kill", seats.get("平民").get(0)) + "]").path("code").asInt());
+    }
+
+    @Test
+    void learnedWolfGivesTwoKnives() throws Exception {
+        Game game = mechWolfGame();
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int mech = seats.get("机械狼").get(0);
+        int first = seats.get("平民").get(0);
+        int second = seats.get("平民").get(1);
+        Assertions.assertEquals(0, nightMulti(game, mech, "[" + act("learn", seats.get("狼人").get(0)) + "]").path("code").asInt());
+        game.finishNight();
+        markDead(game, seats.get("狼人"));
+        toNextNight(game);
+        JsonNode two = nightMulti(game, mech, "[" + act("kill", first) + "," + act("kill_pierce", second) + "]");
+        Assertions.assertEquals(0, two.path("code").asInt(), two.toString());
+        JsonNode day = game.finishNight();
+        Assertions.assertFalse(game.player(day, first).path("alive").asBoolean(), day.toString());
+        Assertions.assertFalse(game.player(day, second).path("alive").asBoolean(), day.toString());
+    }
+
     // ---- helpers ----
 
     /** 种子板子 2「预女猎白」：12 人，4 狼、预言家、女巫、猎人、白痴、4 平民；夜间顺序 狼人 → 女巫 → 预言家 → 猎人。 */

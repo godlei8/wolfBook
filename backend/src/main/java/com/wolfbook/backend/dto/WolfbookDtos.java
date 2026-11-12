@@ -497,11 +497,24 @@ public final class WolfbookDtos {
     ) {
     }
 
+    /**
+     * 夜间行动。actions 不为空时是机械狼一次提交多个行动（学习 + 刀口、技能 + 刀口、两刀），此时忽略 actionType / targetSeatNo。
+     */
     public record JudgeNightActionRequest(
             @Size(max = 50, message = "actionType is too long") String actionType,
             Integer targetSeatNo,
             @Size(max = 500, message = "note is too long") String note,
-            Integer actorSeatNo
+            Integer actorSeatNo,
+            @Size(max = 4, message = "too many actions") List<@Valid JudgeNightActionItem> actions
+    ) {
+        public JudgeNightActionRequest(String actionType, Integer targetSeatNo, String note, Integer actorSeatNo) {
+            this(actionType, targetSeatNo, note, actorSeatNo, null);
+        }
+    }
+
+    public record JudgeNightActionItem(
+            @Size(max = 50, message = "actionType is too long") String actionType,
+            Integer targetSeatNo
     ) {
     }
 
