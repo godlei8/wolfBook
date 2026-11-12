@@ -2,6 +2,8 @@
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
+> **先读 `PRINCIPLES.md`**：开发核心理念（规则唯一来源、机制跟角色走、零场外、规则纯函数有测试、旧的不动、世界观原创、密钥、文档跟着行为走），和本文件同等重要，冲突时以它为准。
+
 ## 项目概览
 
 Wolfbook（狼人杀内容平台）是一个 monorepo，包含三个可独立部署的子项目：
