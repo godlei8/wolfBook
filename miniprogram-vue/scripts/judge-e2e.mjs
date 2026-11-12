@@ -1,7 +1,9 @@
 // 电子法官联调脚本：用多个 Mock 账号真打本地后端（start-backend-dev.ps1，test profile 任意 code 都能登录）跑完整局，
 // 每一轮把每个人的快照交给小程序的视图逻辑（utils/judge/*），检查零场外和请求格式。只对本地跑。
-// 用法：node scripts/judge-e2e.mjs [http://127.0.0.1:8088] [observer|joined|wolfking|explode|both]（both 四局都跑；狼王守卫要先在本地库跑 deploy/sql/2026-11-02-wolf-king-mechanic.sql）
+// 用法：node scripts/judge-e2e.mjs [http://127.0.0.1:8088] [observer|joined|wolfking|explode|mechwolf|both]（both 五局都跑；
+// 狼王守卫要先在本地库跑 deploy/sql/2026-11-02-wolf-king-mechanic.sql，机械狼通灵师要先跑 deploy/sql/2026-11-12-mech-wolf-psychic-mechanic.sql）
 // explode：无法官预女猎白，第一天两只狼上警、警上一只自爆（竞选推迟），第二天另一只再爆（警徽流失）。
+// mechwolf：无法官机械狼通灵师，机械狼首夜学一个人的技能，之后按学到的技能行动、狼人死光后带刀；通灵师每晚查验。
 import { phaseTitle, pickView, countdown } from '../src/utils/judge/room-view.js'
 import { isStepHolder, nightArt, nightPanel, seatBadges } from '../src/utils/judge/night-panel.js'
 import { stageLayout } from '../src/utils/judge/stage.js'
@@ -158,6 +160,7 @@ async function runGame({ mode, keyword, count, explode = false }) {
 
     if (view === 'night') {
       checkNightScreens(snaps.map((s, i) => (sameStep[i] ? s : null)), judgeIndex)
+      checkMechWolfSecrecy(snaps.map((s, i) => (sameStep[i] ? s : null)))
       for (let i = 0; i < everyone.length; i += 1) {
         const s = snaps[i]
         const panel = nightPanel(s)
@@ -165,9 +168,13 @@ async function runGame({ mode, keyword, count, explode = false }) {
         const alive = (s.players || []).filter((p) => p.seatNo && p.alive).map((p) => p.seatNo)
         const nonWolf = alive.filter((seat) => !wolves.includes(seat))
         let button
+        if (panel.kind === 'mech_wolf') {
+          await mechWolfNight(everyone[i], roomId, s, alive, nonWolf)
+          continue
+        }
         if (panel.kind === 'wolf') button = nightPanel(s, nonWolf[0]).buttons.find((b) => b.action === 'kill')
         else if (panel.kind === 'witch') button = panel.buttons.find((b) => b.action === 'none')
-        else if (panel.kind === 'seer') button = nightPanel(s, alive.find((seat) => seat !== s.selfPlayer.seatNo)).buttons[0]
+        else if (panel.kind === 'seer' || panel.kind === 'psychic') button = nightPanel(s, alive.find((seat) => seat !== s.selfPlayer.seatNo)).buttons[0]
         else if (panel.kind === 'guard') {
           const pick = alive.find((seat) => seat !== s.nightInfo?.lastGuardSeat)
           button = nightPanel(s, pick).buttons.find((b) => !b.disabled)
@@ -247,6 +254,43 @@ async function runGame({ mode, keyword, count, explode = false }) {
   fail('15 分钟内没跑完一局')
 }
 
+/** 机械狼这一步：按面板的草稿规则选好要做的几件事，一次提交。 */
+async function mechWolfNight(token, roomId, s, alive, nonWolf) {
+  const info = s.nightInfo || {}
+  const self = s.selfPlayer.seatNo
+  const others = alive.filter((seat) => seat !== self)
+  const draft = {}
+  if (!info.learned) draft.learn = others[0]
+  if (info.learned && info.learnedEffective) {
+    if (info.learned === 'psychic') draft.check = others[0]
+    if (info.learned === 'witch' && info.mechPoison !== false) draft.poison = nonWolf[0]
+    if (info.learned === 'guard') draft.guard = others.find((seat) => seat !== info.lastGuardSeat)
+  }
+  if (info.armed) {
+    draft.kill = nonWolf[0]
+    if (info.learned === 'wolf' && info.learnedEffective && nonWolf[1]) draft.kill_pierce = nonWolf[1]
+  }
+  const panel = nightPanel(s, 0, draft)
+  const submit = panel.buttons.find((b) => b.action === 'submit')
+  if (submit && !submit.disabled) {
+    await act(token, `/api/judge/rooms/${roomId}/night-action`, { actions: submit.actions }, `night mech_wolf ${submit.actions.map((a) => a.actionType).join('+')}`)
+    console.log(`  机械狼：${panel.learnedText}${panel.armedText ? `，${panel.armedText}` : ''} → ${submit.actions.map((a) => `${a.actionType} ${a.targetSeatNo}`).join('、')}`)
+  } else {
+    await act(token, `/api/judge/rooms/${roomId}/night-action`, { actionType: 'none' }, 'night mech_wolf none')
+  }
+}
+
+/** 零场外：机械狼的信息只在他本人快照里；机械狼那一步所有人看到同一个截止时间。 */
+function checkMechWolfSecrecy(snaps) {
+  for (const s of snaps) {
+    if (!s || s.selfPlayer?.mechanic === 'mech_wolf') continue
+    const info = s.nightInfo || {}
+    if (info.armed != null || info.learned != null || info.learnedRole != null) fail(`${s.selfPlayer?.seatNo ?? '法官'} 看到了机械狼的信息`)
+  }
+  const deadlines = new Set(snaps.filter((s) => s?.currentStep?.kind === 'mech_wolf').map((s) => s.currentStep.deadline))
+  if (deadlines.size > 1) fail(`机械狼那一步截止时间不一致：${[...deadlines].join(' / ')}`)
+}
+
 async function hostDo(host, roomId, hostSnap, action) {
   const item = hostActions(hostSnap).find((entry) => entry.action === action)
   if (!item) {
@@ -261,6 +305,7 @@ if (MODE === 'both' || MODE === 'observer') games.push({ mode: 'observer', keywo
 if (MODE === 'both' || MODE === 'joined') games.push({ mode: 'joined', keyword: '预女猎白', count: 12 })
 if (MODE === 'both' || MODE === 'wolfking') games.push({ mode: 'joined', keyword: '狼王守卫', count: 12 })
 if (MODE === 'both' || MODE === 'explode') games.push({ mode: 'joined', keyword: '预女猎白', count: 12, explode: true })
+if (MODE === 'both' || MODE === 'mechwolf') games.push({ mode: 'joined', keyword: '机械狼通灵师', count: 12 })
 for (const game of games) await runGame(game)
 console.log(`\n走过的视图：${[...seen].join(' ')}；房主播报台词出现 ${narrations} 次`)
 console.log(problems.length ? `\n${problems.length} 个问题` : '\n没有发现问题')
