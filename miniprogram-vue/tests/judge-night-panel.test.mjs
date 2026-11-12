@@ -152,3 +152,82 @@ test('wolfKnifeBeforeAnyoneChooses', () => {
   const info = { teammateSeats: [2], wolfPicks: [{ seatNo: 1, targetSeatNo: null, decided: false }, { seatNo: 2, targetSeatNo: null, decided: false }] }
   assert.equal(nightPanel(night('wolf', '狼人', me(1), { line: 'x', nightInfo: info })).knife.text, '还没选')
 })
+
+// ---- 通灵师、机械狼、白痴空步、狼王不能自刀（08 / 01 / 03）----
+
+test('psychicPanelShowsTheExactRole', () => {
+  const before = nightPanel(night('psychic', '通灵师', me(1), { line: '通灵师请睁眼', nightInfo: {} }), 3)
+  assert.equal(before.kind, 'psychic')
+  assert.deepEqual(before.buttons.map((button) => [button.action, button.label, button.target]), [['check', '查验 3 号', 3]])
+  const after = nightPanel(night('psychic', '通灵师', me(1), {
+    line: 'x', nightInfo: { checkedSeat: 5, identityResult: '狼人', myAction: 'check', myTarget: 5 },
+  }))
+  assert.equal(after.result, '5 号是狼人')
+  assert.deepEqual(after.buttons, [])
+})
+
+test('idleStepOnlyConfirms', () => {
+  const panel = nightPanel(night('idle', '白痴', me(1), { line: '白痴请睁眼' }))
+  assert.equal(panel.kind, 'idle')
+  assert.deepEqual(panel.buttons.map((button) => [button.action, button.label]), [['confirm', '我知道了']])
+})
+
+const mech = (info, extra = {}) => night('mech_wolf', '机械狼', me(6), { line: '机械狼请睁眼', nightInfo: info, extra })
+
+test('mechWolfLearnsFirst', () => {
+  const info = { armed: false, learned: null, learnedEffective: false, myActions: [] }
+  const empty = nightPanel(mech(info), 3, {})
+  assert.equal(empty.kind, 'mech_wolf')
+  assert.equal(empty.learnedText, '还没学习，本局可以学一次')
+  assert.equal(empty.armedText, '', '第一晚不报带没带刀')
+  const pick = empty.buttons.find((button) => button.slot === 'learn')
+  assert.deepEqual([pick.action, pick.label, pick.target], ['pick', '学习 3 号', 3])
+  assert.ok(empty.buttons.some((button) => button.action === 'none' && button.label === '今晚不行动'))
+  assert.equal(empty.buttons.find((button) => button.action === 'submit').disabled, true)
+  const drafted = nightPanel(mech(info), 0, { learn: 3 })
+  assert.deepEqual(drafted.rows.map((row) => row.text), ['学习 3 号'])
+  const submit = drafted.buttons.find((button) => button.action === 'submit')
+  assert.equal(submit.disabled, false)
+  assert.deepEqual(submit.actions, [{ actionType: 'learn', targetSeatNo: 3 }])
+})
+
+test('mechWolfWithTheWolfSkillAndArmsGetsTwoKnives', () => {
+  const info = { armed: true, learned: 'wolf', learnedRole: '狼人', learnedEffective: true, myActions: [] }
+  const panel = nightPanel(mech(info, { currentDay: 3 }), 5, { kill: 4 })
+  assert.equal(panel.armedText, '你现在带刀')
+  assert.equal(panel.learnedText, '已学到 狼人')
+  assert.deepEqual(panel.buttons.filter((button) => button.action === 'pick').map((button) => button.slot), ['kill', 'kill_pierce'])
+  assert.deepEqual(panel.buttons.find((button) => button.action === 'submit').actions, [{ actionType: 'kill', targetSeatNo: 4 }])
+})
+
+test('mechWolfSkillButtonsFollowWhatItLearned', () => {
+  const slots = (info, selection = 5, day = 2) => nightPanel(mech(info, { currentDay: day }), selection, {}).buttons
+    .filter((button) => button.action === 'pick')
+  assert.deepEqual(slots({ armed: false, learned: 'psychic', learnedRole: '通灵师', learnedEffective: true }).map((b) => b.slot), ['check'])
+  assert.deepEqual(slots({ armed: false, learned: 'witch', learnedRole: '女巫', learnedEffective: true, mechPoison: false }), [], '毒用过了')
+  assert.deepEqual(slots({ armed: false, learned: 'witch', learnedRole: '女巫', learnedEffective: false, mechPoison: true }), [], '学的当晚还不能用')
+  const guard = slots({ armed: false, learned: 'guard', learnedRole: '守卫', learnedEffective: true }, 5)
+  assert.equal(guard[0].slot, 'guard')
+  const repeat = nightPanel(mech({ armed: false, learned: 'guard', learnedRole: '守卫', learnedEffective: true }, { currentDay: 3 }), 5, {})
+  // 上一夜守的人从 lastGuardSeat 来
+  const blocked = nightPanel(mech({ armed: false, learned: 'guard', learnedRole: '守卫', learnedEffective: true, lastGuardSeat: 5 }, { currentDay: 3 }), 5, {})
+  assert.equal(repeat.buttons.find((b) => b.slot === 'guard').disabled, false)
+  assert.equal(blocked.buttons.find((b) => b.slot === 'guard').disabled, true)
+  assert.equal(blocked.buttons.find((b) => b.slot === 'guard').label, '不能连守 5 号')
+})
+
+test('mechWolfIsDoneAfterSubmitting', () => {
+  const info = { armed: false, learned: null, myActions: [{ actionType: 'learn', targetSeatNo: 3 }], checkedSeat: 3, identityResult: '女巫' }
+  const panel = nightPanel(mech(info), 0, {})
+  assert.equal(panel.done, '已提交：学习 3 号')
+  assert.equal(panel.result, '3 号是女巫')
+  assert.deepEqual(panel.buttons, [])
+})
+
+test('wolfKingCannotPickHimself', () => {
+  const king = { seatNo: 1, alive: true, self: true, mechanic: 'wolf_king' }
+  const panel = nightPanel(night('wolf', '狼人', king, { line: 'x', nightInfo: { teammateSeats: [2], wolfPicks: [] } }), 1)
+  const kill = panel.buttons.find((button) => button.action === 'kill')
+  assert.equal(kill.disabled, true)
+  assert.equal(kill.label, '狼王不能自刀')
+})

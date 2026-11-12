@@ -133,3 +133,9 @@ test('daySpeechExplosionIsAnnouncedAtNightfall', () => {
   assert.equal(first.lines.filter((line) => line.includes('天黑请闭眼')).length, 1)
   assert.equal(voiceCue(night(0, 'wolf', '狼人', { latestAnnouncement: '天黑请闭眼' }), NOW).lines[0], '天黑请闭眼')
 })
+
+test('newNightStepsHaveTheirOwnLines', () => {
+  assert.ok(voiceCue(night(0, 'mech_wolf', '机械狼'), NOW).lines.some((line) => line.includes('请决定今晚的行动')))
+  assert.ok(voiceCue(night(4, 'psychic', '通灵师'), NOW).lines.some((line) => line.includes('请选择要查验的人')))
+  assert.ok(voiceCue(night(5, 'idle', '白痴'), NOW).lines.some((line) => line.includes('请稍候')))
+})

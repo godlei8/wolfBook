@@ -49,6 +49,8 @@ const DONE_TEXT = {
   poison: (target) => `已毒 ${seatText(target)}`,
   check: (target) => `已查验 ${seatText(target)}`,
   guard: (target) => `已守 ${seatText(target)}`,
+  learn: (target) => `学习 ${seatText(target)}`,
+  kill_pierce: (target) => `破盾刀 ${seatText(target)}`,
   none: () => '已确认',
   confirm: () => '已确认',
 }
@@ -58,11 +60,80 @@ function doneText(info) {
   return make ? make(info.myTarget) : ''
 }
 
+// 机械狼一步里能选的几件事：slot 是提交的 actionType，verb 是按钮上的字
+const MECH_SLOTS = {
+  learn: '学习',
+  check: '查验',
+  poison: '毒',
+  guard: '守',
+  kill: '刀',
+  kill_pierce: '破盾刀',
+}
+
+/** 机械狼今晚能做哪几件事：没学过可以学；学过且已生效按学到的技能；带刀时能刀人（学到狼人再多一刀破盾刀）。 */
+function mechSlots(info) {
+  const slots = []
+  if (!info.learned) slots.push('learn')
+  if (info.learned && info.learnedEffective) {
+    if (info.learned === 'psychic') slots.push('check')
+    if (info.learned === 'witch' && info.mechPoison !== false) slots.push('poison')
+    if (info.learned === 'guard') slots.push('guard')
+  }
+  if (info.armed) {
+    slots.push('kill')
+    if (info.learned === 'wolf' && info.learnedEffective) slots.push('kill_pierce')
+  }
+  return slots
+}
+
+/**
+ * 机械狼的面板：可以先点座位、再点「学习 / 刀 / …」把几件事放进草稿（draft：{ slot: 座位号 }），最后一次「确认提交」一起交。
+ * 交过之后不再给按钮（后端每人每晚只认最后一次提交）。
+ */
+function mechWolfPanel(snapshot, selection, draft) {
+  const info = snapshot.nightInfo || {}
+  const day = snapshot.currentDay || 1
+  const submitted = Array.isArray(info.myActions) ? info.myActions : []
+  const armedText = day > 1 ? (info.armed ? '你现在带刀' : '你现在没带刀') : ''
+  const learnedText = info.learned
+    ? `已学到 ${info.learnedRole || ''}${info.learnedEffective ? '' : '（下一晚生效）'}`
+    : '还没学习，本局可以学一次'
+  const result = info.checkedSeat && info.identityResult ? `${seatText(info.checkedSeat)}是${info.identityResult}` : ''
+  if (submitted.length) {
+    const done = submitted
+      .filter((item) => item.actionType && item.actionType !== 'none')
+      .map((item) => `${MECH_SLOTS[item.actionType] || item.actionType} ${seatText(item.targetSeatNo)}`)
+    return { kind: 'mech_wolf', armedText, learnedText, result, rows: [], done: done.length ? `已提交：${done.join('、')}` : '已确认', buttons: [] }
+  }
+  const slots = mechSlots(info)
+  const chosen = slots.filter((slot) => draft && draft[slot])
+  const rows = chosen.map((slot) => ({ slot, text: `${MECH_SLOTS[slot]} ${seatText(draft[slot])}` }))
+  const buttons = slots.map((slot) => {
+    if (slot === 'guard' && selection && selection === info.lastGuardSeat) {
+      return { action: 'pick', slot, label: `不能连守 ${seatText(selection)}`, target: selection, disabled: true }
+    }
+    if (slot === 'learn' && selection && selection === snapshot.selfPlayer.seatNo) {
+      return { action: 'pick', slot, label: '不能学习自己', target: selection, disabled: true }
+    }
+    return { ...targetButton(slot, MECH_SLOTS[slot], selection), action: 'pick', slot }
+  })
+  buttons.push({ action: 'none', label: '今晚不行动', target: null, disabled: false })
+  buttons.push({
+    action: 'submit',
+    label: '确认提交',
+    target: null,
+    disabled: !chosen.length,
+    actions: chosen.map((slot) => ({ actionType: slot, targetSeatNo: draft[slot] })),
+  })
+  return { kind: 'mech_wolf', armedText, learnedText, result, rows, done: '', buttons }
+}
+
 /**
  * 持有者的操作面板；不是持有者返回 null。selection 是持有者在两侧座位上点选的座位号（0 = 没选）。
  * 单人角色提交一次就定了（后端每人每晚只认最后一次提交，交完不再给按钮）；狼人可以改刀。
+ * draft 只给机械狼：这一步已经放进草稿、还没提交的几件事。
  */
-export function nightPanel(snapshot, selection = 0) {
+export function nightPanel(snapshot, selection = 0, draft = {}) {
   if (!isStepHolder(snapshot)) return null
   const kind = snapshot.currentStep.kind
   const info = snapshot.nightInfo || {}
@@ -71,6 +142,8 @@ export function nightPanel(snapshot, selection = 0) {
 
   if (kind === 'wolf') {
     const picks = info.wolfPicks || []
+    // 狼王不能自刀
+    const kingSelf = self.mechanic === 'wolf_king' && selection && selection === self.seatNo
     return {
       kind,
       rows: picks.map((pick) => ({
@@ -80,8 +153,22 @@ export function nightPanel(snapshot, selection = 0) {
       })),
       knife: knifeOf(picks),
       done,
-      buttons: [{ action: 'none', label: '空刀', target: null, disabled: false }, targetButton('kill', '刀', selection)],
+      buttons: [
+        { action: 'none', label: '空刀', target: null, disabled: false },
+        kingSelf ? { action: 'kill', label: '狼王不能自刀', target: selection, disabled: true } : targetButton('kill', '刀', selection),
+      ],
     }
+  }
+
+  if (kind === 'mech_wolf') return mechWolfPanel(snapshot, selection, draft)
+
+  if (kind === 'psychic') {
+    const result = info.checkedSeat ? `${seatText(info.checkedSeat)}是${info.identityResult || ''}` : ''
+    return { kind, result, done, buttons: done ? [] : [targetButton('check', '查验', selection)] }
+  }
+
+  if (kind === 'idle') {
+    return { kind, done, buttons: done ? [] : [{ action: 'confirm', label: '我知道了', target: null, disabled: false }] }
   }
 
   if (kind === 'witch') {

@@ -2775,7 +2775,8 @@ public class JudgeService {
                 revealRole ? trimToNull(player.getFaction()) : null,
                 player.getDeathDay(),
                 trimToNull(player.getDeathPhase()),
-                isExploded(player)
+                isExploded(player),
+                self && revealRole ? mechanicOf(player).map(Mechanic::code).orElse(null) : null
         );
     }
 

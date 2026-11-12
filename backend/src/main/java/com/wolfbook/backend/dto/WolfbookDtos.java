@@ -561,7 +561,9 @@ public final class WolfbookDtos {
             Integer deathDay,
             String deathPhase,
             /** 白天自爆、当晚还要参与点刀、天亮才出局的狼（公开信息：全场都听到他自爆了）。 */
-            boolean exploded
+            boolean exploded,
+            /** 本人自己的技能机制（只在 self 那一条下发，面板据此禁用狼王自刀等）。 */
+            @JsonInclude(JsonInclude.Include.NON_NULL) String mechanic
     ) {
     }
 

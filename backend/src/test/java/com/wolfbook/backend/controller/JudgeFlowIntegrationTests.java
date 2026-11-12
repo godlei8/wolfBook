@@ -1193,6 +1193,10 @@ class JudgeFlowIntegrationTests {
         Assertions.assertEquals(4000, self.path("code").asInt(), self.toString());
         Assertions.assertEquals("狼王不能自刀", self.path("msg").asText());
         game.act(wolf, "kill", wolf);
+        // 本人快照里带自己的机制（面板据此禁用狼王自刀），别人看不到
+        Assertions.assertEquals("wolf_king", game.snapshot(game.players.get(wolfKing - 1)).path("selfPlayer").path("mechanic").asText());
+        JsonNode othersView = game.player(game.snapshot(game.players.get(wolf - 1)), wolfKing);
+        Assertions.assertTrue(othersView.path("mechanic").isNull() || othersView.path("mechanic").isMissingNode(), othersView.toString());
     }
 
     @Test

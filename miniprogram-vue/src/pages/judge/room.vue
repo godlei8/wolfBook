@@ -281,7 +281,9 @@ function onAct(event) {
     unready: () => api.toggleJudgeReady(id),
     start: () => api.startJudgeRoom(id),
     rules: () => api.updateJudgeRoomRules(id, event.rules),
-    night: () => api.submitJudgeNightAction(id, { actionType: event.actionType, targetSeatNo: event.targetSeatNo }),
+    night: () => api.submitJudgeNightAction(id, event.actions
+      ? { actions: event.actions }
+      : { actionType: event.actionType, targetSeatNo: event.targetSeatNo }),
     advance: () => api.advanceJudgeRoom(id, event.payload),
     skill: () => api.submitJudgeSkill(id, { decision: event.decision, targetSeatNo: event.targetSeatNo }),
     sheriff: () => api.submitJudgeSheriff(id, event.payload),

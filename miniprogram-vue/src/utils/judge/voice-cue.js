@@ -13,6 +13,9 @@ const NIGHT_HINTS = {
   seer: '请选择要查验的人',
   guard: '请选择今晚要守护的人',
   hunter: '请确认你的开枪状态',
+  psychic: '请选择要查验的人',
+  mech_wolf: '请决定今晚的行动',
+  idle: '请稍候',
 }
 
 const MAX_REMEMBERED = 30
