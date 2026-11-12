@@ -1059,8 +1059,9 @@ public class JudgeService {
         } else {
             eliminatedSeatNo = voteOutcome.eliminatedSeat();
         }
+        // 白痴被放逐照样出局，出局时翻牌公开身份（新流程房间才翻牌）
         boolean idiotRevealed = Boolean.TRUE.equals(room.getAutoJudgeEnabled()) && revealIdiot(room, players, eliminatedSeatNo, now);
-        if (eliminatedSeatNo != null && !idiotRevealed) {
+        if (eliminatedSeatNo != null) {
             markPlayersDead(players, List.of(eliminatedSeatNo), room.getCurrentDay(), PHASE_EXILE_VOTE, now);
         }
 
@@ -1068,9 +1069,8 @@ public class JudgeService {
         boolean finished = verdict.isPresent();
         String announcement = StringUtils.hasText(request.announcement())
                 ? request.announcement().trim()
-                : idiotRevealed
-                ? eliminatedSeatNo + "号是白痴，翻牌免死，之后不能投票"
-                : buildVoteAnnouncement(eliminatedSeatNo, tallies) + verdict.map(value -> "。" + value.reason()).orElse("");
+                : (idiotRevealed ? eliminatedSeatNo + "号是白痴，被放逐出局" : buildVoteAnnouncement(eliminatedSeatNo, tallies))
+                + verdict.map(value -> "。" + value.reason()).orElse("");
 
         int resolvedDay = safeInt(room.getCurrentDay(), 1);
         boolean autoJudge = Boolean.TRUE.equals(room.getAutoJudgeEnabled());
@@ -1086,7 +1086,7 @@ public class JudgeService {
             room.setStepDeadline(null);
             room.setCurrentPhase(PHASE_VOTE_RESULT);
             room.setPhaseData(writeJson(mapOf("pkSeats", nextPk, "resolvedFrom", votePhase)));
-            if (eliminatedSeatNo != null && !idiotRevealed) {
+            if (eliminatedSeatNo != null) {
                 startPending(room, players, List.of(eliminatedSeatNo), now);
             }
         } else {
@@ -2214,21 +2214,12 @@ public class JudgeService {
         }
     }
 
-    /** 被放逐的是还没翻牌的白痴：翻牌免死，从此没有投票权。返回 true 表示翻了牌、不出局。 */
+    /** 被放逐的是白痴：翻牌公开身份（照样出局，出局由调用方处理）。返回 true 表示他是白痴、翻了牌。 */
     private boolean revealIdiot(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players, Integer seat, LocalDateTime now) {
         JudgeRoomPlayerEntity player = seat == null ? null : findSeatPlayer(players, seat);
         if (player == null || mechanicOf(player).filter(mechanic -> mechanic == Mechanic.IDIOT).isEmpty()) {
             return false;
         }
-        Map<String, Object> status = new LinkedHashMap<>(readMap(player.getStatusJson()));
-        if (Boolean.TRUE.equals(status.get("idiotRevealed"))) {
-            return false;
-        }
-        status.put("idiotRevealed", true);
-        player.setStatusJson(writeJson(status));
-        player.setCanVote(false);
-        player.setUpdateTime(now);
-        judgeRoomPlayerMapper.updateById(player);
         addEvent(room.getRoomId(), room.getCurrentDay(), room.getCurrentPhase(), player.getPlayerId(), List.of(), EVENT_IDIOT_REVEALED,
                 mapOf("actorSeatNo", seat), Map.of(), VISIBILITY_PUBLIC, now);
         return true;

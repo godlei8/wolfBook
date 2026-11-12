@@ -601,7 +601,7 @@ class JudgeFlowIntegrationTests {
     }
 
     @Test
-    void revealedIdiotDiesOnSecondExile() throws Exception {
+    void exiledIdiotIsOutAndRevealed() throws Exception {
         Game game = autoGame12(false);
         Map<String, List<Integer>> seats = game.seatsByRole();
         int idiot = seats.get("白痴").get(0);
@@ -612,21 +612,50 @@ class JudgeFlowIntegrationTests {
         game.advance(game.host, "{\"action\":\"start_vote\"}");
         game.vote(voters.get(0), idiot);
         game.vote(voters.get(1), idiot);
-        JsonNode revealed = game.advance(game.host, "{\"action\":\"resolve_vote\"}");
-        Assertions.assertTrue(game.player(revealed.path("data"), idiot).path("alive").asBoolean(), "第一次被放逐翻牌免死");
-        Assertions.assertTrue(revealed.path("data").path("latestAnnouncement").asText().contains("白痴"));
-        Assertions.assertEquals("vote_result", revealed.path("data").path("currentPhase").asText());
+        JsonNode out = game.advance(game.host, "{\"action\":\"resolve_vote\"}").path("data");
+        Assertions.assertFalse(game.player(out, idiot).path("alive").asBoolean(), "白痴被放逐照样出局");
+        Assertions.assertTrue(out.path("latestAnnouncement").asText().startsWith(idiot + "号是白痴，被放逐出局"), out.path("latestAnnouncement").asText());
+        Assertions.assertEquals("skill_pending", out.path("currentPhase").asText());
+        JsonNode ask = game.snapshot(game.players.get(idiot - 1)).path("pending");
+        Assertions.assertEquals("skill_ask", ask.path("kind").asText(), ask.toString());
+        Assertions.assertEquals("[\"skip\"]", ask.path("options").toString());
+        long reveals = 0;
+        for (JsonNode event : game.snapshot(game.host).path("timeline")) {
+            if ("idiot_revealed".equals(event.path("actionType").asText())) {
+                reveals++;
+            }
+        }
+        Assertions.assertEquals(1, reveals, "翻牌事件照记");
+    }
 
-        game.advance(game.host, "{\"action\":\"continue\"}");
-        game.finishNight();
-        game.advance(game.host, "{\"action\":\"start_speech\"}");
+    @Test
+    void idiotSheriffPassesTheBadgeWhenExiled() throws Exception {
+        Game game = autoGame12(true);
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int idiot = seats.get("白痴").get(0);
+        int seer = seats.get("预言家").get(0);
+        game.finishNight(seats.get("平民").get(0), null);
+        game.sheriff(idiot, "{\"candidate\":true}");
+        game.sheriff(seer, "{\"candidate\":true}");
+        game.advance(game.host, "{\"action\":\"close_sheriff_signup\"}");
+        game.advance(game.host, "{\"action\":\"start_sheriff_vote\"}");
+        for (int seat = 1; seat <= 12; seat++) {
+            if (seat != idiot && seat != seer) {
+                game.sheriff(seat, "{\"targetSeatNo\":" + idiot + "}");
+            }
+        }
+        game.advance(game.host, "{\"action\":\"resolve_sheriff_vote\"}");
+        game.skipPending();
+        JsonNode speech = game.advance(game.host, "{\"action\":\"start_speech\"}").path("data");
+        Assertions.assertEquals(idiot, speech.path("sheriffSeatNo").asInt(), speech.toString());
         game.advance(game.host, "{\"action\":\"start_vote\"}");
-        Assertions.assertEquals(4003, game.call(game.players.get(idiot - 1), "/vote", "{\"targetSeatNo\":" + voters.get(0) + "}").path("code").asInt(),
-                "翻牌的白痴没有投票权");
-        game.vote(voters.get(0), idiot);
-        JsonNode out = game.advance(game.host, "{\"action\":\"resolve_vote\"}");
-        Assertions.assertFalse(game.player(out.path("data"), idiot).path("alive").asBoolean(), "第二次被放逐照样出局");
-        Assertions.assertEquals("skill_pending", out.path("data").path("currentPhase").asText());
+        for (int wolf : seats.get("狼人")) {
+            game.vote(wolf, idiot);
+        }
+        game.advance(game.host, "{\"action\":\"resolve_vote\"}");
+        game.skill(idiot, "{\"decision\":\"skip\"}");
+        JsonNode badge = game.snapshot(game.players.get(idiot - 1)).path("pending");
+        Assertions.assertEquals("badge", badge.path("kind").asText(), badge.toString());
     }
 
     @Test
@@ -712,7 +741,7 @@ class JudgeFlowIntegrationTests {
 
     @Test
     void renamedIdiotStillFlipsOnExile() throws Exception {
-        // 角色改了名字，机制还是白痴：被放逐照样翻牌免死
+        // 角色改了名字，机制还是白痴：被放逐照样出局翻牌
         Game game = autoGame12(false);
         int idiot = game.seatsByRole().get("白痴").get(0);
         jdbcTemplate.update("UPDATE judge_room_players SET role_name = '傻子' WHERE room_id = ? AND seat_no = ?", game.roomId, idiot);
@@ -722,7 +751,8 @@ class JudgeFlowIntegrationTests {
         game.advance(game.host, "{\"action\":\"start_vote\"}");
         game.vote(wolves.get(0), idiot);
         JsonNode revealed = game.advance(game.host, "{\"action\":\"resolve_vote\"}");
-        Assertions.assertTrue(game.player(revealed.path("data"), idiot).path("alive").asBoolean(), revealed.toString());
+        Assertions.assertFalse(game.player(revealed.path("data"), idiot).path("alive").asBoolean(), revealed.toString());
+        Assertions.assertTrue(revealed.path("data").path("latestAnnouncement").asText().startsWith(idiot + "号是白痴"), revealed.toString());
     }
 
     @Test
