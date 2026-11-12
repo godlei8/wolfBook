@@ -16,8 +16,9 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * 夜里按什么顺序叫谁：板子配了 ruleDetail.nightOrder 就按它走，没配按角色技能机制的优先级排（守卫 → 狼队 → 女巫 → 预言家 → 猎人），
- * 没有机制的角色排在最后、只播报不结算。狼队合并成一步；没有夜间行动的角色（平民、白痴）和阵容里没有的角色都不叫。
+ * 夜里按什么顺序叫谁：板子配了 ruleDetail.nightOrder 就按它走，没配按角色技能机制的优先级排
+ * （机械狼 → 守卫 → 狼队 → 女巫 → 预言家 / 通灵师 → 猎人 → 白痴空步），没有机制的角色排在最后、只播报不结算。
+ * 狼队合并成一步（机械狼不在里面）；没有夜间行动的角色（平民）和阵容里没有的角色都不叫。
  * 小程序 utils/judge/night-order.js 是同一套规则，板子详情页还在用它展示顺序。
  */
 public final class NightPlan {
@@ -25,6 +26,8 @@ public final class NightPlan {
     /** 首夜狼队多给 30 秒互认队友（默认 60 + 30 = 90，和官方手册一致）。 */
     private static final int WOLF_FIRST_NIGHT_EXTRA_SECONDS = 30;
     private static final int HUNTER_SECONDS = 10;
+    /** 空步（白痴）：只播报，等 5 秒。 */
+    private static final int IDLE_SECONDS = 5;
     private static final int GENERIC_SECONDS = 25;
 
     /**
@@ -114,7 +117,7 @@ public final class NightPlan {
         return Mechanic.fromCode(role.getMechanic()).map(Mechanic::nightPriority).orElse(null);
     }
 
-    /** 女巫要看到刀口，必须在狼队之后；守卫要在刀之前守，必须在狼队之前。 */
+    /** 女巫要看到刀口，必须在狼队之后；守卫要在刀之前守、机械狼带刀时的刀口要在狼队那一步之前定，都必须在狼队之前。 */
     public static void validateOrder(List<NightStep> steps) {
         int wolf = indexOf(steps, NightKind.WOLF);
         if (wolf < 0) {
@@ -122,8 +125,9 @@ public final class NightPlan {
         }
         int witch = indexOf(steps, NightKind.WITCH);
         int guard = indexOf(steps, NightKind.GUARD);
-        if ((witch >= 0 && witch < wolf) || (guard >= 0 && guard > wolf)) {
-            throw new ApiException(4000, "夜间顺序：守卫须在狼人前、女巫须在狼人后");
+        int mech = indexOf(steps, NightKind.MECH_WOLF);
+        if ((witch >= 0 && witch < wolf) || (guard >= 0 && guard > wolf) || (mech >= 0 && mech > wolf)) {
+            throw new ApiException(4000, "夜间顺序：守卫、机械狼须在狼人前，女巫须在狼人后");
         }
     }
 
@@ -147,7 +151,9 @@ public final class NightPlan {
             case GUARD -> "你今晚要守护谁？";
             case WOLF -> "请确认同伴，选择今晚要击杀的目标。";
             case WITCH -> "今晚他倒下了，你要用解药吗？你要用毒药吗？";
-            case SEER -> "你要查验谁？";
+            case SEER, PSYCHIC -> "你要查验谁？";
+            case MECH_WOLF -> "请决定今晚的行动。";
+            case IDLE -> "请稍候。";
             case HUNTER -> "确认你今晚的开枪状态。";
             default -> "请行动。";
         };
@@ -156,8 +162,9 @@ public final class NightPlan {
     private static int duration(NightKind kind, int dayNo, JudgeRules timing) {
         return switch (kind) {
             case WOLF -> timing.wolfSeconds() + (dayNo <= 1 ? WOLF_FIRST_NIGHT_EXTRA_SECONDS : 0);
-            case GUARD, WITCH, SEER -> timing.roleSeconds();
+            case GUARD, WITCH, SEER, PSYCHIC, MECH_WOLF -> timing.roleSeconds();
             case HUNTER -> HUNTER_SECONDS;
+            case IDLE -> IDLE_SECONDS;
             default -> GENERIC_SECONDS;
         };
     }

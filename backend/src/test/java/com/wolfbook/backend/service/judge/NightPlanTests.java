@@ -148,6 +148,60 @@ class NightPlanTests {
         assertThrows(ApiException.class, () -> NightPlan.validateOrder(steps));
     }
 
+    /** 08 通灵师机械狼人：没配夜间顺序。 */
+    private static final Map<Integer, RoleEntity> ROLES_08 = Map.of(
+            14, role(14, "通灵师", "好人", "psychic"),
+            2, role(2, "女巫", "好人", "witch"),
+            3, role(3, "猎人", "好人", "hunter"),
+            4, role(4, "守卫", "好人", "guard"),
+            6, role(6, "狼人", "狼人", "wolf"),
+            12, role(12, "机械狼", "狼人", "mech_wolf"),
+            9, role(9, "平民", "好人", "villager")
+    );
+    private static final List<BoardRoleRef> LINEUP_08 = List.of(new BoardRoleRef(9, 4), new BoardRoleRef(14, 1), new BoardRoleRef(2, 1),
+            new BoardRoleRef(3, 1), new BoardRoleRef(4, 1), new BoardRoleRef(6, 3), new BoardRoleRef(12, 1));
+    /** 01 预女猎白。 */
+    private static final List<BoardRoleRef> LINEUP_01 = List.of(new BoardRoleRef(9, 4), new BoardRoleRef(1, 1), new BoardRoleRef(2, 1),
+            new BoardRoleRef(3, 1), new BoardRoleRef(8, 1), new BoardRoleRef(6, 4));
+
+    @Test
+    void mechWolfWakesFirstAndPsychicWithTheSeer() {
+        List<NightKind> kinds = NightPlan.build(BoardRuleDetail.empty(), LINEUP_08, ROLES_08, 1).stream().map(NightPlan.NightStep::kind).toList();
+        assertEquals(List.of(NightKind.MECH_WOLF, NightKind.GUARD, NightKind.WOLF, NightKind.WITCH, NightKind.PSYCHIC, NightKind.HUNTER), kinds);
+        // 机械狼不在狼队那一步
+        assertEquals(List.of(6), NightPlan.build(BoardRuleDetail.empty(), LINEUP_08, ROLES_08, 1).get(2).roleIds());
+    }
+
+    @Test
+    void idiotGetsAFiveSecondIdleStepAtTheEnd() {
+        List<NightPlan.NightStep> steps = NightPlan.build(BoardRuleDetail.empty(), LINEUP_01, ROLES, 1);
+        assertEquals(List.of(NightKind.WOLF, NightKind.WITCH, NightKind.SEER, NightKind.HUNTER, NightKind.IDLE),
+                steps.stream().map(NightPlan.NightStep::kind).toList());
+        NightPlan.NightStep last = steps.get(steps.size() - 1);
+        assertEquals(5, last.durationSeconds());
+        assertEquals("白痴", last.roleName());
+    }
+
+    @Test
+    void mechWolfAndPsychicStepsUseTheRoleSeconds() {
+        com.wolfbook.backend.domain.JudgeRules rules = new com.wolfbook.backend.domain.JudgeRules(
+                null, null, null, null, null, null, 60, 45);
+        List<NightPlan.NightStep> steps = NightPlan.build(BoardRuleDetail.empty(), LINEUP_08, ROLES_08, 2, rules);
+        assertEquals(45, steps.get(0).durationSeconds(), "机械狼");
+        assertEquals(45, steps.get(4).durationSeconds(), "通灵师");
+        assertTrue(steps.get(4).line().startsWith("通灵师请睁眼"));
+    }
+
+    @Test
+    void mechWolfAfterWolvesIsRejected() {
+        BoardRuleDetail detail = new BoardRuleDetail(null, List.of(
+                new BoardRuleDetail.NightStep(6, "狼人"),
+                new BoardRuleDetail.NightStep(12, "机械狼")
+        ), List.of(), List.of());
+        List<NightPlan.NightStep> steps = NightPlan.build(detail, LINEUP_08, ROLES_08, 1);
+        assertThrows(ApiException.class, () -> NightPlan.validateOrder(steps));
+    }
+
     private static RoleEntity role(int id, String name, String faction, String mechanic) {
         RoleEntity role = new RoleEntity();
         role.setId(id);
