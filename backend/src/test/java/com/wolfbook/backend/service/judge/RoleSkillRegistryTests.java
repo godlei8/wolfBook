@@ -26,7 +26,7 @@ class RoleSkillRegistryTests {
     void mechanicsCarryTheirNightBehaviour() {
         assertEquals(NightKind.WITCH, Mechanic.WITCH.nightKind());
         assertEquals(Set.of("save", "poison", "none"), Mechanic.WITCH.actions());
-        assertEquals(NightKind.NONE, Mechanic.IDIOT.nightKind());
+        assertEquals(NightKind.NONE, Mechanic.VILLAGER.nightKind());
         assertTrue(Mechanic.WOLF.wolfTeam());
         assertFalse(Mechanic.WOLF.solo());
         assertTrue(Mechanic.GUARD.solo());
@@ -106,8 +106,37 @@ class RoleSkillRegistryTests {
     }
 
     @Test
-    void onlyWolfAndWolfKingCanSelfDestruct() {
-        Set<Mechanic> exploders = Set.of(Mechanic.WOLF, Mechanic.WOLF_KING);
+    void psychicAndMechWolfAreMechanics() {
+        assertEquals(NightKind.PSYCHIC, Mechanic.PSYCHIC.nightKind());
+        assertEquals(Integer.valueOf(4), Mechanic.PSYCHIC.nightPriority());
+        assertEquals(NightKind.MECH_WOLF, Mechanic.MECH_WOLF.nightKind());
+        assertEquals(Integer.valueOf(0), Mechanic.MECH_WOLF.nightPriority());
+        assertFalse(Mechanic.MECH_WOLF.wolfTeam());
+        assertFalse(Mechanic.MECH_WOLF.canShoot());
+        assertFalse(Mechanic.MECH_WOLF.canSelfDestruct());
+        assertEquals(Set.of("learn", "none", "check", "poison", "guard", "kill", "kill_pierce"), Mechanic.MECH_WOLF.actions());
+        assertEquals(Optional.of(Mechanic.PSYCHIC), RoleSkillRegistry.legacyMechanic("通灵师"));
+        assertEquals(Optional.of(Mechanic.MECH_WOLF), RoleSkillRegistry.legacyMechanic("机械狼"));
+    }
+
+    @Test
+    void idiotHasAFiveSecondIdleStep() {
+        assertEquals(NightKind.IDLE, Mechanic.IDIOT.nightKind());
+        assertEquals(Set.of("confirm"), Mechanic.IDIOT.actions());
+    }
+
+    @Test
+    void mechWolfBoardIsFull() {
+        assertEquals(JudgeSupportLevels.FULL, RoleSkillRegistry.supportLevel(List.of(
+                role("通灵师", "好人", "psychic"), role("女巫", "好人", "witch"), role("猎人", "好人", "hunter"),
+                role("守卫", "好人", "guard"), role("狼人", "狼人", "wolf"), role("机械狼", "狼人", "mech_wolf"),
+                role("平民", "好人", "villager"))));
+        assertFalse(RoleSkillRegistry.isWolfTeam(Mechanic.MECH_WOLF, "机械狼", "狼人"));
+    }
+
+    @Test
+    void onlyWolvesCanSelfDestruct() {
+        Set<Mechanic> exploders = Set.of(Mechanic.WOLF);
         for (Mechanic mechanic : Mechanic.values()) {
             assertEquals(exploders.contains(mechanic), mechanic.canSelfDestruct(), mechanic.code());
         }

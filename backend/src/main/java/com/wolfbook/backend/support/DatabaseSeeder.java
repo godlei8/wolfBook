@@ -122,8 +122,9 @@ public class DatabaseSeeder {
 
     /** 种子角色里引擎认识的 8 个写上技能机制（骑士、狼美人这些还没有机制）。 */
     private void seedRoleMechanics() {
-        Map<String, String> mechanics = Map.of("守卫", "guard", "狼人", "wolf", "女巫", "witch", "预言家", "seer",
-                "猎人", "hunter", "白痴", "idiot", "平民", "villager", "黑狼王", "wolf_king");
+        Map<String, String> mechanics = Map.ofEntries(Map.entry("守卫", "guard"), Map.entry("狼人", "wolf"), Map.entry("女巫", "witch"),
+                Map.entry("预言家", "seer"), Map.entry("猎人", "hunter"), Map.entry("白痴", "idiot"), Map.entry("平民", "villager"),
+                Map.entry("黑狼王", "wolf_king"), Map.entry("机械狼", "mech_wolf"), Map.entry("通灵师", "psychic"));
         for (RoleEntity role : roleMapper.selectList(null)) {
             String mechanic = mechanics.get(role.getName());
             if (mechanic != null) {

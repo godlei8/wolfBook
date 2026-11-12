@@ -29,15 +29,17 @@ public final class RoleSkillRegistry {
     );
 
     /** 一期按名字登记的角色，只给座位上没有机制的旧数据兜底。 */
-    private static final Map<String, Mechanic> LEGACY_NAMES = Map.of(
-            "守卫", Mechanic.GUARD,
-            "狼人", Mechanic.WOLF,
-            "女巫", Mechanic.WITCH,
-            "预言家", Mechanic.SEER,
-            "猎人", Mechanic.HUNTER,
-            "黑狼王", Mechanic.WOLF_KING,
-            "白痴", Mechanic.IDIOT,
-            "平民", Mechanic.VILLAGER
+    private static final Map<String, Mechanic> LEGACY_NAMES = Map.ofEntries(
+            Map.entry("守卫", Mechanic.GUARD),
+            Map.entry("狼人", Mechanic.WOLF),
+            Map.entry("女巫", Mechanic.WITCH),
+            Map.entry("预言家", Mechanic.SEER),
+            Map.entry("猎人", Mechanic.HUNTER),
+            Map.entry("黑狼王", Mechanic.WOLF_KING),
+            Map.entry("白痴", Mechanic.IDIOT),
+            Map.entry("平民", Mechanic.VILLAGER),
+            Map.entry("通灵师", Mechanic.PSYCHIC),
+            Map.entry("机械狼", Mechanic.MECH_WOLF)
     );
 
     /** 狼人阵营里单独睁眼、不跟狼队一起刀人的角色（没有机制时用，和小程序 utils/judge/night-order.js 同口径）。 */

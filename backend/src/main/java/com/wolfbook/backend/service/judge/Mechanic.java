@@ -7,19 +7,22 @@ import java.util.Set;
 
 /**
  * 角色的技能机制：引擎认机制不认名字。后台给角色选一个机制，名字、称号、身世随便起。
- * nightPriority 是没配夜间顺序时的排序（守卫 1 → 狼队 2 → 女巫 3 → 预言家 4 → 猎人 5 确认开枪状态），没有夜间行动为 null。
+ * nightPriority 是没配夜间顺序时的排序（机械狼 0 → 守卫 1 → 狼队 2 → 女巫 3 → 预言家 / 通灵师 4 → 猎人 5 确认开枪状态 → 白痴 6 空步），没有夜间行动为 null。
  * solo 是单人神职，同一板子只能有一张。shooter 是出局时能开枪带走一人的机制（猎人、狼王；被毒、被点杀不能开）。
- * selfDestruct 是白天发言时能自爆的机制（狼人、狼王；自爆不能开枪）。不做成角色上的开关：选了机制就有它的技能。
+ * selfDestruct 是白天发言时能自爆的机制（只有狼人；狼王、机械狼不能）。不做成角色上的开关：选了机制就有它的技能。
  */
 public enum Mechanic {
     VILLAGER("villager", "平民", "没有技能", NightKind.NONE, Set.of(), null, false, false, false, false),
     WOLF("wolf", "狼人", "和狼队一起选刀口，白天可以自爆", NightKind.WOLF, Set.of("kill", "none"), 2, true, false, false, true),
-    WOLF_KING("wolf_king", "狼王", "和狼队一起刀人，出局时可以开枪带走一人，被毒不能开；白天可以自爆（自爆不能开枪）", NightKind.WOLF, Set.of("kill", "none"), 2, true, true, true, true),
-    GUARD("guard", "守卫", "守一人，不能连守，守不住毒", NightKind.GUARD, Set.of("guard", "none"), 1, false, true, false, false),
+    WOLF_KING("wolf_king", "狼王", "和狼队一起刀人，被放逐或被猎人带走时可以开枪，被刀、被毒不能；不能自刀、不能自爆", NightKind.WOLF, Set.of("kill", "none"), 2, true, true, true, false),
+    GUARD("guard", "守卫", "守一人，不能连守，挡狼刀和女巫的毒", NightKind.GUARD, Set.of("guard", "none"), 1, false, true, false, false),
     WITCH("witch", "女巫", "看到刀口后可救可毒，各一瓶", NightKind.WITCH, Set.of("save", "poison", "none"), 3, false, true, false, false),
     SEER("seer", "预言家", "查验一人是好人还是狼人", NightKind.SEER, Set.of("check"), 4, false, true, false, false),
-    HUNTER("hunter", "猎人", "出局时开枪带走一人，被毒不能开", NightKind.HUNTER, Set.of("confirm"), 5, false, true, true, false),
-    IDIOT("idiot", "白痴", "被放逐时翻牌免死，之后不能投票", NightKind.NONE, Set.of(), null, false, true, false, false);
+    PSYCHIC("psychic", "通灵师", "查验一人的具体身份", NightKind.PSYCHIC, Set.of("check"), 4, false, true, false, false),
+    HUNTER("hunter", "猎人", "出局时开枪带走一人，被毒不能开，开枪不翻牌", NightKind.HUNTER, Set.of("confirm"), 5, false, true, true, false),
+    IDIOT("idiot", "白痴", "被放逐出局时翻牌公开身份，夜里有一个空步", NightKind.IDLE, Set.of("confirm"), 6, false, true, false, false),
+    MECH_WOLF("mech_wolf", "机械狼", "和狼人互不认识，每晚最先睁眼；整局学一次别人的技能，狼人全出局后带刀；不能自爆",
+            NightKind.MECH_WOLF, Set.of("learn", "none", "check", "poison", "guard", "kill", "kill_pierce"), 0, false, true, false, false);
 
     private final String code;
     private final String label;
@@ -91,7 +94,7 @@ public enum Mechanic {
         return solo;
     }
 
-    /** 白天发言时能不能自爆（狼人、狼王）。 */
+    /** 白天发言时能不能自爆（只有狼人）。 */
     public boolean canSelfDestruct() {
         return selfDestruct;
     }

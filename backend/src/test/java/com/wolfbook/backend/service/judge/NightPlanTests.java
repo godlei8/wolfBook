@@ -93,8 +93,8 @@ class NightPlanTests {
         List<NightPlan.NightStep> steps = NightPlan.build(detail,
                 List.of(new BoardRoleRef(6, 2), new BoardRoleRef(10, 1), new BoardRoleRef(2, 1), new BoardRoleRef(15, 1), new BoardRoleRef(8, 1)),
                 ROLES, 2);
-        // 白痴没有夜间行动，不叫；织梦人没登记，只播报
-        assertEquals(List.of(NightKind.WOLF, NightKind.WITCH, NightKind.GENERIC), steps.stream().map(NightPlan.NightStep::kind).toList());
+        // 白痴是 5 秒空步（按配置的位置）；织梦人没登记，只播报
+        assertEquals(List.of(NightKind.WOLF, NightKind.WITCH, NightKind.GENERIC, NightKind.IDLE), steps.stream().map(NightPlan.NightStep::kind).toList());
         assertEquals(List.of(6, 10), steps.get(0).roleIds());
         assertEquals("织梦人", steps.get(2).roleName());
         assertEquals(25, steps.get(2).durationSeconds());
