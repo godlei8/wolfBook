@@ -1011,6 +1011,12 @@ public class JudgeService {
         } else {
             deadSeatNos = outcome.deadSeats();
         }
+        // 白天自爆的狼：点完刀天亮出局，不进昨夜死讯、不问技能（今晚又被刀 / 毒也只死这一次）
+        List<Integer> explodedSeats = explodedSeats(players);
+        if (!explodedSeats.isEmpty()) {
+            deadSeatNos = deadSeatNos.stream().filter(seat -> !explodedSeats.contains(seat)).toList();
+            markPlayersDead(players, explodedSeats, dayNo, PHASE_NIGHT_ACTION, now);
+        }
         applyNightStatus(players, submissions, outcome, dayNo, now);
         for (Map.Entry<Integer, String> entry : outcome.feedback().entrySet()) {
             JudgeRoomPlayerEntity actor = findSeatPlayer(players, entry.getKey());
@@ -1531,7 +1537,7 @@ public class JudgeService {
                 .collect(Collectors.toMap(RoleEntity::getId, role -> safeText(role.getRoleType(), "")));
         return players.stream()
                 .filter(player -> Boolean.TRUE.equals(player.getPlaying()))
-                .map(player -> new WinJudge.Seat(Boolean.TRUE.equals(player.getAlive()), player.getFaction(),
+                .map(player -> new WinJudge.Seat(Boolean.TRUE.equals(player.getAlive()) && !isExploded(player), player.getFaction(),
                         roleTypes.getOrDefault(player.getRoleId(), "")))
                 .toList();
     }
@@ -1744,6 +1750,9 @@ public class JudgeService {
         int dayNo = safeInt(room.getCurrentDay(), 1);
         markPlayersDead(players, deaths, dayNo, PHASE_NIGHT_ACTION, now);
         Optional<WinJudge.Verdict> verdict = verdictOf(room, players, null);
+        if (verdict.isPresent()) {
+            markPlayersDead(players, explodedSeats(players), dayNo, safeText(room.getCurrentPhase(), PHASE_DAY_ANNOUNCE), now);
+        }
         String announcement = prefix + buildNightAnnouncement(deaths) + verdict.map(value -> "。" + value.reason()).orElse("");
         String nextPhase = verdict.isPresent() ? PHASE_RESULT : PHASE_DAY_ANNOUNCE;
         addEvent(room.getRoomId(), dayNo, nextPhase, null, resolveTargetPlayerIds(players, deaths), EVENT_NIGHT_RESOLVED,
@@ -2105,13 +2114,15 @@ public class JudgeService {
             updateRoomGuarded(room, ROOM_STATUS_PLAYING, phase);
             return buildSnapshot(openid, roomId);
         }
-        markPlayersDead(players, List.of(seat), dayNo, phase, now);
+        // 自爆的狼当晚仍参与点刀，天亮才出局；胜负按「他已出局」判（最后一只狼自爆当场结束）
+        markExploded(actor, now);
         addEvent(roomId, dayNo, phase, actor.getPlayerId(), List.of(), EVENT_SELF_DESTRUCT,
                 mapOf("actorSeatNo", seat, "duringSheriff", false), Map.of(), VISIBILITY_PUBLIC, now);
         String announcement = seat + "号自爆";
         room.setStepDeadline(null);
         Optional<WinJudge.Verdict> verdict = verdictOf(room, players, null);
         if (verdict.isPresent()) {
+            markPlayersDead(players, List.of(seat), dayNo, phase, now);
             finishByVerdict(room, verdict.get(), announcement + "。" + verdict.get().reason(), now);
         } else if (Boolean.TRUE.equals(actor.getSheriff())) {
             // 自爆的警长可以移交警徽：只放一条移交待办（自爆不问技能），处理完直接天黑
@@ -2137,7 +2148,12 @@ public class JudgeService {
         int dayNo = safeInt(room.getCurrentDay(), 1);
         int seat = actor.getSeatNo();
         boolean second = sheriffDeferred(room.getRoomId());
-        markPlayersDead(players, List.of(seat), dayNo, PHASE_SHERIFF_SPEECH, now);
+        Map<String, Object> phaseData = new LinkedHashMap<>(readMap(room.getPhaseData()));
+        List<Integer> pendingDeaths = asIntegerList(phaseData.get("pendingDeaths"));
+        if (!pendingDeaths.contains(seat)) {
+            // 昨夜没死：当晚仍参与点刀，天亮才出局。昨夜已被刀：照常算昨夜死亡（留在死讯里），只算一次出局
+            markExploded(actor, now);
+        }
         addEvent(room.getRoomId(), dayNo, PHASE_SHERIFF_SPEECH, actor.getPlayerId(), List.of(), EVENT_SELF_DESTRUCT,
                 mapOf("actorSeatNo", seat, "duringSheriff", true), Map.of(), VISIBILITY_PUBLIC, now);
         String prefix;
@@ -2150,11 +2166,6 @@ public class JudgeService {
         } else {
             prefix = seat + "号自爆，警长竞选推迟到明天。";
         }
-        Map<String, Object> phaseData = new LinkedHashMap<>(readMap(room.getPhaseData()));
-        List<Integer> pendingDeaths = new ArrayList<>(asIntegerList(phaseData.get("pendingDeaths")));
-        pendingDeaths.remove(Integer.valueOf(seat));
-        phaseData.put("pendingDeaths", pendingDeaths);
-        room.setPhaseData(writeJson(phaseData));
         room.setStepDeadline(null);
         enterDayAnnounce(room, players, prefix, now, true);
     }
@@ -2168,12 +2179,34 @@ public class JudgeService {
         return explodedOnStage && !resolved;
     }
 
+    /** 白天自爆、天亮才出局的狼。 */
+    private boolean isExploded(JudgeRoomPlayerEntity player) {
+        return Boolean.TRUE.equals(player.getAlive()) && Boolean.TRUE.equals(readMap(player.getStatusJson()).get("exploded"));
+    }
+
+    private List<Integer> explodedSeats(List<JudgeRoomPlayerEntity> players) {
+        return players.stream()
+                .filter(player -> Boolean.TRUE.equals(player.getPlaying()) && player.getSeatNo() != null && isExploded(player))
+                .map(JudgeRoomPlayerEntity::getSeatNo)
+                .sorted()
+                .toList();
+    }
+
+    private void markExploded(JudgeRoomPlayerEntity player, LocalDateTime now) {
+        Map<String, Object> status = new LinkedHashMap<>(readMap(player.getStatusJson()));
+        status.put("exploded", true);
+        player.setStatusJson(writeJson(status));
+        player.setUpdateTime(now);
+        judgeRoomPlayerMapper.updateById(player);
+    }
+
     /** 本人现在能不能自爆：新流程、对局中、入座且活着、机制带自爆、在能自爆的阶段、没暂停。快照和提交共用。 */
     private boolean canSelfDestruct(JudgeRoomEntity room, JudgeRoomPlayerEntity self) {
         return self != null
                 && Boolean.TRUE.equals(room.getAutoJudgeEnabled())
                 && ROOM_STATUS_PLAYING.equals(room.getRoomStatus())
                 && Boolean.TRUE.equals(self.getPlaying()) && self.getSeatNo() != null && Boolean.TRUE.equals(self.getAlive())
+                && !isExploded(self)
                 && mechanicOf(self).map(Mechanic::canSelfDestruct).orElse(false)
                 && SELF_DESTRUCT_PHASES.contains(safeText(room.getCurrentPhase(), ""))
                 && !isPaused(room);
@@ -2741,7 +2774,8 @@ public class JudgeService {
                 revealRole ? trimToNull(player.getRoleName()) : null,
                 revealRole ? trimToNull(player.getFaction()) : null,
                 player.getDeathDay(),
-                trimToNull(player.getDeathPhase())
+                trimToNull(player.getDeathPhase()),
+                isExploded(player)
         );
     }
 

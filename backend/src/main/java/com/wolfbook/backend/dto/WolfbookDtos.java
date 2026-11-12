@@ -559,7 +559,9 @@ public final class WolfbookDtos {
             String roleName,
             String faction,
             Integer deathDay,
-            String deathPhase
+            String deathPhase,
+            /** 白天自爆、当晚还要参与点刀、天亮才出局的狼（公开信息：全场都听到他自爆了）。 */
+            boolean exploded
     ) {
     }
 
