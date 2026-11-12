@@ -115,10 +115,14 @@ export interface RuleSection {
   items: string[]
 }
 
-/** 电子法官规则（后端 domain/JudgeRules）：没写的项用默认值。女巫自救默认 never，板子可以设成 first_night。 */
+/**
+ * 电子法官规则（后端 domain/JudgeRules）：没写的项用默认值。
+ * 通用配置项：上警默认值、发言 / 警上发言 / 狼队 / 单人行动时长。板子专属配置项：女巫自救（默认 never）、机械狼弹毒（默认关）。
+ */
 export interface BoardJudgeRules {
   sheriffDefault?: boolean | null
   witchSelfSave?: 'first_night' | 'never' | null
+  poisonBounce?: boolean | null
   speechSeconds?: number | null
   sheriffSpeechSeconds?: number | null
   wolfSeconds?: number | null

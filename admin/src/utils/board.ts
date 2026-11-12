@@ -96,7 +96,7 @@ export function featuredBoards(boards: Board[]) {
 }
 
 // 电子法官按角色的技能机制编排夜晚，和后端 service/judge/Mechanic、NightPlan 同口径：
-// 没配夜间顺序时按机制优先级排（守卫 → 狼队 → 女巫 → 预言家 → 猎人），没有机制的角色排在最后、只播报
+// 没配夜间顺序时按机制优先级排（机械狼 → 守卫 → 狼队 → 女巫 → 预言家 / 通灵师 → 猎人 → 白痴空步），没有机制的角色排在最后、只播报
 export const MECHANIC_LABELS: Record<string, string> = {
   villager: '平民',
   wolf: '狼人',
@@ -106,8 +106,10 @@ export const MECHANIC_LABELS: Record<string, string> = {
   seer: '预言家',
   hunter: '猎人',
   idiot: '白痴',
+  psychic: '通灵师',
+  mech_wolf: '机械狼',
 }
-const MECHANIC_PRIORITY: Record<string, number> = { guard: 1, wolf: 2, witch: 3, seer: 4, hunter: 5 }
+const MECHANIC_PRIORITY: Record<string, number> = { mech_wolf: 0, guard: 1, wolf: 2, witch: 3, seer: 4, psychic: 4, hunter: 5, idiot: 6 }
 const SOLO_WOLVES = ['石像鬼', '机械狼']
 // 跟狼队一起睁眼刀人的机制（后端 Mechanic.wolfTeam 为真的那些）
 const WOLF_TEAM_MECHANICS = ['wolf', 'wolf_king']
@@ -118,6 +120,8 @@ const DEFAULT_ACTIONS: Record<string, string> = {
   通灵师: '通灵师请睁眼，你要查验谁？',
   守卫: '守卫请睁眼，你今晚要守护谁？',
   猎人: '猎人请睁眼，确认你今晚的开枪状态。',
+  机械狼: '机械狼请睁眼，请决定今晚的行动。',
+  白痴: '白痴请睁眼，请稍候。',
 }
 
 /** 跟狼队一起睁眼刀人的角色（法官主持台会把它们合成一步）：有机制看机制，没有机制按阵营（排除石像鬼、机械狼）。 */
@@ -135,6 +139,9 @@ function stepLine(role: Role) {
     seer: DEFAULT_ACTIONS['预言家'],
     guard: DEFAULT_ACTIONS['守卫'],
     hunter: DEFAULT_ACTIONS['猎人'],
+    psychic: DEFAULT_ACTIONS['通灵师'],
+    mech_wolf: DEFAULT_ACTIONS['机械狼'],
+    idiot: DEFAULT_ACTIONS['白痴'],
   }
   const line = role.mechanic ? byMechanic[role.mechanic] : undefined
   if (!line) return `${role.name}请睁眼，请行动。`
@@ -146,7 +153,7 @@ function stepLine(role: Role) {
 export function defaultNightOrder(lineup: BoardRoleItem[], rolesById: Map<number, Role>): NightStep[] {
   const roles = lineup.map((item) => rolesById.get(item.roleId)).filter((role): role is Role => Boolean(role))
   const priority = (role: Role) => (isWolfTeam(role) ? MECHANIC_PRIORITY.wolf : role.mechanic ? MECHANIC_PRIORITY[role.mechanic] : undefined)
-  const ranked = roles.filter((role) => priority(role) !== undefined).sort((a, b) => (priority(a) || 0) - (priority(b) || 0))
+  const ranked = roles.filter((role) => priority(role) !== undefined).sort((a, b) => (priority(a) ?? 0) - (priority(b) ?? 0))
   const unknown = roles.filter((role) => priority(role) === undefined && !role.mechanic)
   const steps: NightStep[] = []
   let wolvesDone = false
@@ -170,13 +177,24 @@ export function hasWitch(lineup: BoardRoleItem[], rolesById: Map<number, Role>) 
   return lineup.some((item) => rolesById.get(item.roleId)?.mechanic === 'witch')
 }
 
+/** 阵容里有没有机械狼机制的角色（有才显示「弹毒」开关）。 */
+export function hasMechWolf(lineup: BoardRoleItem[], rolesById: Map<number, Role>) {
+  return lineup.some((item) => rolesById.get(item.roleId)?.mechanic === 'mech_wolf')
+}
+
 /**
- * 保存板子时的电子法官规则：女巫自救按开关写（默认不能自救），板子原来存的节奏项原样带上，
- * 一晚一瓶是全局规则、不存。
+ * 保存板子时的电子法官规则。通用配置项（节奏：上警、发言、行动时长）编辑页不改，原样带上；
+ * 板子专属配置项按开关写：女巫自救（默认不能自救）、机械狼弹毒（只存开）。一晚一瓶是全局规则、不存。
  */
-export function buildJudgeRules(existing: (BoardJudgeRules & { witchOnePotionPerNight?: unknown }) | null | undefined, witchFirstNight: boolean): BoardJudgeRules {
-  const { witchOnePotionPerNight: _global, ...kept } = existing || {}
-  return { ...kept, witchSelfSave: witchFirstNight ? 'first_night' : 'never' }
+export function buildJudgeRules(
+  existing: (BoardJudgeRules & { witchOnePotionPerNight?: unknown }) | null | undefined,
+  witchFirstNight: boolean,
+  poisonBounce = false,
+): BoardJudgeRules {
+  const { witchOnePotionPerNight: _global, poisonBounce: _bounce, ...kept } = existing || {}
+  const rules: BoardJudgeRules = { ...kept, witchSelfSave: witchFirstNight ? 'first_night' : 'never' }
+  if (poisonBounce) rules.poisonBounce = true
+  return rules
 }
 
 export type JudgeSupportLevel = 'full' | 'partial' | 'manual_only'
