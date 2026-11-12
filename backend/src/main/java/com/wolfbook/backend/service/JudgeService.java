@@ -1359,7 +1359,7 @@ public class JudgeService {
             return;
         }
         NightResolver.validate(new NightResolver.Submission(actor.getSeatNo(), kind, action, target == null ? null : target.getSeatNo()),
-                actorState, targetState, roomRules(room), dayNo, knifeForValidation(room, players));
+                actorState, targetState, roomRules(room), dayNo, knifeForValidation(room, players), seats);
     }
 
     /** 女巫校验解药用的刀口：狼队那一步已经定了就用定下的，否则看当前狼队的唯一多数（还没定 / 平票时为空）。 */
