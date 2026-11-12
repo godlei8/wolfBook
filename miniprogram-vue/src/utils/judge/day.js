@@ -75,7 +75,8 @@ const PHASE_ACTIONS = {
   sheriff_vote: [['resolve_sheriff_vote', '结算']],
   sheriff_pk: [['resolve_sheriff_vote', '结算']],
   day_announce: [['start_speech', '开始发言']],
-  day_speech: [['next_speaker', '跳过这位'], ['start_vote', '发起投票']],
+  // 所有存活玩家发完言自动进放逐投票（通用流程 6），房主只能跳过离席的人
+  day_speech: [['next_speaker', '跳过这位']],
   exile_vote: [['resolve_vote', '结算投票']],
   vote_pk: [['resolve_vote', '结算 PK']],
   vote_result: [['continue', '继续']],

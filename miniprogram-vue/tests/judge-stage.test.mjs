@@ -91,6 +91,10 @@ test('onlyThePendingActorPicksASeat', () => {
   assert.equal(actor.get(5).tappable, true)
   const other = seatsOf(stageLayout(room('skill_pending', me(5), { pending }), 'pending', { selection: 7 }))
   assert.equal([...other.values()].some((seat) => seat.tappable || seat.selected || seat.speaking), false, '别人看不出谁在处理待办')
+  const words = { kind: 'last_words', seatNo: 4, options: ['skip'] }
+  const speaking = seatsOf(stageLayout(room('skill_pending', me(5), { currentPending: words }), 'pending'))
+  assert.equal(speaking.get(4).speaking, true, '遗言公开：留遗言的人座位亮起')
+  assert.equal([...speaking.values()].some((seat) => seat.tappable), false)
 })
 
 test('nightSeatsKeepWolfAndJudgeBadges', () => {

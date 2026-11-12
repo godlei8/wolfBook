@@ -73,12 +73,15 @@ while (true) {
       const panel = nightPanel(s)
       if (!panel || panel.done) continue
       if (panel.kind === 'wolf') {
-        if (s.nightInfo?.wolfPicks?.find((p) => p.seatNo === bot.seat)?.decided) continue
+        if (panel.buttons.some((b) => b.action === 'confirm')) {
+          await act(bot, '/night-action', { actionType: 'confirm', targetSeatNo: null }, '确定刀口')
+          continue
+        }
         const mates = s.nightInfo?.teammateSeats || []
         const target = others.find((seat) => !mates.includes(seat))
         await act(bot, '/night-action', { actionType: 'kill', targetSeatNo: target }, '刀人')
-      } else if (panel.kind === 'witch') {
-        await act(bot, '/night-action', { actionType: 'none', targetSeatNo: null }, '不用药')
+      } else if (panel.kind === 'witch' || panel.kind === 'mech_wolf') {
+        await act(bot, '/night-action', { actionType: 'none', targetSeatNo: null }, '不行动')
       } else if (panel.kind === 'seer') {
         await act(bot, '/night-action', { actionType: 'check', targetSeatNo: pick }, '查验')
       } else if (panel.kind === 'guard') {
@@ -89,7 +92,8 @@ while (true) {
       }
     } else if (view === 'pending') {
       const panel = pendingPanel(s, 0)
-      if (panel.kind === 'waiting') continue
+      // 别人的遗言全场可见但没有按钮
+      if (panel.kind === 'waiting' || !panel.buttons.length) continue
       const button = panel.needsTarget ? pendingPanel(s, panel.targets[0]).buttons[0] : panel.buttons[0]
       await act(bot, '/skill', { decision: button.decision, targetSeatNo: button.target }, panel.kind)
     } else if (view === 'sheriff') {

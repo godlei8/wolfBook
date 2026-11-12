@@ -23,7 +23,6 @@ import {
   isWolfTeam,
   buildJudgeRules,
   hasMechWolf,
-  hasWitch,
 } from '../../utils/board'
 
 const props = defineProps<{ boardId: number | null }>()
@@ -63,7 +62,6 @@ const form = reactive({
   backgroundImage: '',
   cardDescription: '',
   winCondition: '屠边',
-  witchFirstNight: false,
   poisonBounce: false,
   ruleType: '标准板',
   status: 1,
@@ -85,7 +83,6 @@ const isNew = computed(() => !props.boardId)
 const rolesById = computed(() => new Map(roles.value.map((role) => [role.id, role])))
 const size = computed(() => lineupSize(form.roles))
 const support = computed(() => judgeSupport(form.roles, rolesById.value))
-const lineupHasWitch = computed(() => hasWitch(form.roles, rolesById.value))
 const lineupHasMechWolf = computed(() => hasMechWolf(form.roles, rolesById.value))
 // 通用配置项（节奏）：编辑页只展示，建房时房主可调；没配显示「默认」
 const commonRules = computed(() => {
@@ -193,7 +190,7 @@ function buildRuleDetail(): BoardRuleDetail {
     sections: form.sections
       .map((section) => ({ title: section.title.trim(), items: splitLines(section.text) }))
       .filter((section) => section.title && section.items.length),
-    judgeRules: buildJudgeRules(loadedJudgeRules, form.witchFirstNight, form.poisonBounce),
+    judgeRules: buildJudgeRules(loadedJudgeRules, form.poisonBounce),
   }
 }
 
@@ -213,7 +210,6 @@ function fill(board?: Board) {
   const detail = board?.ruleDetail
   loadedJudgeRules = detail?.judgeRules || null
   loadedRulesView.value = loadedJudgeRules
-  form.witchFirstNight = detail?.judgeRules?.witchSelfSave === 'first_night'
   form.poisonBounce = detail?.judgeRules?.poisonBounce === true
   form.overview = detail?.overview || ''
   form.nightOrder = (detail?.nightOrder || []).map((step) => ({ roleId: step.roleId, action: step.action }))
@@ -489,7 +485,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
               <span v-for="item in commonRules" :key="item.label" class="nt-chip">{{ item.label }} {{ item.value }}</span>
             </div>
           </div>
-          <div v-if="lineupHasWitch || lineupHasMechWolf" class="nt-field">
+          <div v-if="lineupHasMechWolf" class="nt-field">
             <span class="nt-label">板子专属配置 <small>· 只在阵容里有对应角色时出现，电子法官按这个结算</small></span>
           </div>
           <div v-if="lineupHasMechWolf" class="nt-field">
@@ -497,13 +493,6 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
             <div class="nt-seg" role="radiogroup" aria-label="机械狼弹毒">
               <button type="button" role="radio" :aria-checked="!form.poisonBounce" :class="{ on: !form.poisonBounce }" @click="form.poisonBounce = false">不反弹</button>
               <button type="button" role="radio" :aria-checked="form.poisonBounce" :class="{ on: form.poisonBounce }" @click="form.poisonBounce = true">反弹给女巫</button>
-            </div>
-          </div>
-          <div v-if="lineupHasWitch" class="nt-field">
-            <span class="nt-label">女巫自救 <small>· 电子法官按这个结算</small></span>
-            <div class="nt-seg" role="radiogroup" aria-label="女巫自救">
-              <button type="button" role="radio" :aria-checked="!form.witchFirstNight" :class="{ on: !form.witchFirstNight }" @click="form.witchFirstNight = false">不能自救</button>
-              <button type="button" role="radio" :aria-checked="form.witchFirstNight" :class="{ on: form.witchFirstNight }" @click="form.witchFirstNight = true">首夜可以自救</button>
             </div>
           </div>
           <div class="nt-field">

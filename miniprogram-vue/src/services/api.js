@@ -340,6 +340,11 @@ export default {
       await request({ url: `/api/judge/rooms/${roomId}/sheriff`, method: 'POST', data: payload, header: createAuthHeader() }),
     )
   },
+  async changeJudgeSeat(roomId, payload) {
+    return normalizeJudgeRoomSnapshot(
+      await request({ url: `/api/judge/rooms/${roomId}/seat`, method: 'POST', data: payload, header: createAuthHeader() }),
+    )
+  },
   async selfDestructJudge(roomId) {
     return normalizeJudgeRoomSnapshot(
       await request({ url: `/api/judge/rooms/${roomId}/self-destruct`, method: 'POST', header: createAuthHeader() }),

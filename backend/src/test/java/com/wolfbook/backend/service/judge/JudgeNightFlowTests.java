@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -15,26 +16,24 @@ class JudgeNightFlowTests {
     private static final LocalDateTime LATER = NOW.plusSeconds(30);
 
     @Test
-    void wolfStepClosesWhenAllAliveWolvesSubmitted() {
-        assertTrue(JudgeNightFlow.shouldClose(NightKind.WOLF, List.of(2, 4), Set.of(2, 4), LATER, NOW));
-        assertFalse(JudgeNightFlow.shouldClose(NightKind.WOLF, List.of(2, 4), Set.of(2), LATER, NOW));
+    void stepsCloseOnlyAtTheDeadline() {
+        // 交了也不提前切步：单人步骤等满（零场外）；狼人那一步提前结束只靠全员确定后缩短截止时间
+        assertFalse(JudgeNightFlow.shouldClose(LATER, NOW));
+        assertTrue(JudgeNightFlow.shouldClose(NOW.minusSeconds(1), NOW));
+        assertFalse(JudgeNightFlow.shouldClose(null, NOW));
     }
 
     @Test
-    void singleHolderStepWaitsForDeadlineEvenAfterSubmit() {
-        // 零场外：守卫交了也不提前切步，不然全场都知道守卫动作快慢
-        assertFalse(JudgeNightFlow.shouldClose(NightKind.GUARD, List.of(3), Set.of(3), LATER, NOW));
-        assertFalse(JudgeNightFlow.shouldClose(NightKind.WITCH, List.of(5), Set.of(5), LATER, NOW));
+    void allAliveWolvesMustConfirm() {
+        assertTrue(JudgeNightFlow.allConfirmed(List.of(2, 4), Set.of(2, 4)));
+        assertFalse(JudgeNightFlow.allConfirmed(List.of(2, 4), Set.of(2)));
+        assertFalse(JudgeNightFlow.allConfirmed(List.of(), Set.of()));
     }
 
     @Test
-    void closesWhenDeadlinePassed() {
-        assertTrue(JudgeNightFlow.shouldClose(NightKind.GUARD, List.of(3), Set.of(), NOW.minusSeconds(1), NOW));
-        assertTrue(JudgeNightFlow.shouldClose(NightKind.WOLF, List.of(2, 4), Set.of(), NOW.minusSeconds(1), NOW));
-    }
-
-    @Test
-    void noDeadlineNeverCloses() {
-        assertFalse(JudgeNightFlow.shouldClose(NightKind.GUARD, List.of(3), Set.of(3), null, NOW));
+    void confirmedWolfStepEndsFiveSecondsLaterButNeverAfterTheFullTime() {
+        assertEquals(5, JudgeNightFlow.CONFIRM_GRACE_SECONDS);
+        assertEquals(NOW.plusSeconds(5), JudgeNightFlow.confirmedDeadline(LATER, NOW));
+        assertEquals(NOW.plusSeconds(3), JudgeNightFlow.confirmedDeadline(NOW.plusSeconds(3), NOW));
     }
 }

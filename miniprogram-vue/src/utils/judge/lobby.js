@@ -1,5 +1,6 @@
 // 大厅的纯逻辑（有单测）：座位网格、底部主按钮、本局规则行。
 import { ROOM_RULE_STEPS } from './create-room.js'
+import { countdown } from './room-view.js'
 
 export function lobbySeats(snapshot) {
   const count = Number(snapshot?.playerCount) || 0
@@ -7,6 +8,7 @@ export function lobbySeats(snapshot) {
   for (const player of snapshot?.players || []) {
     if (player?.seatNo) bySeat.set(player.seatNo, player)
   }
+  const requestedSeat = snapshot?.seatSwap?.outgoing?.seatNo || null
   return Array.from({ length: count }, (_, i) => {
     const player = bySeat.get(i + 1)
     if (!player) return { seatNo: i + 1, nickname: '', avatar: '', ready: false, me: false, empty: true }
@@ -17,8 +19,57 @@ export function lobbySeats(snapshot) {
       ready: Boolean(player.ready),
       me: Boolean(player.self),
       empty: false,
+      requested: requestedSeat === i + 1,
     }
   })
+}
+
+/**
+ * 点大厅里的一个座位（用户给定规则）：空位直接入座；有人的座位申请换座（对方 30 秒内同意才换）；
+ * 已经申请过的座位再点是撤回。没入座的人（法官、还没进房）点了没反应。confirm 不为空时先弹确认框。
+ */
+export function seatTap(snapshot, seatNo) {
+  const self = snapshot?.selfPlayer
+  if (!self?.seatNo || seatNo === self.seatNo) return null
+  const player = (snapshot?.players || []).find((item) => item?.seatNo === seatNo)
+  if (!player) return { action: 'move', seatNo, confirm: '' }
+  if (snapshot?.seatSwap?.outgoing?.seatNo === seatNo) {
+    return { action: 'cancel', seatNo, confirm: `撤回和 ${seatNo} 号的换座申请？` }
+  }
+  return { action: 'request', seatNo, confirm: `申请和 ${seatNo} 号 ${player.nickname || ''} 换座？对方 30 秒内同意才会换。` }
+}
+
+/** 大厅顶部的换座提示条：先显示别人发给我的（同意 / 拒绝），再显示我发出去的（撤回）；过期了不显示。 */
+export function swapBanner(snapshot, now) {
+  const swap = snapshot?.seatSwap
+  const incoming = swap?.incoming
+  if (incoming) {
+    const left = countdown(incoming.deadline, now, false).seconds
+    if (left > 0) {
+      return {
+        kind: 'incoming',
+        text: `${incoming.seatNo} 号 ${incoming.nickname} 想和你换座`,
+        seconds: left,
+        buttons: [
+          { action: 'accept', label: '同意', seatNo: incoming.seatNo },
+          { action: 'reject', label: '拒绝', seatNo: incoming.seatNo },
+        ],
+      }
+    }
+  }
+  const outgoing = swap?.outgoing
+  if (outgoing) {
+    const left = countdown(outgoing.deadline, now, false).seconds
+    if (left > 0) {
+      return {
+        kind: 'outgoing',
+        text: `已申请和 ${outgoing.seatNo} 号 ${outgoing.nickname} 换座，等对方同意`,
+        seconds: left,
+        buttons: [{ action: 'cancel', label: '撤回', seatNo: outgoing.seatNo }],
+      }
+    }
+  }
+  return null
 }
 
 /**

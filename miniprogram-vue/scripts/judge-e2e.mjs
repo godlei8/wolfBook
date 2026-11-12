@@ -172,14 +172,15 @@ async function runGame({ mode, keyword, count, explode = false }) {
           await mechWolfNight(everyone[i], roomId, s, alive, nonWolf)
           continue
         }
-        if (panel.kind === 'wolf') button = nightPanel(s, nonWolf[0]).buttons.find((b) => b.action === 'kill')
-        else if (panel.kind === 'witch') button = panel.buttons.find((b) => b.action === 'none')
+        if (panel.kind === 'wolf') {
+          // 选过了就点确定（全员确定 5 秒后结束）；还没选就刀第一个好人
+          button = panel.buttons.find((b) => b.action === 'confirm') || nightPanel(s, nonWolf[0]).buttons.find((b) => b.action === 'kill')
+        } else if (panel.kind === 'witch') button = panel.buttons.find((b) => b.action === 'none')
         else if (panel.kind === 'seer' || panel.kind === 'psychic') button = nightPanel(s, alive.find((seat) => seat !== s.selfPlayer.seatNo)).buttons[0]
         else if (panel.kind === 'guard') {
           const pick = alive.find((seat) => seat !== s.nightInfo?.lastGuardSeat)
           button = nightPanel(s, pick).buttons.find((b) => !b.disabled)
         } else button = panel.buttons[0]
-        if (panel.kind === 'wolf' && s.nightInfo?.wolfPicks?.find((p) => p.seatNo === s.selfPlayer.seatNo)?.decided) continue
         if (button && !button.disabled) {
           await act(everyone[i], `/api/judge/rooms/${roomId}/night-action`, { actionType: button.action, targetSeatNo: button.target }, `night ${panel.kind}`)
         }
@@ -187,9 +188,11 @@ async function runGame({ mode, keyword, count, explode = false }) {
     } else if (view === 'pending') {
       for (let i = 0; i < everyone.length; i += 1) {
         const panel = pendingPanel(snaps[i], 0)
-        if (panel.kind === 'waiting') continue
+        // 遗言全场可见，但只有本人和房主有按钮：交一次就够
+        if (panel.kind === 'waiting' || !panel.buttons.length) continue
         const chosen = panel.needsTarget ? pendingPanel(snaps[i], panel.targets[0]).buttons[0] : panel.buttons[0]
         await act(everyone[i], `/api/judge/rooms/${roomId}/skill`, { decision: chosen.decision, targetSeatNo: chosen.target }, `skill ${panel.kind}`)
+        if (panel.kind === 'last_words') break
       }
     } else if (view === 'sheriff') {
       const stage = sheriffPanel(hostSnap).stage
@@ -238,7 +241,8 @@ async function runGame({ mode, keyword, count, explode = false }) {
       }
       await hostDo(host, roomId, hostSnap, hostSnap.nightNext ? 'start_night' : 'start_speech')
     } else if (view === 'speech') {
-      await hostDo(host, roomId, hostSnap, 'start_vote')
+      // 发完言自动进投票：房主一位一位跳过，最后一位跳过就是投票
+      await hostDo(host, roomId, hostSnap, 'next_speaker')
     } else if (view === 'vote') {
       for (let i = 0; i < everyone.length; i += 1) {
         const panel = votePanel(snaps[i])
@@ -254,29 +258,27 @@ async function runGame({ mode, keyword, count, explode = false }) {
   fail('15 分钟内没跑完一局')
 }
 
-/** 机械狼这一步：按面板的草稿规则选好要做的几件事，一次提交。 */
+/** 机械狼那一步：面板上能做的那件事（学习 / 学到的技能 / 破盾刀）挑个目标做掉；带刀时的普通刀口在狼人那一步出。 */
 async function mechWolfNight(token, roomId, s, alive, nonWolf) {
   const info = s.nightInfo || {}
   const self = s.selfPlayer.seatNo
   const others = alive.filter((seat) => seat !== self)
-  const draft = {}
-  if (!info.learned) draft.learn = others[0]
-  if (info.learned && info.learnedEffective) {
-    if (info.learned === 'psychic') draft.check = others[0]
-    if (info.learned === 'witch' && info.mechPoison !== false) draft.poison = nonWolf[0]
-    if (info.learned === 'guard') draft.guard = others.find((seat) => seat !== info.lastGuardSeat)
-  }
-  if (info.armed) {
-    draft.kill = nonWolf[0]
-    if (info.learned === 'wolf' && info.learnedEffective && nonWolf[1]) draft.kill_pierce = nonWolf[1]
-  }
-  const panel = nightPanel(s, 0, draft)
-  const submit = panel.buttons.find((b) => b.action === 'submit')
-  if (submit && !submit.disabled) {
-    await act(token, `/api/judge/rooms/${roomId}/night-action`, { actions: submit.actions }, `night mech_wolf ${submit.actions.map((a) => a.actionType).join('+')}`)
-    console.log(`  机械狼：${panel.learnedText}${panel.armedText ? `，${panel.armedText}` : ''} → ${submit.actions.map((a) => `${a.actionType} ${a.targetSeatNo}`).join('、')}`)
+  const action = nightPanel(s, 0).buttons.find((b) => b.action !== 'none')?.action
+  const target = {
+    learn: others[0],
+    check: others[0],
+    poison: nonWolf[0],
+    guard: others.find((seat) => seat !== info.lastGuardSeat),
+    kill_pierce: nonWolf[1] ?? nonWolf[0],
+  }[action]
+  const panel = nightPanel(s, target || 0)
+  const button = panel.buttons.find((b) => b.action === action)
+  if (button && !button.disabled) {
+    await act(token, `/api/judge/rooms/${roomId}/night-action`, { actionType: button.action, targetSeatNo: button.target }, `night mech_wolf ${button.action}`)
+    console.log(`  机械狼：${panel.learnedText}${panel.armedText ? `，${panel.armedText}` : ''} → ${button.action} ${button.target}`)
   } else {
     await act(token, `/api/judge/rooms/${roomId}/night-action`, { actionType: 'none' }, 'night mech_wolf none')
+    console.log(`  机械狼：${panel.learnedText}${panel.armedText ? `，${panel.armedText}` : ''} → 不行动`)
   }
 }
 

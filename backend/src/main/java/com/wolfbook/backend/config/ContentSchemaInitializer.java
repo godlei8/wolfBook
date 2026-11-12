@@ -65,12 +65,16 @@ public class ContentSchemaInitializer implements ApplicationRunner {
         addColumnIfMissing("posts", "board_name", "ALTER TABLE posts ADD COLUMN board_name VARCHAR(100) NULL");
         // 法官房的 4 位短房号（全新库里 judge_rooms 由 JudgeSchemaInitializer 建，建表语句已带这一列）
         addColumnIfMissing("judge_rooms", "room_code", "ALTER TABLE judge_rooms ADD COLUMN room_code VARCHAR(8) NULL");
+        // 事件写入顺序：create_time 只到秒，同一秒的事件按 seq 排（老数据按主键顺序补号，和以前读出来的一样）
+        addColumnIfMissing("judge_action_events", "seq", "ALTER TABLE judge_action_events ADD COLUMN seq BIGINT NOT NULL AUTO_INCREMENT UNIQUE");
         // 电子法官结算引擎（2026-10-29）
         addColumnIfMissing("judge_rooms", "sheriff_enabled", "ALTER TABLE judge_rooms ADD COLUMN sheriff_enabled TINYINT DEFAULT 0");
         addColumnIfMissing("judge_rooms", "night_step", "ALTER TABLE judge_rooms ADD COLUMN night_step TINYINT NULL");
         addColumnIfMissing("judge_rooms", "step_deadline", "ALTER TABLE judge_rooms ADD COLUMN step_deadline DATETIME NULL");
         addColumnIfMissing("judge_rooms", "phase_data", "ALTER TABLE judge_rooms ADD COLUMN phase_data JSON NULL");
         addColumnIfMissing("judge_rooms", "rules_json", "ALTER TABLE judge_rooms ADD COLUMN rules_json JSON NULL");
+        // 开局时的板子快照（阵容、夜间顺序、各角色机制）：之后后台改板子、删板子不影响进行中的对局
+        addColumnIfMissing("judge_rooms", "board_snapshot", "ALTER TABLE judge_rooms ADD COLUMN board_snapshot JSON NULL");
         addColumnIfMissing("judge_room_players", "is_sheriff", "ALTER TABLE judge_room_players ADD COLUMN is_sheriff TINYINT DEFAULT 0");
         addColumnIfMissing("judge_room_players", "sheriff_candidate", "ALTER TABLE judge_room_players ADD COLUMN sheriff_candidate TINYINT DEFAULT 0");
         addColumnIfMissing("judge_room_players", "sheriff_withdrew", "ALTER TABLE judge_room_players ADD COLUMN sheriff_withdrew TINYINT DEFAULT 0");

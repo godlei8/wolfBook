@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { countdown, navTitle, parseServerTime, phaseTitle, pickView, seatColumns } from '../src/utils/judge/room-view.js'
+import { countdown, navTitle, parseServerTime, phaseTitle, pickView, seatColumns, clockOffset } from '../src/utils/judge/room-view.js'
 
 const playing = (currentPhase, extra = {}) => ({ roomStatus: 'playing', currentPhase, currentDay: 2, ...extra })
 
@@ -9,6 +9,8 @@ test('pickViewFollowsStatusAndPhase', () => {
   assert.equal(pickView({ roomStatus: 'finished', currentPhase: 'day_speech' }), 'result')
   assert.equal(pickView(playing('night_action')), 'night')
   assert.equal(pickView(playing('skill_pending')), 'pending')
+  assert.equal(phaseTitle({ ...playing('skill_pending'), currentDay: 1, currentPending: { kind: 'last_words', seatNo: 3 } }), '第 1 天 · 遗言')
+  assert.equal(phaseTitle({ ...playing('skill_pending'), currentDay: 1 }), '第 1 天 · 出局技能')
   for (const phase of ['sheriff_signup', 'sheriff_speech', 'sheriff_vote', 'sheriff_pk']) {
     assert.equal(pickView(playing(phase)), 'sheriff', phase)
   }
@@ -106,4 +108,15 @@ test('navBarShowsTheRoomNotThePhase', () => {
 test('deferredSheriffSpeechSaysItContinues', () => {
   assert.equal(phaseTitle({ roomStatus: 'playing', currentPhase: 'sheriff_speech', currentDay: 2 }), '第 2 天 · 昨天的竞选继续')
   assert.equal(phaseTitle({ roomStatus: 'playing', currentPhase: 'sheriff_speech', currentDay: 1 }), '第 1 天 · 警上发言')
+})
+
+test('clockOffsetFollowsTheServer', () => {
+  // 手机时钟快了 30 秒：按服务器时间校正后倒计时和别人一样
+  const server = '2026-11-12T20:00:00'
+  const local = Date.parse('2026-11-12T20:00:30+08:00')
+  const offset = clockOffset(server, local)
+  assert.equal(offset, -30000)
+  assert.equal(countdown('2026-11-12T20:00:20', local + offset, false).seconds, 20)
+  assert.equal(clockOffset(null, local), 0, '老后端没有 serverNow 就不校正')
+  assert.equal(clockOffset('乱写', local), 0)
 })

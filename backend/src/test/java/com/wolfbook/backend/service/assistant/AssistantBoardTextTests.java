@@ -17,13 +17,14 @@ class AssistantBoardTextTests {
     private static final Map<Integer, String> ROLE_NAMES = Map.of(2, "女巫", 6, "狼人", 9, "平民");
 
     @Test
-    void witchBoardsSayWhetherTheWitchMaySaveHerself() {
+    void witchBoardsSayTheWitchNeverSavesHerself() {
         assertEquals("电子法官规则：女巫不能自救（被刀的是自己时不能用解药）；一晚只能用一瓶药",
                 AssistantKnowledgeService.judgeRuleText(board(null, List.of(2, 6, 9)), ROLE_NAMES));
         BoardRuleDetail firstNight = new BoardRuleDetail(null, List.of(), List.of(), List.of(),
                 new JudgeRules(null, null, JudgeRules.SELF_SAVE_FIRST_NIGHT, null, null, null));
-        assertEquals("电子法官规则：女巫只有首夜可以自救，之后不能；一晚只能用一瓶药",
-                AssistantKnowledgeService.judgeRuleText(board(firstNight, List.of(2, 6, 9)), ROLE_NAMES));
+        assertEquals("电子法官规则：女巫不能自救（被刀的是自己时不能用解药）；一晚只能用一瓶药",
+                AssistantKnowledgeService.judgeRuleText(board(firstNight, List.of(2, 6, 9)), ROLE_NAMES),
+                "全程不可自救，旧板子存的 first_night 也不算");
     }
 
     @Test

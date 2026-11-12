@@ -172,11 +172,6 @@ export function defaultNightOrder(lineup: BoardRoleItem[], rolesById: Map<number
   return steps
 }
 
-/** 阵容里有没有女巫机制的角色（有才显示「女巫自救」开关）。 */
-export function hasWitch(lineup: BoardRoleItem[], rolesById: Map<number, Role>) {
-  return lineup.some((item) => rolesById.get(item.roleId)?.mechanic === 'witch')
-}
-
 /** 阵容里有没有机械狼机制的角色（有才显示「弹毒」开关）。 */
 export function hasMechWolf(lineup: BoardRoleItem[], rolesById: Map<number, Role>) {
   return lineup.some((item) => rolesById.get(item.roleId)?.mechanic === 'mech_wolf')
@@ -184,15 +179,14 @@ export function hasMechWolf(lineup: BoardRoleItem[], rolesById: Map<number, Role
 
 /**
  * 保存板子时的电子法官规则。通用配置项（节奏：上警、发言、行动时长）编辑页不改，原样带上；
- * 板子专属配置项按开关写：女巫自救（默认不能自救）、机械狼弹毒（只存开）。一晚一瓶是全局规则、不存。
+ * 板子专属配置项按开关写：机械狼弹毒（只存开）。女巫一晚一瓶、全程不可自救都是全局规则，不存（旧板子存的保存时去掉）。
  */
 export function buildJudgeRules(
-  existing: (BoardJudgeRules & { witchOnePotionPerNight?: unknown }) | null | undefined,
-  witchFirstNight: boolean,
+  existing: (BoardJudgeRules & { witchOnePotionPerNight?: unknown; witchSelfSave?: unknown }) | null | undefined,
   poisonBounce = false,
 ): BoardJudgeRules {
-  const { witchOnePotionPerNight: _global, poisonBounce: _bounce, ...kept } = existing || {}
-  const rules: BoardJudgeRules = { ...kept, witchSelfSave: witchFirstNight ? 'first_night' : 'never' }
+  const { witchOnePotionPerNight: _onePotion, witchSelfSave: _selfSave, poisonBounce: _bounce, ...kept } = existing || {}
+  const rules: BoardJudgeRules = { ...kept }
   if (poisonBounce) rules.poisonBounce = true
   return rules
 }

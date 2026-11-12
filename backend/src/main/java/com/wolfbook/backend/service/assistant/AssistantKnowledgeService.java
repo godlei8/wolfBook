@@ -620,7 +620,7 @@ public class AssistantKnowledgeService {
         return builder.toString();
     }
 
-    /** 电子法官按板子结算的女巫规则（默认不能自救，板子可以设成首夜可以）；阵容里没有女巫返回空串。 */
+    /** 电子法官的女巫规则（全程不可自救、一晚一瓶都是全局规则，fromBoard 补默认值时已换掉旧板子存的首夜自救）；阵容里没有女巫返回空串。 */
     static String judgeRuleText(Board board, Map<Integer, String> roleNames) {
         boolean hasWitch = board.roles() != null && board.roles().stream()
                 .anyMatch(ref -> "女巫".equals(roleNames.get(ref.roleId())));

@@ -50,19 +50,20 @@ class JudgeRulesTests {
     void partialJudgeRulesFallBackPerField() {
         JudgeRules partial = new JudgeRules(null, false, "first_night", false, null, null);
         JudgeRules rules = partial.withDefaults();
-        // 女巫自救跟板子走（默认不能自救）；一晚一瓶是全局规则，写了 false 也按一晚一瓶
-        assertEquals("first_night", rules.witchSelfSave());
+        // 女巫全程不可自救、一晚一瓶都是全局规则：写了别的也不算数
+        assertEquals("never", rules.witchSelfSave());
         assertEquals(120, rules.speechSeconds());
         assertFalse(rules.sheriffDefault());
         assertTrue(rules.witchOnePotionPerNight());
     }
 
     @Test
-    void witchSelfSaveIsNeverUnlessFirstNightIsChosen() {
+    void witchNeverSavesHerself() {
         assertEquals("never", new JudgeRules(null, null, null, null, null, null).withDefaults().witchSelfSave());
         assertEquals("never", new JudgeRules(null, null, "never", null, null, null).withDefaults().witchSelfSave());
         assertEquals("never", new JudgeRules(null, null, "bogus", null, null, null).withDefaults().witchSelfSave());
-        assertEquals("first_night", new JudgeRules(null, null, "first_night", null, null, null).withDefaults().witchSelfSave());
+        assertEquals("never", new JudgeRules(null, null, "first_night", null, null, null).withDefaults().witchSelfSave(),
+                "roles/女巫.md：全程不可自救，旧板子和旧房间存的 first_night 也不算");
     }
 
     @Test
@@ -71,7 +72,7 @@ class JudgeRulesTests {
                 new JudgeRules("side", true, "first_night", true, 90, null));
         JudgeRules rules = JudgeRules.fromBoard(board("屠城", detail));
         assertEquals("city", rules.winCondition());
-        assertEquals("first_night", rules.witchSelfSave());
+        assertEquals("never", rules.witchSelfSave());
         assertEquals("never", JudgeRules.fromBoard(board("屠边", BoardRuleDetail.empty())).witchSelfSave());
         assertEquals(90, rules.speechSeconds());
         assertEquals(150, rules.sheriffSpeechSeconds());

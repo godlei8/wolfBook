@@ -3,19 +3,21 @@
 // 视图里不嵌任何自定义组件；提交都 emit('act') 交给房间页（统一处理 4002 和报错）。
 // 规则只显示快照里的值，房主改了等接口返回新快照再变，失败自然就是原值。
 import { computed } from 'vue'
-import { lobbyAction, lobbySeats, rulesRows } from '../../../utils/judge/lobby.js'
+import { lobbyAction, lobbySeats, rulesRows, seatTap, swapBanner } from '../../../utils/judge/lobby.js'
 import { stepRule } from '../../../utils/judge/create-room.js'
 
 const props = defineProps({
   snapshot: { type: Object, required: true },
   board: { type: Object, default: null },
   busy: { type: Boolean, default: false },
+  now: { type: Number, default: () => Date.now() },
 })
 const emit = defineEmits(['act'])
 
 const seats = computed(() => lobbySeats(props.snapshot))
 const action = computed(() => lobbyAction(props.snapshot))
 const rows = computed(() => rulesRows(props.snapshot))
+const banner = computed(() => swapBanner(props.snapshot, props.now))
 const modeText = computed(() => {
   if (props.snapshot.judgeMode === 'joined') return props.snapshot.host ? '无法官 · 你也拿牌，手机当法官' : '无法官 · 房主手机当法官'
   return props.snapshot.judgeViewer ? '有法官 · 你是法官，不入座' : '有法官 · 法官不入座'
@@ -48,6 +50,31 @@ function changeRule(row, direction) {
 function tapMain() {
   if (action.value.disabled || props.busy) return
   emit('act', { kind: action.value.kind })
+}
+
+// 点座位：空位直接入座；有人的座位确认后申请换座；申请过的再点是撤回
+function tapSeat(seat) {
+  if (props.busy) return
+  const tap = seatTap(props.snapshot, seat.seatNo)
+  if (!tap) return
+  const send = () => emit('act', { kind: 'seat', payload: { action: tap.action, seatNo: tap.seatNo } })
+  if (!tap.confirm) {
+    send()
+    return
+  }
+  uni.showModal({
+    title: tap.action === 'cancel' ? '撤回申请' : '申请换座',
+    content: tap.confirm,
+    confirmText: tap.action === 'cancel' ? '撤回' : '申请',
+    success: (result) => {
+      if (result.confirm) send()
+    },
+  })
+}
+
+function tapSwap(button) {
+  if (props.busy) return
+  emit('act', { kind: 'seat', payload: { action: button.action, seatNo: button.seatNo } })
 }
 
 function copyRoomCode() {
@@ -96,12 +123,28 @@ function copyRoomCode() {
         <text class="nt-h2">座位</text>
         <text class="nt-meta">{{ snapshot.joinedCount }} / {{ snapshot.playerCount }} 已入座 · {{ snapshot.readyCount }} 人已准备</text>
       </view>
+      <view v-if="banner" class="nt-panel jl-swap" :class="{ 'jl-swap--incoming': banner.kind === 'incoming' }">
+        <view class="jl-swap__text">
+          <text class="jl-swap__title">{{ banner.text }}</text>
+          <text class="jl-swap__time">{{ banner.seconds }} 秒后失效</text>
+        </view>
+        <view class="jl-swap__buttons">
+          <view
+            v-for="button in banner.buttons"
+            :key="button.action"
+            class="nt-btn nt-btn--small"
+            :class="[button.action === 'accept' ? 'nt-btn--gold' : 'nt-btn--ghost', { 'nt-btn--disabled': busy }]"
+            @tap="tapSwap(button)"
+          >{{ button.label }}</view>
+        </view>
+      </view>
       <view class="jr-seats">
         <view
           v-for="seat in seats"
           :key="seat.seatNo"
           class="jr-seat"
-          :class="{ 'jr-seat--empty': seat.empty, 'jr-seat--self': seat.me }"
+          :class="{ 'jr-seat--empty': seat.empty, 'jr-seat--self': seat.me, 'jr-seat--requested': seat.requested }"
+          @tap="tapSeat(seat)"
         >
           <text class="jr-seat__no serif" :class="{ 'jr-seat__no--empty': seat.empty }">{{ seat.seatNo }}</text>
           <block v-if="!seat.empty">
@@ -112,7 +155,7 @@ function copyRoomCode() {
             <text class="jr-seat__name">{{ seat.nickname }}</text>
             <text class="jr-seat__state" :class="{ 'jr-seat__state--ready': seat.ready }">{{ seat.ready ? '已准备' : '未准备' }}</text>
           </block>
-          <text v-else class="jr-seat__empty">空位</text>
+          <text v-else class="jr-seat__empty">{{ snapshot.selfPlayer && snapshot.selfPlayer.seatNo ? '点击入座' : '空位' }}</text>
         </view>
       </view>
 
@@ -134,6 +177,8 @@ function copyRoomCode() {
           <text v-else class="jl-rule__value">{{ row.value }}</text>
         </view>
       </view>
+
+      <text v-if="snapshot.selfPlayer && snapshot.selfPlayer.seatNo" class="nt-meta jl-seat-hint">点空位直接换过去，点有人的座位申请换座；换过座要重新准备</text>
 
       <view class="jr-tip">
         <text class="jr-tip__icon">◉</text>
@@ -293,6 +338,52 @@ function copyRoomCode() {
 
 .jr-seat--self {
   border-color: var(--moon);
+}
+
+.jr-seat--requested {
+  border-color: var(--gold);
+  border-style: dashed;
+}
+
+.jl-swap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-top: 16rpx;
+  padding: 20rpx 24rpx;
+}
+
+.jl-swap--incoming {
+  border-color: var(--gold);
+}
+
+.jl-swap__text {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  min-width: 0;
+}
+
+.jl-swap__title {
+  color: var(--text);
+  font-size: 28rpx;
+}
+
+.jl-swap__time {
+  color: var(--text-3);
+  font-size: 22rpx;
+}
+
+.jl-swap__buttons {
+  display: flex;
+  gap: 12rpx;
+  flex-shrink: 0;
+}
+
+.jl-seat-hint {
+  display: block;
+  margin-top: 12rpx;
 }
 
 .jr-seat--empty {

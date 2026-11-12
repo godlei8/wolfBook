@@ -39,6 +39,8 @@ public class JudgeRoomEntity {
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String phaseData;
     private String rulesJson;
+    /** 开局时的板子快照：{board, roles}。为空（升级前开的局）时现读板子。 */
+    private String boardSnapshot;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 
@@ -224,6 +226,14 @@ public class JudgeRoomEntity {
 
     public void setPhaseData(String phaseData) {
         this.phaseData = phaseData;
+    }
+
+    public String getBoardSnapshot() {
+        return boardSnapshot;
+    }
+
+    public void setBoardSnapshot(String boardSnapshot) {
+        this.boardSnapshot = boardSnapshot;
     }
 
     public String getRulesJson() {

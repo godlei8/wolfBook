@@ -16,7 +16,7 @@ import java.util.TreeSet;
 /**
  * 一夜的结算，纯函数：输入今晚的提交和座位状态，输出死亡名单和每个人的私密反馈。规则口径是 docs/judge/house-rules/：
  * <ul>
- *   <li>普通刀口：狼队按票数取多数、平票随机、都没选是空刀；狼队全出局后由机械狼（带刀）出。</li>
+ *   <li>普通刀口：选了的狼都指同一个人才算，没统一是空刀（没交的狼不算）；狼队全出局后由机械狼（带刀）出。</li>
  *   <li>守护（守卫、学到守卫的机械狼）或解药单独救得活普通刀；既被守又被救照死。</li>
  *   <li>破盾刀（学到狼人的带刀机械狼）无视所有守护；和普通刀同一人时女巫用了解药也照死、解药照耗。</li>
  *   <li>女巫的毒：守卫挡不住；只有学到守卫的机械狼守的人挡得住，板子开了「弹毒」时毒反弹给女巫。</li>
@@ -74,24 +74,21 @@ public final class NightResolver {
     private NightResolver() {
     }
 
-    /** 狼队刀口：票多的那个；平票在平票的人里随机；没人选就是空刀（null）。 */
-    public static Integer tallyKnife(List<Integer> picks, Random random) {
-        Map<Integer, Integer> counts = new HashMap<>();
-        for (Integer pick : picks) {
-            if (pick != null) {
-                counts.merge(pick, 1, Integer::sum);
-            }
-        }
-        if (counts.isEmpty()) {
+    /**
+     * 狼队刀口（通用流程 3.2）：选了的狼都指同一个人才算数，没统一就是空刀（null）。
+     * 列表里只有交了的狼：没交的不算（控刀）；明确空刀的是一个 null，和别人的目标不一致，也算没统一。
+     */
+    public static Integer tallyKnife(List<Integer> picks) {
+        if (picks == null || picks.isEmpty()) {
             return null;
         }
-        int top = counts.values().stream().mapToInt(Integer::intValue).max().orElse(0);
-        List<Integer> tied = counts.entrySet().stream()
-                .filter(entry -> entry.getValue() == top)
-                .map(Map.Entry::getKey)
-                .sorted()
-                .toList();
-        return tied.size() == 1 ? tied.get(0) : tied.get(random.nextInt(tied.size()));
+        Integer first = picks.get(0);
+        for (Integer pick : picks) {
+            if (!Objects.equals(first, pick)) {
+                return null;
+            }
+        }
+        return first;
     }
 
     /** 机械狼学到的技能今晚能不能用：学的那一晚不能，之后都能。 */
@@ -159,8 +156,9 @@ public final class NightResolver {
         Map<Integer, String> feedback = new LinkedHashMap<>();
         for (Submission submission : submissions) {
             SeatState actor = seats.get(submission.actorSeat());
-            if (submission.kind() == NightKind.WOLF && KILL.equals(submission.action())) {
-                wolfPicks.add(submission.targetSeat());
+            if (submission.kind() == NightKind.WOLF && (KILL.equals(submission.action()) || NONE.equals(submission.action()))) {
+                // 明确空刀记成 null，和别人的目标不一致就是没统一
+                wolfPicks.add(KILL.equals(submission.action()) ? submission.targetSeat() : null);
             }
             if (submission.kind() == NightKind.GUARD && GUARD.equals(submission.action())
                     && (actor == null || !Objects.equals(actor.lastGuardSeat(), submission.targetSeat()))) {
@@ -205,7 +203,7 @@ public final class NightResolver {
                 }
             }
         }
-        Integer knife = wolfPicks.stream().anyMatch(Objects::nonNull) ? tallyKnife(wolfPicks, random) : mechKill;
+        Integer knife = !wolfPicks.isEmpty() ? tallyKnife(wolfPicks) : mechKill;
 
         Integer saved = null;
         Integer poisoned = null;
@@ -388,6 +386,7 @@ public final class NightResolver {
         if (!Objects.equals(witchSeat, targetSeat)) {
             return true;
         }
-        return rules != null && JudgeRules.SELF_SAVE_FIRST_NIGHT.equals(rules.witchSelfSave()) && dayNo <= 1;
+        // roles/女巫.md：全程不可自救，不看房间里存的 witchSelfSave
+        return false;
     }
 }

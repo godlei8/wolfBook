@@ -91,6 +91,10 @@ function dayCue(snapshot, now) {
       return cue(snapshot, `${phase}:${today?.exile?.length || 0}`, [line])
     }
     case 'skill_pending':
+      // 遗言公开：每条遗言轮到时播一次「请 X 号留遗言」
+      if (snapshot.currentPending?.kind === 'last_words') {
+        return cue(snapshot, `words:${snapshot.currentPending.seatNo}:${snapshot.phaseDeadline || ''}`, [`请 ${snapshot.currentPending.seatNo} 号留遗言`])
+      }
       // 房主不是当事人时拿不到 pending；每条待办有自己的截止时间，用它区分同一天的几次待办
       return cue(snapshot, `pending:${snapshot.phaseDeadline || ''}`, ['请出局的玩家在手机上确认'])
     default:

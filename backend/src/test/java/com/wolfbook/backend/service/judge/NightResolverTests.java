@@ -4,7 +4,7 @@ import com.wolfbook.backend.common.ApiException;
 import com.wolfbook.backend.domain.JudgeRules;
 import org.junit.jupiter.api.Test;
 
-import java.util.HashSet;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,24 +26,29 @@ class NightResolverTests {
     private static final Random RANDOM = new Random(1);
 
     @Test
-    void majorityKnifeWins() {
-        assertEquals(3, NightResolver.tallyKnife(List.of(3, 3, 7), RANDOM));
+    void unanimousKnifeStands() {
+        // 选了的狼都指同一个人才算；没交的狼不在列表里，不算（控刀）
+        assertEquals(3, NightResolver.tallyKnife(List.of(3, 3)));
+        assertEquals(3, NightResolver.tallyKnife(List.of(3)));
     }
 
     @Test
-    void tiedKnifeIsRandomAmongTied() {
-        // 相邻的小种子第一次 nextInt(2) 结果一样，所以用同一个随机源连抽多次
-        Random random = new Random(42);
-        Set<Integer> outcomes = new HashSet<>();
-        for (int i = 0; i < 32; i++) {
-            outcomes.add(NightResolver.tallyKnife(List.of(3, 7), random));
-        }
-        assertEquals(Set.of(3, 7), outcomes);
+    void disagreementMeansNoKnife() {
+        // 没统一算空刀：多数也不算、平票也不算
+        assertNull(NightResolver.tallyKnife(List.of(3, 3, 7)));
+        assertNull(NightResolver.tallyKnife(List.of(3, 7)));
+    }
+
+    @Test
+    void explicitNoKillBreaksUnanimity() {
+        // 一只狼明确空刀、另一只刀人：不统一，空刀；都空刀也是空刀
+        assertNull(NightResolver.tallyKnife(Arrays.asList(3, null)));
+        assertNull(NightResolver.tallyKnife(Arrays.asList(null, null)));
     }
 
     @Test
     void noPicksMeansNoKnife() {
-        assertNull(NightResolver.tallyKnife(List.of(), RANDOM));
+        assertNull(NightResolver.tallyKnife(List.of()));
         NightResolver.Outcome outcome = NightResolver.resolve(List.of(), seats(), RULES, 1, RANDOM);
         assertNull(outcome.knifeSeat());
         assertTrue(outcome.deadSeats().isEmpty());
@@ -93,12 +98,13 @@ class NightResolverTests {
     }
 
     @Test
-    void witchMaySaveHerselfOnNightOneWhenRuleAllows() {
+    void witchCannotSaveHerselfEvenWhenAnOldRoomSaysFirstNight() {
+        // roles/女巫.md：全程不可自救；旧房间 rules_json 里的 first_night 补默认值时就换掉了
         JudgeRules firstNight = new JudgeRules("side", true, JudgeRules.SELF_SAVE_FIRST_NIGHT, true, 120, 150).withDefaults();
         Map<Integer, NightResolver.SeatState> seats = seats();
-        NightResolver.validate(save(2, 2), seats.get(2), seats.get(2), firstNight, 1, 2);
-        NightResolver.Outcome outcome = NightResolver.resolve(List.of(kill(5, 2), save(2, 2)), seats, firstNight, 1, RANDOM);
-        assertTrue(outcome.deadSeats().isEmpty());
+        ApiException error = assertThrows(ApiException.class,
+                () -> NightResolver.validate(save(2, 2), seats.get(2), seats.get(2), firstNight, 1, 2));
+        assertEquals(4000, error.getCode());
     }
 
     @Test

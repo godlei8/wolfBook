@@ -47,6 +47,8 @@ function phaseMarks(snapshot, view, selection) {
   } else if (view === 'pending') {
     const panel = pendingPanel(snapshot, selection)
     if (panel.needsTarget) Object.assign(marks, { tappable: panel.targets, selected: selection })
+    // 遗言是公开的：留遗言的人座位亮起（技能询问等不公开，别人的座位上什么都没有）
+    if (panel.kind === 'last_words') marks.speaking = snapshot.currentPending.seatNo || 0
   }
   return marks
 }

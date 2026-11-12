@@ -1,7 +1,7 @@
 // 后台板子工具里和后端同口径的电子法官逻辑（Node 内置测试运行器，Node 23+ 直接加载 .ts）：node --test "tests/*.test.mjs"
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { MECHANIC_LABELS, buildJudgeRules, defaultNightOrder, hasMechWolf, hasWitch, isWolfTeam } from '../src/utils/board.ts'
+import { MECHANIC_LABELS, buildJudgeRules, defaultNightOrder, hasMechWolf, isWolfTeam } from '../src/utils/board.ts'
 
 const role = (id, name, faction, mechanic) => ({ id, name, faction, mechanic })
 
@@ -27,23 +27,17 @@ test('wolfKingAndWolvesShareOneStep', () => {
   assert.deepEqual(steps.map((step) => step.roleId), [6])
 })
 
-test('witchSelfSaveIsSavedOnTheBoardAndOtherRulesAreKept', () => {
-  // 女巫默认不能自救，板子可以设成首夜可以自救；保存时板子原来的节奏项原样带上，别被编辑页冲掉
+test('savingABoardKeepsItsPaceRulesAndDropsTheOldWitchSelfSave', () => {
+  // 女巫全程不可自救是全局规则（通用流程 13），板子上不再存；旧板子存的 first_night 保存时去掉，节奏项原样带上
   const existing = { sheriffDefault: false, speechSeconds: 90, witchSelfSave: 'first_night', witchOnePotionPerNight: true }
-  assert.deepEqual(buildJudgeRules(existing, false), { sheriffDefault: false, speechSeconds: 90, witchSelfSave: 'never' })
-  assert.deepEqual(buildJudgeRules(null, true), { witchSelfSave: 'first_night' })
-})
-
-test('hasWitchLooksAtTheWitchMechanic', () => {
-  const roles = new Map([[2, role(2, '女巫', '好人', 'witch')], [9, role(9, '平民', '好人', 'villager')]])
-  assert.equal(hasWitch([{ roleId: 2, count: 1 }, { roleId: 9, count: 3 }], roles), true)
-  assert.equal(hasWitch([{ roleId: 9, count: 3 }], roles), false)
+  assert.deepEqual(buildJudgeRules(existing), { sheriffDefault: false, speechSeconds: 90 })
+  assert.deepEqual(buildJudgeRules(null), {})
 })
 
 test('poisonBounceIsABoardSpecificRule', () => {
   // 弹毒只存「开」；关掉时把原来存的开去掉，节奏项照旧带上
-  assert.deepEqual(buildJudgeRules({ speechSeconds: 90 }, false, true), { speechSeconds: 90, witchSelfSave: 'never', poisonBounce: true })
-  assert.deepEqual(buildJudgeRules({ speechSeconds: 90, poisonBounce: true }, false, false), { speechSeconds: 90, witchSelfSave: 'never' })
+  assert.deepEqual(buildJudgeRules({ speechSeconds: 90 }, true), { speechSeconds: 90, poisonBounce: true })
+  assert.deepEqual(buildJudgeRules({ speechSeconds: 90, poisonBounce: true }, false), { speechSeconds: 90 })
 })
 
 test('mechWolfIsNotInTheWolfTeamAndWakesFirst', () => {

@@ -4,8 +4,8 @@ package com.wolfbook.backend.domain;
  * 一局电子法官的规则：开局时从板子拷进房间（judge_rooms.rules_json），板子之后再改也不影响进行中的对局。
  * 胜负规则不在这里配，取板子表的 win_condition 列（含「屠城」按屠城，其余按屠边）。
  * 字段允许为空，表示「用默认值」，由 {@link #withDefaults()} 补齐。
- * 女巫自救跟板子走：默认不能自救，板子可以设成「首夜可以自救」，别的写法都按不能自救。
- * 板子配置分两层：通用配置项（节奏：上警、发言、行动时长，建房时房主可调）和板子专属配置项（女巫自救、机械狼弹毒，
+ * 女巫全程不可自救（roles/女巫.md）：补默认值时一律换成 never，板子、建房请求和旧房间 rules_json 里存的 first_night 都不算数。
+ * 板子配置分两层：通用配置项（节奏：上警、发言、行动时长，建房时房主可调）和板子专属配置项（机械狼弹毒，
  * 只在阵容里有对应角色时有意义，默认值写在机制上，建房请求改不了）。
  * 一晚一瓶是全局规则：补默认值时一律换成全局值，板子、建房请求和旧房间 rules_json 里写的别的值都不算数。
  */
@@ -78,7 +78,7 @@ public record JudgeRules(
         return new JudgeRules(
                 winCondition == null ? fallback.winCondition() : winCondition,
                 sheriffDefault == null ? fallback.sheriffDefault() : sheriffDefault,
-                SELF_SAVE_FIRST_NIGHT.equals(witchSelfSave) ? SELF_SAVE_FIRST_NIGHT : SELF_SAVE_NEVER,
+                SELF_SAVE_NEVER,
                 fallback.witchOnePotionPerNight(),
                 speechSeconds == null || speechSeconds <= 0 ? fallback.speechSeconds() : speechSeconds,
                 sheriffSpeechSeconds == null || sheriffSpeechSeconds <= 0 ? fallback.sheriffSpeechSeconds() : sheriffSpeechSeconds,

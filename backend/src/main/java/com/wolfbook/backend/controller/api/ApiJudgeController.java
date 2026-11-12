@@ -71,6 +71,15 @@ public class ApiJudgeController {
         return ApiResponse.success(judgeService.toggleReady(authorization, roomId));
     }
 
+    @PostMapping("/rooms/{roomId}/seat")
+    public ApiResponse<WolfbookDtos.JudgeRoomSnapshotView> changeSeat(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable String roomId,
+            @RequestBody WolfbookDtos.JudgeSeatRequest request
+    ) {
+        return ApiResponse.success(judgeService.changeSeat(authorization, roomId, request));
+    }
+
     @PutMapping("/rooms/{roomId}/rules")
     public ApiResponse<WolfbookDtos.JudgeRoomSnapshotView> updateRules(
             @RequestHeader("Authorization") String authorization,

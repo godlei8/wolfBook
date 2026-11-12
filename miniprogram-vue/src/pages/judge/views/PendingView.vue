@@ -1,6 +1,7 @@
 <script setup>
 // 出局待办：当事人看到技能询问 / 开枪选人 / 移交警徽（点两侧座位选人）；其他人只看到「等待出局玩家确认」，
 // 法官多一行是谁、什么待办。别人的座位上看不出是谁在处理（stageLayout 只给当事人可点的座位）。
+// 遗言公开：所有人看到谁在留遗言和倒计时，本人「结束遗言」、房主「跳过」。
 import { computed, ref, watch } from 'vue'
 import { countdown, phaseTitle } from '../../../utils/judge/room-view.js'
 import { pendingPanel } from '../../../utils/judge/pending.js'
@@ -18,7 +19,10 @@ const props = defineProps({
 const emit = defineEmits(['act', 'fit'])
 
 const selection = ref(0)
-const pendingKey = computed(() => (props.snapshot.pending ? `${props.snapshot.pending.kind}-${props.snapshot.pending.seatNo}` : ''))
+const pendingKey = computed(() => {
+  const item = props.snapshot.pending || props.snapshot.currentPending
+  return item ? `${item.kind}-${item.seatNo}` : ''
+})
 watch(pendingKey, () => {
   selection.value = 0
 })
@@ -77,7 +81,7 @@ function tapButton(button) {
             <text v-if="panel.detail" class="nt-scene__text">{{ panel.detail }}</text>
           </block>
           <block v-else>
-            <text class="nt-scene__kicker">出局</text>
+            <text class="nt-scene__kicker">{{ panel.kind === 'last_words' ? '遗言' : '出局' }}</text>
             <text class="nt-scene__title">{{ panel.title }}</text>
             <block v-if="panel.needsTarget">
               <text class="nt-scene__big">{{ picked || '?' }}</text>
@@ -103,6 +107,7 @@ function tapButton(button) {
         <block v-else>
           <text class="nt-game__lead">{{ panel.title }}</text>
           <text v-if="panel.needsTarget" class="nt-game__hint">点两侧的座位选人，再点下面的按钮。</text>
+          <text v-if="panel.hint" class="nt-game__hint">{{ panel.hint }}</text>
           <view class="nt-game__buttons">
             <view
               v-for="button in panel.buttons"

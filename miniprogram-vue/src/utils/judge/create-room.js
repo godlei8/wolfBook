@@ -51,8 +51,8 @@ export function boardRuleLine(board) {
   const parts = [city ? '屠城' : '屠边']
   const hasWitch = (board?.roles || []).some((role) => role?.name === '女巫')
   if (hasWitch) {
-    // 女巫自救默认不能，板子可以设成首夜可以；一晚一瓶是全局规则
-    parts.push(rules.witchSelfSave === 'first_night' ? '女巫只首夜可自救' : '女巫不能自救', '一晚一瓶')
+    // 全程不可自救、一晚一瓶都是全局规则（roles/女巫.md）
+    parts.push('女巫不能自救', '一晚一瓶')
   }
   return parts.join(' · ')
 }

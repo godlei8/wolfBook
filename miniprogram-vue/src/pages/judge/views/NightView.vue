@@ -23,17 +23,14 @@ const props = defineProps({
 const emit = defineEmits(['act', 'fit'])
 
 const selection = ref(0)
-// 机械狼这一步放进草稿、还没提交的几件事：{ learn: 3, kill: 5 }
-const draft = ref({})
 const stepKey = computed(() => `${props.snapshot.currentDay}-${props.snapshot.currentStep?.index ?? -1}`)
 watch(stepKey, () => {
   selection.value = 0
-  draft.value = {}
 })
 
 const layout = computed(() => stageLayout(props.snapshot, 'night', { selection: selection.value, stageHeight: props.stageHeight }))
 const holder = computed(() => isStepHolder(props.snapshot))
-const panel = computed(() => nightPanel(props.snapshot, selection.value, draft.value))
+const panel = computed(() => nightPanel(props.snapshot, selection.value))
 const title = computed(() => phaseTitle(props.snapshot))
 const clock = computed(() => countdown(props.snapshot.phaseDeadline, props.now, props.snapshot.paused))
 const art = computed(() => nightArt(props.snapshot, props.board))
@@ -52,24 +49,13 @@ function tapSeat(seat) {
 
 function tapButton(button) {
   if (button.disabled || props.busy) return
-  if (button.action === 'pick') {
-    // 机械狼：把这件事放进草稿（再点一次同一个座位就取消）
-    const next = { ...draft.value }
-    if (next[button.slot] === button.target) delete next[button.slot]
-    else next[button.slot] = button.target
-    draft.value = next
-    selection.value = 0
-    return
-  }
-  if (button.action === 'submit') {
-    emit('act', { kind: 'night', actions: button.actions })
-    return
-  }
+  if (button.action === 'reselect') selection.value = 0
   emit('act', { kind: 'night', actionType: button.action, targetSeatNo: button.target || null })
 }
 
-function buttonKey(button) {
-  return button.slot ? `${button.action}-${button.slot}` : button.action
+function buttonClass(button) {
+  const ghost = button.tone !== 'gold' && ['none', 'confirm', 'reselect'].includes(button.action)
+  return [ghost ? 'nt-btn--ghost' : 'nt-btn--gold', { 'nt-btn--disabled': button.disabled || props.busy }]
 }
 </script>
 
@@ -154,9 +140,6 @@ function buttonKey(button) {
             <text class="jn-panel__label">身份</text>
             <text class="jn-panel__value">{{ panel.result }}</text>
           </view>
-          <view v-if="panel.rows.length" class="jn-picks">
-            <text v-for="row in panel.rows" :key="row.slot" class="jn-pick jn-pick--me">{{ row.text }}</text>
-          </view>
         </block>
         <block v-else-if="panel.kind === 'seer' || panel.kind === 'psychic'">
           <view class="jn-panel__row">
@@ -179,9 +162,9 @@ function buttonKey(button) {
         <view class="jn-buttons">
           <view
             v-for="button in panel.buttons"
-            :key="buttonKey(button)"
+            :key="button.action"
             class="nt-btn nt-btn--small jn-button"
-            :class="[button.action === 'none' || button.action === 'confirm' || button.action === 'pick' ? 'nt-btn--ghost' : 'nt-btn--gold', { 'nt-btn--disabled': button.disabled || busy }]"
+            :class="buttonClass(button)"
             @tap="tapButton(button)"
           >{{ button.label }}</view>
         </view>

@@ -1,6 +1,8 @@
 package com.wolfbook.backend.entity;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 
@@ -21,6 +23,17 @@ public class JudgeActionEventEntity {
     private String resultPayloadJson;
     private String visibility;
     private LocalDateTime createTime;
+    /** 写入顺序（自增）。create_time 只到秒，同一秒的事件靠它排；由数据库生成，插入、更新都不写。 */
+    @TableField(insertStrategy = FieldStrategy.NEVER, updateStrategy = FieldStrategy.NEVER)
+    private Long seq;
+
+    public Long getSeq() {
+        return seq;
+    }
+
+    public void setSeq(Long seq) {
+        this.seq = seq;
+    }
 
     public String getEventId() {
         return eventId;

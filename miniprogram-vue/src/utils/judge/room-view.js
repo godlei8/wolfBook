@@ -65,6 +65,12 @@ export function parseServerTime(text) {
   return Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h) - 8, Number(mi), Number(s), ms)
 }
 
+/** 手机时钟和服务器差多少毫秒（服务器减手机）：快照里的 serverNow 换成偏移量，倒计时用「手机时间 + 偏移」。没有或解析不了就不校正。 */
+export function clockOffset(serverNow, localNow) {
+  const server = parseServerTime(serverNow)
+  return server === null ? 0 : server - localNow
+}
+
 export function countdown(deadline, now, paused) {
   const end = parseServerTime(deadline)
   if (end === null) return { seconds: 0, text: '', warn: false }
@@ -107,5 +113,6 @@ export function phaseTitle(snapshot) {
     return roleName ? `第 ${day} 夜 · ${roleName}请睁眼` : `第 ${day} 夜 · 天黑请闭眼`
   }
   if (snapshot.currentPhase === 'sheriff_speech' && day > 1) return `第 ${day} 天 · 昨天的竞选继续`
+  if (snapshot.currentPhase === 'skill_pending' && snapshot.currentPending?.kind === 'last_words') return `第 ${day} 天 · 遗言`
   return `第 ${day} 天 · ${DAY_TITLES[snapshot.currentPhase] || '进行中'}`
 }

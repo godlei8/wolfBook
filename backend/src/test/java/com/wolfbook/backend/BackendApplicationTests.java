@@ -615,7 +615,8 @@ class BackendApplicationTests {
         try {
             mockMvc.perform(get("/api/boards/{id}", boardId))
                     .andExpect(jsonPath("$.code").value(0))
-                    .andExpect(jsonPath("$.data.ruleDetail.judgeRules.witchSelfSave").value("first_night"))
+                    // 全程不可自救：板子里存了 first_night，下发的补好默认值的规则也是 never
+                    .andExpect(jsonPath("$.data.ruleDetail.judgeRules.witchSelfSave").value("never"))
                     .andExpect(jsonPath("$.data.ruleDetail.judgeRules.witchOnePotionPerNight").value(true))
                     .andExpect(jsonPath("$.data.ruleDetail.judgeRules.speechSeconds").value(90));
             // 改回不能自救：规则详情整个空了也要落库（不能因为 null 被跳过、留下旧的首夜可以自救）

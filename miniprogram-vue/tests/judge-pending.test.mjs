@@ -49,3 +49,20 @@ test('shotPanelNeverSaysHunter', () => {
   const texts = [shot.title, shot.detail, judge.title, judge.detail, ...shot.buttons.map((button) => button.label)].filter(Boolean)
   assert.equal(texts.some((text) => text.includes('猎人')), false, texts.join(' / '))
 })
+
+test('lastWordsAreOpenToEveryone', () => {
+  // 通用流程 12：遗言全场可见（currentPending）；本人「结束遗言」，房主可以「跳过」，其他人只看
+  const words = { kind: 'last_words', seatNo: 3, options: ['skip'], deadline: '2026-11-12T20:02:00' }
+  const own = pendingPanel(room({ seatNo: 3 }, words, { currentPending: words }))
+  assert.equal(own.kind, 'last_words')
+  assert.equal(own.title, '请留遗言')
+  assert.deepEqual(own.buttons.map((button) => [button.decision, button.label]), [['skip', '结束遗言']])
+  const host = pendingPanel(room({ seatNo: 4 }, null, { currentPending: words, host: true }))
+  assert.equal(host.title, '3 号留遗言')
+  assert.deepEqual(host.buttons.map((button) => [button.decision, button.label]), [['skip', '跳过']])
+  const other = pendingPanel(room({ seatNo: 5 }, null, { currentPending: words }))
+  assert.equal(other.kind, 'last_words')
+  assert.equal(other.title, '3 号留遗言')
+  assert.deepEqual(other.buttons, [])
+  assert.equal(other.needsTarget, false)
+})

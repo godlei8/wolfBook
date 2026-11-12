@@ -117,7 +117,7 @@ export interface RuleSection {
 
 /**
  * 电子法官规则（后端 domain/JudgeRules）：没写的项用默认值。
- * 通用配置项：上警默认值、发言 / 警上发言 / 狼队 / 单人行动时长。板子专属配置项：女巫自救（默认 never）、机械狼弹毒（默认关）。
+ * 通用配置项：上警默认值、发言 / 警上发言 / 狼队 / 单人行动时长。板子专属配置项：机械狼弹毒（默认关）。witchSelfSave 只是旧板子里可能还存着的值，后端一律按不能自救。
  */
 export interface BoardJudgeRules {
   sheriffDefault?: boolean | null

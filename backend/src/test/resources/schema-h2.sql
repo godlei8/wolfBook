@@ -276,6 +276,7 @@ CREATE TABLE judge_rooms (
   step_deadline TIMESTAMP,
   phase_data CLOB,
   rules_json CLOB,
+  board_snapshot CLOB,
   create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -320,5 +321,6 @@ CREATE TABLE judge_action_events (
   payload_json CLOB,
   result_payload_json CLOB,
   visibility VARCHAR(20) DEFAULT 'public',
-  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  seq BIGINT AUTO_INCREMENT UNIQUE
 );

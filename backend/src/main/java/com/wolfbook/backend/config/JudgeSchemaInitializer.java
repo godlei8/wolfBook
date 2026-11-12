@@ -72,6 +72,7 @@ public class JudgeSchemaInitializer implements ApplicationRunner {
                   step_deadline DATETIME,
                   phase_data JSON,
                   rules_json JSON,
+                  board_snapshot JSON,
                   create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
                   update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                 )
@@ -120,7 +121,8 @@ public class JudgeSchemaInitializer implements ApplicationRunner {
                   payload_json JSON,
                   result_payload_json JSON,
                   visibility VARCHAR(20) NOT NULL DEFAULT 'public',
-                  create_time DATETIME DEFAULT CURRENT_TIMESTAMP
+                  create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+                  seq BIGINT NOT NULL AUTO_INCREMENT UNIQUE
                 )
                 """);
     }

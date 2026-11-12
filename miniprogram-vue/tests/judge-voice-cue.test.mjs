@@ -79,6 +79,9 @@ test('secondVoteResultAndSecondPendingOfTheDayAreStillSpoken', () => {
   assert.deepEqual(second.lines, ['4 号被放逐'])
   const pending = (deadline) => voiceCue({ ...base, currentPhase: 'skill_pending', pending: null, phaseDeadline: deadline, rounds: [] }, NOW)
   assert.notEqual(pending('2026-10-30T20:00:10').key, pending('2026-10-30T20:03:10').key, '房主不是当事人时，两次待办也要各播一次')
+  const words = voiceCue({ ...base, currentPhase: 'skill_pending', phaseDeadline: '2026-10-30T20:02:00', rounds: [],
+    currentPending: { kind: 'last_words', seatNo: 6, deadline: '2026-10-30T20:02:00' } }, NOW)
+  assert.deepEqual(words.lines, ['请 6 号留遗言'])
 })
 
 test('shortSpeechesStillNameTheSpeaker', () => {

@@ -497,21 +497,16 @@ public final class WolfbookDtos {
     ) {
     }
 
-    /**
-     * 夜间行动。actions 不为空时是机械狼一次提交多个行动（学习 + 刀口、技能 + 刀口、两刀），此时忽略 actionType / targetSeatNo。
-     */
+    /** 夜间行动：一次一件事（机械狼的刀口在狼人那一步，自己那一步只做学习或学到的技能）。 */
     public record JudgeNightActionRequest(
             @Size(max = 50, message = "actionType is too long") String actionType,
             Integer targetSeatNo,
             @Size(max = 500, message = "note is too long") String note,
-            Integer actorSeatNo,
-            @Size(max = 4, message = "too many actions") List<@Valid JudgeNightActionItem> actions
+            Integer actorSeatNo
     ) {
-        public JudgeNightActionRequest(String actionType, Integer targetSeatNo, String note, Integer actorSeatNo) {
-            this(actionType, targetSeatNo, note, actorSeatNo, null);
-        }
     }
 
+    /** 机械狼快照里自己今晚交过的行动（myActions）。 */
     public record JudgeNightActionItem(
             @Size(max = 50, message = "actionType is too long") String actionType,
             Integer targetSeatNo
@@ -520,6 +515,18 @@ public final class WolfbookDtos {
 
     /** targetSeatNo 为空表示弃票。 */
     public record JudgeVoteRequest(Integer targetSeatNo) {
+    }
+
+    /** 大厅换座：move 换到空位；request 申请和这个座位的人换；accept / reject 处理 seatNo 号发来的申请；cancel 撤回自己的申请。 */
+    public record JudgeSeatRequest(String action, Integer seatNo) {
+    }
+
+    /** 换座申请的一方：座位号、昵称、申请到几点失效。 */
+    public record JudgeSeatSwapItem(int seatNo, String nickname, LocalDateTime deadline) {
+    }
+
+    /** 只给申请双方：outgoing 是我发出去等对方同意的，incoming 是别人发给我等我处理的。 */
+    public record JudgeSeatSwapView(JudgeSeatSwapItem outgoing, JudgeSeatSwapItem incoming) {
     }
 
     public record JudgeRoomSummaryView(
@@ -662,7 +669,13 @@ public final class WolfbookDtos {
             /** 白天只给查看者本人的信息（上警报名、投票）；不在这些阶段为 null。 */
             JudgeDayInfoView dayInfo,
             /** 今天有人警上自爆：公布完死讯（和死者的待办）直接天黑，房主的操作是「天黑」而不是「开始发言」。 */
-            boolean nightNext
+            boolean nightNext,
+            /** 全场可见的当前待办：只有遗言（kind = last_words，谁在说、到几点）；技能询问、开枪、移交警徽不公开，为 null。 */
+            JudgePendingView currentPending,
+            /** 大厅里本人的换座申请（发出的、收到的）；不在大厅或没有申请时为 null。 */
+            JudgeSeatSwapView seatSwap,
+            /** 服务器当前时间（北京时间）：手机按它校正倒计时，不看自己的时钟。 */
+            LocalDateTime serverNow
     ) {
     }
 
@@ -693,11 +706,13 @@ public final class WolfbookDtos {
                                      String identityResult,
                                      /** 以下只给机械狼本人：带没带刀、学到的机制和对方角色名、学到的技能今晚能不能用、学来的毒还在不在、今晚提交的全部行动。 */
                                      Boolean armed, String learned, String learnedRole, Boolean learnedEffective, Boolean mechPoison,
-                                     List<JudgeNightActionItem> myActions) {
+                                     List<JudgeNightActionItem> myActions,
+                                     /** 狼人那一步本人点没点确定（这一步交过的人才有，其他时候为 null）。 */
+                                     Boolean myConfirmed) {
     }
 
-    /** decided：这只狼今晚交过刀人或空刀；targetSeatNo 为 null 且 decided 为 true 即空刀，decided 为 false 是还没选。 */
-    public record JudgeWolfPickView(int seatNo, Integer targetSeatNo, boolean decided) {
+    /** decided：这只狼今晚交过刀人或空刀；targetSeatNo 为 null 且 decided 为 true 即空刀，decided 为 false 是还没选。confirmed：点了确定。 */
+    public record JudgeWolfPickView(int seatNo, Integer targetSeatNo, boolean decided, boolean confirmed) {
     }
 
     /** 出局待办（只发给当事人和法官）：skill_ask 技能询问 / hunter_shot 开枪选人 / badge 移交警徽；options 是 use / skip。 */

@@ -132,7 +132,7 @@ const savedSeats = computed(() => actionTargets(isWitch, '解药'))
 const poisonSeats = computed(() => actionTargets(isWitch, '毒药'))
 const guardSeats = computed(() => actionTargets(() => true, '守护'))
 const potions = computed(() => witchPotions(snapshot.value?.nightHistory || [], witchSeats.value))
-// 女巫自救跟板子走：默认不能自救，设了首夜可以自救的只有第一夜能
+// 女巫全程不可自救（roles/女巫.md）
 const witchKnifed = computed(() => knifeSeats.value.some((seat) => witchSeats.value.includes(seat)))
 const canSave = computed(() => potions.value.antidote > 0 && knifeSeats.value.length > 0 && (witchSelfSaveAllowed(snapshot.value) || !witchKnifed.value))
 // 天亮时建议的出局座位：刀口（被救或被守则幸免，同守同救照样出局）+ 毒药目标

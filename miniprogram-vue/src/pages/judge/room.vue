@@ -17,7 +17,7 @@ import LogSheet from './views/LogSheet.vue'
 import api from '../../services/api'
 import storage from '../../services/storage'
 import { mergePollResult, pollInterval } from '../../utils/judge/room-poll.js'
-import { navTitle, pickView } from '../../utils/judge/room-view.js'
+import { clockOffset, navTitle, pickView } from '../../utils/judge/room-view.js'
 import { identityCard } from '../../utils/judge/identity.js'
 import { judgeActions, pausedOverlay } from '../../utils/judge/judge-bar.js'
 import { hostActions } from '../../utils/judge/day.js'
@@ -37,6 +37,8 @@ const stageHeight = ref(0)
 
 // 倒计时用的本地时钟，每秒走一下（只是重画，不发请求）
 const now = ref(Date.now())
+// 手机时钟和服务器的差（毫秒），每次拿到快照按 serverNow 校正；倒计时都用「手机时间 + 偏移」
+let serverOffset = 0
 
 // 房主手机播报：同一个 key 只播一次，播过的 key 存本地（切后台、断网重连回来不重播）
 const voicePlayer = createJudgeVoicePlayer()
@@ -106,6 +108,10 @@ function applySnapshot(data) {
     return
   }
   snapshot.value = data
+  if (data.serverNow) {
+    serverOffset = clockOffset(data.serverNow, Date.now())
+    now.value = Date.now() + serverOffset
+  }
   storage.clearPendingJudgeInvite()
   loadBoard(data.boardId)
   narrate()
@@ -229,9 +235,9 @@ function stopVoice() {
 
 function startClock() {
   stopClock()
-  now.value = Date.now()
+  now.value = Date.now() + serverOffset
   clockTimer = setInterval(() => {
-    now.value = Date.now()
+    now.value = Date.now() + serverOffset
     narrate()
   }, 1000)
 }
@@ -281,13 +287,12 @@ function onAct(event) {
     unready: () => api.toggleJudgeReady(id),
     start: () => api.startJudgeRoom(id),
     rules: () => api.updateJudgeRoomRules(id, event.rules),
-    night: () => api.submitJudgeNightAction(id, event.actions
-      ? { actions: event.actions }
-      : { actionType: event.actionType, targetSeatNo: event.targetSeatNo }),
+    night: () => api.submitJudgeNightAction(id, { actionType: event.actionType, targetSeatNo: event.targetSeatNo }),
     advance: () => api.advanceJudgeRoom(id, event.payload),
     skill: () => api.submitJudgeSkill(id, { decision: event.decision, targetSeatNo: event.targetSeatNo }),
     sheriff: () => api.submitJudgeSheriff(id, event.payload),
     vote: () => api.submitJudgeVote(id, { targetSeatNo: event.targetSeatNo }),
+    seat: () => api.changeJudgeSeat(id, event.payload),
     selfDestruct: () => api.selfDestructJudge(id),
   }
   const task = tasks[event?.kind]
@@ -313,7 +318,7 @@ function tapHostItem(item) {
 function confirmSelfDestruct() {
   uni.showModal({
     title: '自爆',
-    content: '确定自爆？自爆后直接出局，没有遗言',
+    content: '确定自爆？自爆后直接出局，有 60 秒遗言',
     confirmText: '自爆',
     success: (result) => {
       if (!result.confirm) return
@@ -405,7 +410,7 @@ onUnload(() => {
     </view>
     <view v-if="!snapshot && roomGone" class="jr-loading">房间不存在或已经关闭</view>
     <view v-else-if="!snapshot" class="jr-loading">正在进入房间…</view>
-    <LobbyView v-else-if="view === 'lobby'" :snapshot="snapshot" :board="board" :busy="actionLoading" @act="onAct" />
+    <LobbyView v-else-if="view === 'lobby'" :snapshot="snapshot" :board="board" :now="now" :busy="actionLoading" @act="onAct" />
     <NightView v-else-if="view === 'night'" :snapshot="snapshot" :board="board" :now="now" :busy="actionLoading" :stage-height="stageHeight" :bar="hasBar" @fit="stageHeight = $event" @act="onAct" />
     <PendingView v-else-if="view === 'pending'" :snapshot="snapshot" :now="now" :busy="actionLoading" :stage-height="stageHeight" :bar="hasBar" @fit="stageHeight = $event" @act="onAct" />
     <SheriffView v-else-if="view === 'sheriff'" :snapshot="snapshot" :now="now" :busy="actionLoading" :stage-height="stageHeight" :bar="hasBar" @fit="stageHeight = $event" @act="onAct" />
