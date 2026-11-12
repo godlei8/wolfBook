@@ -521,12 +521,14 @@ public class AdminService {
             throw new ApiException(4000, "法官规则取值不合法");
         }
         // 女巫自救只存「首夜可以自救」（不能自救是默认值，不用存）；一晚一瓶是全局规则，板子上不存
+        // 弹毒只存「开」（不开是默认值）
         JudgeRules normalized = new JudgeRules(null, input.sheriffDefault(),
                 JudgeRules.SELF_SAVE_FIRST_NIGHT.equals(selfSave) ? selfSave : null, null,
-                input.speechSeconds(), input.sheriffSpeechSeconds(), input.wolfSeconds(), input.roleSeconds());
+                input.speechSeconds(), input.sheriffSpeechSeconds(), input.wolfSeconds(), input.roleSeconds(),
+                Boolean.TRUE.equals(input.poisonBounce()) ? Boolean.TRUE : null);
         boolean empty = normalized.sheriffDefault() == null && normalized.witchSelfSave() == null && normalized.speechSeconds() == null
                 && normalized.sheriffSpeechSeconds() == null && normalized.wolfSeconds() == null
-                && normalized.roleSeconds() == null;
+                && normalized.roleSeconds() == null && normalized.poisonBounce() == null;
         return empty ? null : normalized;
     }
 

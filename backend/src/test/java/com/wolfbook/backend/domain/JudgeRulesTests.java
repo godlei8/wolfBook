@@ -22,6 +22,15 @@ class JudgeRulesTests {
     }
 
     @Test
+    void poisonBounceDefaultsToFalse() {
+        assertFalse(JudgeRules.defaults().poisonBounce());
+        assertFalse(new JudgeRules(null, null, null, null, null, null, null, null).withDefaults().poisonBounce());
+        assertTrue(new JudgeRules(null, null, null, null, null, null, null, null, true).withDefaults().poisonBounce());
+        assertTrue(JudgeRules.resolve(new BoardRuleDetail(null, List.of(), List.of(), List.of(),
+                new JudgeRules(null, null, null, null, null, null, null, null, true)), null).poisonBounce());
+    }
+
+    @Test
     void defaultsIncludeActionSeconds() {
         JudgeRules rules = JudgeRules.defaults();
         assertEquals(60, rules.wolfSeconds());

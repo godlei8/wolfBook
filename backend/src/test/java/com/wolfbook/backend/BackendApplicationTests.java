@@ -635,6 +635,41 @@ class BackendApplicationTests {
     }
 
     @Test
+    void boardSavesThePoisonBounceSwitch() throws Exception {
+        String adminToken = loginAndGetAdminToken();
+        String body = """
+                {
+                  "name": "弹毒板",
+                  "playerCount": 6,
+                  "difficulty": "入门",
+                  "roles": [{"roleId": 6, "count": 2}, {"roleId": 2, "count": 1}, {"roleId": 9, "count": 3}],
+                  "ruleDetail": {"judgeRules": {"poisonBounce": true}}
+                }
+                """;
+        String created = mockMvc.perform(post("/admin/boards")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        int boardId = objectMapper.readTree(created).path("data").path("id").asInt();
+        try {
+            mockMvc.perform(get("/api/boards/{id}", boardId))
+                    .andExpect(jsonPath("$.data.ruleDetail.judgeRules.poisonBounce").value(true));
+            mockMvc.perform(put("/admin/boards/{id}", boardId)
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body.replace("\"poisonBounce\": true", "\"poisonBounce\": false")))
+                    .andExpect(jsonPath("$.code").value(0));
+            mockMvc.perform(get("/api/boards/{id}", boardId))
+                    .andExpect(jsonPath("$.data.ruleDetail.judgeRules.poisonBounce").value(false));
+        } finally {
+            mockMvc.perform(delete("/admin/boards/{id}", boardId).header("Authorization", "Bearer " + adminToken))
+                    .andExpect(jsonPath("$.code").value(0));
+        }
+    }
+
+    @Test
     void adminBoardSaveRejectsAWitchWakingBeforeTheWolves() throws Exception {
         String adminToken = loginAndGetAdminToken();
         String witchFirst = """

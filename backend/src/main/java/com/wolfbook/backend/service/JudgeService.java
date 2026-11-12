@@ -1164,7 +1164,7 @@ public class JudgeService {
 
     /**
      * 把房间规则（节奏项）合并到底稿上：为空的项保持原值，超范围 4000。上警开关记在 sheriffDefault 里（快照里能看到本局开没开）。
-     * 胜负、女巫自救、一晚一瓶是玩法规则，永远取底稿（板子）的。
+     * 胜负、女巫自救、一晚一瓶、弹毒是玩法规则，永远取底稿（板子）的。
      */
     private JudgeRules applyRoomRules(JudgeRules base, WolfbookDtos.JudgeRoomRulesInput input, Boolean sheriffEnabled) {
         JudgeRules rules = base.withDefaults();
@@ -1182,7 +1182,8 @@ public class JudgeService {
                 input != null && input.speechSeconds() != null ? input.speechSeconds() : rules.speechSeconds(),
                 input != null && input.sheriffSpeechSeconds() != null ? input.sheriffSpeechSeconds() : rules.sheriffSpeechSeconds(),
                 input != null && input.wolfSeconds() != null ? input.wolfSeconds() : rules.wolfSeconds(),
-                input != null && input.roleSeconds() != null ? input.roleSeconds() : rules.roleSeconds()
+                input != null && input.roleSeconds() != null ? input.roleSeconds() : rules.roleSeconds(),
+                rules.poisonBounce()
         );
     }
 
