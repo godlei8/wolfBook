@@ -2038,6 +2038,103 @@ class JudgeFlowIntegrationTests {
         Assertions.assertFalse(game.player(day, second).path("alive").asBoolean(), day.toString());
     }
 
+    /** 一直到点，直到当前步骤是 kind（最多 8 步）。 */
+    private JsonNode untilStep(Game game, String kind) throws Exception {
+        JsonNode view = game.snapshot(game.host);
+        for (int i = 0; i < 8 && !kind.equals(view.path("currentStep").path("kind").asText()); i++) {
+            view = game.expireDeadline();
+        }
+        Assertions.assertEquals(kind, view.path("currentStep").path("kind").asText(), view.toString());
+        return view;
+    }
+
+    @Test
+    void psychicSeesTheExactRoleAtOnce() throws Exception {
+        Game game = mechWolfGame();
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int psychic = seats.get("通灵师").get(0);
+        untilStep(game, "psychic");
+        game.act(psychic, "check", seats.get("狼人").get(0));
+        JsonNode info = game.snapshot(game.players.get(psychic - 1)).path("nightInfo");
+        Assertions.assertEquals("狼人", info.path("identityResult").asText(), info.toString());
+        Assertions.assertTrue(info.path("checkResult").isNull() || info.path("checkResult").isMissingNode(), info.toString());
+    }
+
+    @Test
+    void psychicSeesTheLearnedRoleOfTheMechWolf() throws Exception {
+        Game learned = mechWolfGame();
+        Map<String, List<Integer>> seats = learned.seatsByRole();
+        int mech = seats.get("机械狼").get(0);
+        int psychic = seats.get("通灵师").get(0);
+        Assertions.assertEquals(0, nightMulti(learned, mech, "[" + act("learn", seats.get("女巫").get(0)) + "]").path("code").asInt());
+        untilStep(learned, "psychic");
+        learned.act(psychic, "check", mech);
+        Assertions.assertEquals("女巫", learned.snapshot(learned.players.get(psychic - 1)).path("nightInfo").path("identityResult").asText());
+
+        Game plain = mechWolfGame();
+        Map<String, List<Integer>> plainSeats = plain.seatsByRole();
+        untilStep(plain, "psychic");
+        plain.act(plainSeats.get("通灵师").get(0), "check", plainSeats.get("机械狼").get(0));
+        Assertions.assertEquals("机械狼",
+                plain.snapshot(plain.players.get(plainSeats.get("通灵师").get(0) - 1)).path("nightInfo").path("identityResult").asText());
+    }
+
+    @Test
+    void mechWolfNightInfoIsOnlyForItself() throws Exception {
+        Game game = mechWolfGame();
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int mech = seats.get("机械狼").get(0);
+        JsonNode mine = game.snapshot(game.players.get(mech - 1));
+        Assertions.assertEquals("mech_wolf", mine.path("currentStep").path("kind").asText());
+        Assertions.assertFalse(mine.path("nightInfo").path("armed").asBoolean(true), mine.path("nightInfo").toString());
+        Assertions.assertTrue(mine.path("nightInfo").path("learned").isNull() || mine.path("nightInfo").path("learned").isMissingNode());
+        String deadline = mine.path("currentStep").path("deadline").asText();
+        for (int seat = 1; seat <= 12; seat++) {
+            if (seat == mech) {
+                continue;
+            }
+            JsonNode view = game.snapshot(game.players.get(seat - 1));
+            JsonNode info = view.path("nightInfo");
+            Assertions.assertTrue(info.path("armed").isNull() || info.path("armed").isMissingNode(), seat + "号看到了机械狼的信息：" + info);
+            Assertions.assertTrue(info.path("learned").isNull() || info.path("learned").isMissingNode(), info.toString());
+            Assertions.assertEquals(deadline, view.path("currentStep").path("deadline").asText(), "机械狼那一步所有人同一个截止时间");
+        }
+    }
+
+    @Test
+    void mechWolfLearningShowsTheTargetsRole() throws Exception {
+        Game game = mechWolfGame();
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int mech = seats.get("机械狼").get(0);
+        int guard = seats.get("守卫").get(0);
+        nightMulti(game, mech, "[" + act("learn", guard) + "]");
+        JsonNode info = game.snapshot(game.players.get(mech - 1)).path("nightInfo");
+        Assertions.assertEquals(guard, info.path("checkedSeat").asInt(), info.toString());
+        Assertions.assertEquals("守卫", info.path("identityResult").asText(), info.toString());
+        Assertions.assertEquals("learn", info.path("myActions").path(0).path("actionType").asText(), info.toString());
+    }
+
+    @Test
+    void mechWolfWithTheHunterSkillShoots() throws Exception {
+        Game exiled = mechWolfGame();
+        Map<String, List<Integer>> seats = exiled.seatsByRole();
+        int mech = seats.get("机械狼").get(0);
+        nightMulti(exiled, mech, "[" + act("learn", seats.get("猎人").get(0)) + "]");
+        exiled.finishNight();
+        exile(exiled, seats.get("平民"), mech);
+        Assertions.assertEquals("[\"use\",\"skip\"]", exiled.snapshot(exiled.players.get(mech - 1)).path("pending").path("options").toString(),
+                "学到猎人的机械狼被放逐可以开枪");
+
+        Game poisoned = mechWolfGame();
+        Map<String, List<Integer>> poisonSeats = poisoned.seatsByRole();
+        int poisonedMech = poisonSeats.get("机械狼").get(0);
+        nightMulti(poisoned, poisonedMech, "[" + act("learn", poisonSeats.get("猎人").get(0)) + "]");
+        JsonNode day = poisoned.finishNight(null, poisonedMech);
+        Assertions.assertFalse(poisoned.player(day, poisonedMech).path("alive").asBoolean(), day.toString());
+        Assertions.assertEquals("[\"skip\"]", poisoned.snapshot(poisoned.players.get(poisonedMech - 1)).path("pending").path("options").toString(),
+                "学猎人的当晚被女巫毒死：不能开枪");
+    }
+
     // ---- helpers ----
 
     /** 种子板子 2「预女猎白」：12 人，4 狼、预言家、女巫、猎人、白痴、4 平民；夜间顺序 狼人 → 女巫 → 预言家 → 猎人。 */

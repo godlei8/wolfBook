@@ -686,7 +686,12 @@ public final class WolfbookDtos {
                                      /** 守卫上一夜守的座位（不能连守；其他人为 null）。 */
                                      Integer lastGuardSeat,
                                      /** 本人今晚最后一次提交的行动（英文 kill / guard / save / poison / check / confirm / none）和目标。 */
-                                     String myAction, Integer myTarget) {
+                                     String myAction, Integer myTarget,
+                                     /** 通灵师（或学到通灵师的机械狼）查验 / 机械狼学习看到的具体身份（角色名），对应 checkedSeat。 */
+                                     String identityResult,
+                                     /** 以下只给机械狼本人：带没带刀、学到的机制和对方角色名、学到的技能今晚能不能用、学来的毒还在不在、今晚提交的全部行动。 */
+                                     Boolean armed, String learned, String learnedRole, Boolean learnedEffective, Boolean mechPoison,
+                                     List<JudgeNightActionItem> myActions) {
     }
 
     /** decided：这只狼今晚交过刀人或空刀；targetSeatNo 为 null 且 decided 为 true 即空刀，decided 为 false 是还没选。 */

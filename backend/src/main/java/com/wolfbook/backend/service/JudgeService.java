@@ -731,6 +731,13 @@ public class JudgeService {
         Integer lastGuardSeat = null;
         String myAction = null;
         Integer myTarget = null;
+        String identityResult = null;
+        Boolean armed = null;
+        String learned = null;
+        String learnedRole = null;
+        Boolean learnedEffective = null;
+        Boolean mechPoison = null;
+        List<WolfbookDtos.JudgeNightActionItem> myActions = null;
         boolean night = ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) && PHASE_NIGHT_ACTION.equals(room.getCurrentPhase())
                 && room.getNightStep() != null;
         if (night && alive) {
@@ -771,6 +778,40 @@ public class JudgeService {
                 myAction = mine.action();
                 myTarget = mine.targetSeat();
             }
+            if (mechanic == Mechanic.PSYCHIC || mechanic == Mechanic.MECH_WOLF) {
+                // 通灵师查验、机械狼学习 / 学到通灵师后的查验：提交后立刻看到对方的具体身份
+                Map<Integer, NightResolver.SeatState> seats = seatStates(players);
+                NightResolver.SeatState me = seats.get(self.getSeatNo());
+                int dayNo = safeInt(room.getCurrentDay(), 1);
+                NightResolver.Submission look = submissions.stream()
+                        .filter(submission -> submission.actorSeat() == self.getSeatNo() && submission.targetSeat() != null
+                                && (NightResolver.LEARN.equals(submission.action())
+                                || (NightResolver.CHECK.equals(submission.action())
+                                && (mechanic == Mechanic.PSYCHIC || (me != null && me.learned() == Mechanic.PSYCHIC
+                                && NightResolver.learnedEffective(me, dayNo))))))
+                        .findFirst().orElse(null);
+                if (look != null) {
+                    checkedSeat = look.targetSeat();
+                    NightResolver.SeatState target = seats.get(look.targetSeat());
+                    identityResult = NightResolver.LEARN.equals(look.action())
+                            ? (target == null ? "" : target.roleName())
+                            : NightResolver.identityOf(target, submissions, seats);
+                }
+                if (mechanic == Mechanic.MECH_WOLF && me != null) {
+                    armed = NightResolver.armed(seats);
+                    learned = me.learned() == null ? null : me.learned().code();
+                    learnedRole = me.learnedRoleName();
+                    learnedEffective = NightResolver.learnedEffective(me, dayNo);
+                    mechPoison = me.learned() == Mechanic.WITCH ? me.mechPoisonLeft() : null;
+                    if (me.learned() == Mechanic.GUARD) {
+                        lastGuardSeat = me.lastGuardSeat();
+                    }
+                    myActions = submissions.stream()
+                            .filter(submission -> submission.actorSeat() == self.getSeatNo())
+                            .map(submission -> new WolfbookDtos.JudgeNightActionItem(submission.action(), submission.targetSeat()))
+                            .toList();
+                }
+            }
             if (mechanic == Mechanic.SEER) {
                 NightResolver.Submission check = submissions.stream()
                         .filter(submission -> submission.actorSeat() == self.getSeatNo() && NightResolver.CHECK.equals(submission.action()))
@@ -783,11 +824,12 @@ public class JudgeService {
             }
         }
         if (teammates.isEmpty() && picks.isEmpty() && knifeSeat == null && checkedSeat == null
-                && antidote == null && lastGuardSeat == null && myAction == null) {
+                && antidote == null && lastGuardSeat == null && myAction == null && armed == null) {
             return null;
         }
         return new WolfbookDtos.JudgeNightInfoView(teammates, picks, knifeSeat, checkedSeat, checkResult,
-                antidote, poison, lastGuardSeat, myAction, myTarget);
+                antidote, poison, lastGuardSeat, myAction, myTarget, identityResult, armed, learned, learnedRole,
+                learnedEffective, mechPoison, myActions);
     }
 
     private WolfbookDtos.JudgeSpeechView speechView(JudgeRoomEntity room) {
@@ -2240,8 +2282,10 @@ public class JudgeService {
         if (player == null) {
             return List.of("skip");
         }
-        boolean shooter = mechanicOf(player).map(Mechanic::canShoot).orElse(false);
-        boolean canShoot = !Boolean.FALSE.equals(readMap(player.getStatusJson()).get("canShoot"));
+        Map<String, Object> status = readMap(player.getStatusJson());
+        boolean shooter = mechanicOf(player).map(Mechanic::canShoot).orElse(false)
+                || (mechanicOf(player).orElse(null) == Mechanic.MECH_WOLF && "hunter".equals(asString(status.get("mechLearned"))));
+        boolean canShoot = !Boolean.FALSE.equals(status.get("canShoot"));
         return shooter && canShoot ? List.of("use", "skip") : List.of("skip");
     }
 

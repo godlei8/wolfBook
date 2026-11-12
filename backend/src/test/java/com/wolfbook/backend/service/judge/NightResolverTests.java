@@ -448,6 +448,12 @@ class NightResolverTests {
         assertTrue(NightResolver.resolve(List.of(kill(5, 6)), seats, RULES, 2, RANDOM).cannotShoot().isEmpty());
     }
 
+    @Test
+    void mechWolfLearningTheHunterAndPoisonedTheSameNightCannotShoot() {
+        Map<Integer, NightResolver.SeatState> seats = seats08(null, null, null, true);
+        assertEquals(Set.of(6), NightResolver.resolve(List.of(mechAct("learn", 3), poison(2, 6)), seats, RULES, 1, RANDOM).cannotShoot());
+    }
+
     private static Mechanic mechanicOf(String roleName) {
         return RoleSkillRegistry.legacyMechanic(roleName).orElse(null);
     }

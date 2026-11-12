@@ -268,8 +268,10 @@ public final class NightResolver {
             if (target == null) {
                 continue;
             }
+            Learned learnedNow = learnedTonight.get(seat);
             boolean shooter = (target.mechanic() != null && target.mechanic().canShoot())
-                    || (target.mechanic() == Mechanic.MECH_WOLF && target.learned() == Mechanic.HUNTER);
+                    || (target.mechanic() == Mechanic.MECH_WOLF && (target.learned() == Mechanic.HUNTER
+                    || (learnedNow != null && learnedNow.mechanic() == Mechanic.HUNTER)));
             if ((poisonDead.contains(seat) && shooter) || target.mechanic() == Mechanic.WOLF_KING) {
                 cannotShoot.add(seat);
             }
