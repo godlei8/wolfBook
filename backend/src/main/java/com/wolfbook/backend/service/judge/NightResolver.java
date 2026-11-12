@@ -17,11 +17,11 @@ import java.util.TreeSet;
  * 一夜的结算，纯函数：输入今晚的提交和座位状态，输出死亡名单和每个人的私密反馈。规则口径是 docs/judge/house-rules/：
  * <ul>
  *   <li>普通刀口：狼队按票数取多数、平票随机、都没选是空刀；狼队全出局后由机械狼（带刀）出。</li>
- *   <li>守护（真守卫、学到守卫的机械狼）或解药单独救得活普通刀；既被守又被救照死。</li>
+ *   <li>守护（守卫、学到守卫的机械狼）或解药单独救得活普通刀；既被守又被救照死。</li>
  *   <li>破盾刀（学到狼人的带刀机械狼）无视所有守护；和普通刀同一人时女巫用了解药也照死、解药照耗。</li>
- *   <li>女巫的毒：被真守卫守挡住；被学守卫的机械狼守挡住，板子开了「弹毒」时毒反弹给女巫（守卫挡不住弹回去的毒）。</li>
+ *   <li>女巫的毒：守卫挡不住；只有学到守卫的机械狼守的人挡得住，板子开了「弹毒」时毒反弹给女巫。</li>
  *   <li>学到女巫的机械狼的毒：谁也挡不住，女巫看不到。</li>
- *   <li>被毒死的猎人 / 狼王 / 学到猎人的机械狼不能开枪；狼王夜里死都不能开枪。</li>
+ *   <li>被毒死的猎人 / 狼王 / 学到猎人的机械狼不能开枪（被刀照样能开）。</li>
  *   <li>机械狼学到的技能从下一晚起生效（学到猎人的开枪除外）。</li>
  * </ul>
  */
@@ -251,7 +251,8 @@ public final class NightResolver {
                     dead.add(poisoner);
                     poisonDead.add(poisoner);
                 }
-            } else if (!Objects.equals(poisoned, guarded)) {
+            } else {
+                // 守卫只挡狼刀，挡不住毒（2026-11-12 用户改定）
                 dead.add(poisoned);
                 poisonDead.add(poisoned);
             }
@@ -261,7 +262,7 @@ public final class NightResolver {
             poisonDead.add(mechPoisoned);
         }
 
-        // 3. 不能开枪：被毒死的开枪角色；狼王夜里死都不能开枪
+        // 3. 不能开枪：被毒死的开枪角色
         Set<Integer> cannotShoot = new TreeSet<>();
         for (Integer seat : dead) {
             SeatState target = seats.get(seat);
@@ -272,7 +273,7 @@ public final class NightResolver {
             boolean shooter = (target.mechanic() != null && target.mechanic().canShoot())
                     || (target.mechanic() == Mechanic.MECH_WOLF && (target.learned() == Mechanic.HUNTER
                     || (learnedNow != null && learnedNow.mechanic() == Mechanic.HUNTER)));
-            if ((poisonDead.contains(seat) && shooter) || target.mechanic() == Mechanic.WOLF_KING) {
+            if (poisonDead.contains(seat) && shooter) {
                 cannotShoot.add(seat);
             }
         }
@@ -322,11 +323,6 @@ public final class NightResolver {
             throw new ApiException(4000, "目标已经出局");
         }
         switch (submission.kind()) {
-            case WOLF -> {
-                if (actor.mechanic() == Mechanic.WOLF_KING && actor.seat() == target.seat()) {
-                    throw new ApiException(4000, "狼王不能自刀");
-                }
-            }
             case GUARD -> {
                 if (Objects.equals(actor.lastGuardSeat(), target.seat())) {
                     throw new ApiException(4000, "不能连续两晚守护同一个人");

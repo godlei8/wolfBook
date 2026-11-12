@@ -135,8 +135,8 @@ class RoleSkillRegistryTests {
     }
 
     @Test
-    void onlyWolvesCanSelfDestruct() {
-        Set<Mechanic> exploders = Set.of(Mechanic.WOLF);
+    void onlyWolvesAndWolfKingsCanSelfDestruct() {
+        Set<Mechanic> exploders = Set.of(Mechanic.WOLF, Mechanic.WOLF_KING);
         for (Mechanic mechanic : Mechanic.values()) {
             assertEquals(exploders.contains(mechanic), mechanic.canSelfDestruct(), mechanic.code());
         }

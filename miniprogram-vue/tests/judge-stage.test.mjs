@@ -140,14 +140,3 @@ test('fitGrowsTheStageToTheScreenBottom', () => {
   assert.ok(fitStageHeight({ ...base, bottom: 900 }) < 652)
   assert.equal(fitStageHeight({ ...base, windowHeight: 0 }), null)
 })
-
-test('explodedSeatIsDimmedButStillSelectableAtNight', () => {
-  const exploded = players.map((player) => (player.seatNo === 2 ? { ...player, exploded: true } : player))
-  const snapshot = room('night_action', me(1), {
-    players: exploded,
-    currentStep: { index: 1, total: 4, kind: 'seer', roleName: '预言家', line: '预言家请睁眼', deadline: '2026-10-30T20:00:30' },
-  })
-  const seat = seatsOf(stageLayout(snapshot, 'night')).get(2)
-  assert.equal(seat.dim, true, '自爆的狼座位变暗')
-  assert.equal(seat.tappable, true, '当晚还能被验、守、毒')
-})

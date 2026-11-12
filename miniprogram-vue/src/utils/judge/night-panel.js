@@ -142,8 +142,6 @@ export function nightPanel(snapshot, selection = 0, draft = {}) {
 
   if (kind === 'wolf') {
     const picks = info.wolfPicks || []
-    // 狼王不能自刀
-    const kingSelf = self.mechanic === 'wolf_king' && selection && selection === self.seatNo
     return {
       kind,
       rows: picks.map((pick) => ({
@@ -153,10 +151,7 @@ export function nightPanel(snapshot, selection = 0, draft = {}) {
       })),
       knife: knifeOf(picks),
       done,
-      buttons: [
-        { action: 'none', label: '空刀', target: null, disabled: false },
-        kingSelf ? { action: 'kill', label: '狼王不能自刀', target: selection, disabled: true } : targetButton('kill', '刀', selection),
-      ],
+      buttons: [{ action: 'none', label: '空刀', target: null, disabled: false }, targetButton('kill', '刀', selection)],
     }
   }
 

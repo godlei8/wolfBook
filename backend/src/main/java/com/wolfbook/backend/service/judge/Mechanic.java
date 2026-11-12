@@ -9,13 +9,13 @@ import java.util.Set;
  * 角色的技能机制：引擎认机制不认名字。后台给角色选一个机制，名字、称号、身世随便起。
  * nightPriority 是没配夜间顺序时的排序（机械狼 0 → 守卫 1 → 狼队 2 → 女巫 3 → 预言家 / 通灵师 4 → 猎人 5 确认开枪状态 → 白痴 6 空步），没有夜间行动为 null。
  * solo 是单人神职，同一板子只能有一张。shooter 是出局时能开枪带走一人的机制（猎人、狼王；被毒、被点杀不能开）。
- * selfDestruct 是白天发言时能自爆的机制（只有狼人；狼王、机械狼不能）。不做成角色上的开关：选了机制就有它的技能。
+ * selfDestruct 是白天发言时能自爆的机制（狼人、狼王；自爆不能开枪；机械狼不能）。不做成角色上的开关：选了机制就有它的技能。
  */
 public enum Mechanic {
     VILLAGER("villager", "平民", "没有技能", NightKind.NONE, Set.of(), null, false, false, false, false),
     WOLF("wolf", "狼人", "和狼队一起选刀口，白天可以自爆", NightKind.WOLF, Set.of("kill", "none"), 2, true, false, false, true),
-    WOLF_KING("wolf_king", "狼王", "和狼队一起刀人，被放逐或被猎人带走时可以开枪，被刀、被毒不能；不能自刀、不能自爆", NightKind.WOLF, Set.of("kill", "none"), 2, true, true, true, false),
-    GUARD("guard", "守卫", "守一人，不能连守，挡狼刀和女巫的毒", NightKind.GUARD, Set.of("guard", "none"), 1, false, true, false, false),
+    WOLF_KING("wolf_king", "狼王", "和狼队一起刀人，可以自刀；出局时可以开枪带走一人，被毒、自爆、最后一狼不能开；白天可以自爆", NightKind.WOLF, Set.of("kill", "none"), 2, true, true, true, true),
+    GUARD("guard", "守卫", "守一人，不能连守，只挡狼刀、挡不住毒", NightKind.GUARD, Set.of("guard", "none"), 1, false, true, false, false),
     WITCH("witch", "女巫", "看到刀口后可救可毒，各一瓶", NightKind.WITCH, Set.of("save", "poison", "none"), 3, false, true, false, false),
     SEER("seer", "预言家", "查验一人是好人还是狼人", NightKind.SEER, Set.of("check"), 4, false, true, false, false),
     PSYCHIC("psychic", "通灵师", "查验一人的具体身份", NightKind.PSYCHIC, Set.of("check"), 4, false, true, false, false),
@@ -94,7 +94,7 @@ public enum Mechanic {
         return solo;
     }
 
-    /** 白天发言时能不能自爆（只有狼人）。 */
+    /** 白天发言时能不能自爆（狼人、狼王）。 */
     public boolean canSelfDestruct() {
         return selfDestruct;
     }

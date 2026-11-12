@@ -71,9 +71,10 @@ class NightResolverTests {
     }
 
     @Test
-    void guardBlocksTheWitchsPoison() {
+    void guardOnlyBlocksTheKnifeNotThePoison() {
+        // 2026-11-12 用户改定：普通守卫只挡狼刀；挡毒是学到守卫的机械狼的事
         NightResolver.Outcome outcome = NightResolver.resolve(List.of(guard(4, 8), poison(2, 8)), seats(), RULES, 2, RANDOM);
-        assertTrue(outcome.deadSeats().isEmpty());
+        assertEquals(List.of(8), outcome.deadSeats());
         assertEquals(Set.of(2), outcome.poisonUsedBy());
     }
 
@@ -201,21 +202,19 @@ class NightResolverTests {
     }
 
     @Test
-    void knifedWolfKingCannotShoot() {
+    void knifedWolfKingCanShoot() {
         Map<Integer, NightResolver.SeatState> seats = seats();
         seats.put(6, new NightResolver.SeatState(6, "黑狼王", "狼人", Mechanic.WOLF_KING, true, false, false, null));
         NightResolver.Outcome outcome = NightResolver.resolve(List.of(kill(5, 6)), seats, RULES, 2, RANDOM);
         assertTrue(outcome.deadSeats().contains(6));
-        assertEquals(Set.of(6), outcome.cannotShoot());
+        assertTrue(outcome.cannotShoot().isEmpty());
     }
 
     @Test
-    void wolfKingCannotKnifeHimself() {
+    void wolfKingMayKnifeHimself() {
         Map<Integer, NightResolver.SeatState> seats = seats();
         seats.put(6, new NightResolver.SeatState(6, "黑狼王", "狼人", Mechanic.WOLF_KING, true, false, false, null));
-        ApiException error = assertThrows(ApiException.class,
-                () -> NightResolver.validate(kill(6, 6), seats.get(6), seats.get(6), RULES, 1, null, seats));
-        assertEquals("狼王不能自刀", error.getMessage());
+        NightResolver.validate(kill(6, 6), seats.get(6), seats.get(6), RULES, 1, null, seats);
     }
 
     @Test

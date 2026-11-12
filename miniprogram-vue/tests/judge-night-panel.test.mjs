@@ -224,10 +224,11 @@ test('mechWolfIsDoneAfterSubmitting', () => {
   assert.deepEqual(panel.buttons, [])
 })
 
-test('wolfKingCannotPickHimself', () => {
+test('wolfKingMayPickHimself', () => {
+  // 2026-11-12 用户改定：狼王可以自刀
   const king = { seatNo: 1, alive: true, self: true, mechanic: 'wolf_king' }
   const panel = nightPanel(night('wolf', '狼人', king, { line: 'x', nightInfo: { teammateSeats: [2], wolfPicks: [] } }), 1)
   const kill = panel.buttons.find((button) => button.action === 'kill')
-  assert.equal(kill.disabled, true)
-  assert.equal(kill.label, '狼王不能自刀')
+  assert.equal(kill.disabled, false)
+  assert.equal(kill.label, '刀 1 号')
 })

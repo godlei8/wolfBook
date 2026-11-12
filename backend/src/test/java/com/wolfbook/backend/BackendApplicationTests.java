@@ -1174,7 +1174,7 @@ class BackendApplicationTests {
                 .andExpect(jsonPath("$.data[?(@.code == 'mech_wolf')].nightPriority").value(0))
                 .andExpect(jsonPath("$.data[?(@.code == 'mech_wolf')].wolfTeam").value(false))
                 .andExpect(jsonPath("$.data[?(@.code == 'psychic')].label").value("通灵师"))
-                .andExpect(jsonPath("$.data[?(@.code == 'wolf_king')].canSelfDestruct").value(false))
+                .andExpect(jsonPath("$.data[?(@.code == 'wolf_king')].canSelfDestruct").value(true))
                 .andExpect(jsonPath("$.data[?(@.code == 'wolf_king')].label").value("狼王"))
                 .andExpect(jsonPath("$.data[?(@.code == 'wolf_king')].wolfTeam").value(true))
                 .andExpect(jsonPath("$.data[0].code").value("villager"))

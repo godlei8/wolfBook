@@ -1171,27 +1171,30 @@ class JudgeFlowIntegrationTests {
     }
 
     @Test
-    void knifedWolfKingOnlyConfirms() throws Exception {
+    void knifedWolfKingShoots() throws Exception {
+        // 2026-11-12 用户改定：狼王可以自刀，被刀照样能开枪；只有被毒、最后一狼不能
         Game game = wolfKingGame();
-        int wolfKing = game.seatsByRole().get("黑狼王").get(0);
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int wolfKing = seats.get("黑狼王").get(0);
+        int villager = seats.get("平民").get(0);
         JsonNode day = game.finishNight(wolfKing, null);
         Assertions.assertFalse(game.player(day, wolfKing).path("alive").asBoolean(), day.toString());
         JsonNode ask = game.snapshot(game.players.get(wolfKing - 1)).path("pending");
         Assertions.assertEquals("skill_ask", ask.path("kind").asText(), ask.toString());
-        Assertions.assertEquals("[\"skip\"]", ask.path("options").toString(), "被刀的狼王不能开枪");
+        Assertions.assertEquals("[\"use\",\"skip\"]", ask.path("options").toString(), "自刀的狼王照样能开枪");
+        game.skill(wolfKing, "{\"decision\":\"use\"}");
+        JsonNode shot = game.skill(wolfKing, "{\"decision\":\"use\",\"targetSeatNo\":" + villager + "}");
+        Assertions.assertFalse(game.player(shot, villager).path("alive").asBoolean());
     }
 
     @Test
-    void wolfKingCannotKnifeHimself() throws Exception {
+    void wolfKingMayKnifeHimself() throws Exception {
         Game game = wolfKingGame();
         Map<String, List<Integer>> seats = game.seatsByRole();
         int wolfKing = seats.get("黑狼王").get(0);
         int wolf = seats.get("狼人").get(0);
         Assertions.assertEquals("wolf", game.expireDeadline().path("currentStep").path("kind").asText());
-        JsonNode self = game.call(game.players.get(wolfKing - 1), "/night-action",
-                "{\"actionType\":\"kill\",\"targetSeatNo\":" + wolfKing + "}");
-        Assertions.assertEquals(4000, self.path("code").asInt(), self.toString());
-        Assertions.assertEquals("狼王不能自刀", self.path("msg").asText());
+        game.act(wolfKing, "kill", wolfKing);
         game.act(wolf, "kill", wolf);
         // 本人快照里带自己的机制（面板据此禁用狼王自刀），别人看不到
         Assertions.assertEquals("wolf_king", game.snapshot(game.players.get(wolfKing - 1)).path("selfPlayer").path("mechanic").asText());
@@ -1200,18 +1203,18 @@ class JudgeFlowIntegrationTests {
     }
 
     @Test
-    void wolfKingCannotSelfDestruct() throws Exception {
+    void wolfKingSelfDestructsWithoutShooting() throws Exception {
         Game game = wolfKingGame();
         Map<String, List<Integer>> seats = game.seatsByRole();
         int wolfKing = seats.get("黑狼王").get(0);
-        int wolf = seats.get("狼人").get(0);
         game.finishNight(seats.get("平民").get(0), null);
         game.skipPending();
         Assertions.assertEquals("day_speech", game.advance(game.host, "{\"action\":\"start_speech\"}").path("data").path("currentPhase").asText());
-        Assertions.assertFalse(game.snapshot(game.players.get(wolfKing - 1)).path("dayInfo").path("canSelfDestruct").asBoolean());
-        Assertions.assertTrue(game.snapshot(game.players.get(wolf - 1)).path("dayInfo").path("canSelfDestruct").asBoolean());
+        Assertions.assertTrue(game.snapshot(game.players.get(wolfKing - 1)).path("dayInfo").path("canSelfDestruct").asBoolean());
         JsonNode explode = game.call(game.players.get(wolfKing - 1), "/self-destruct", null);
-        Assertions.assertEquals(4003, explode.path("code").asInt(), explode.toString());
+        Assertions.assertEquals(0, explode.path("code").asInt(), explode.toString());
+        Assertions.assertEquals("night_action", explode.path("data").path("currentPhase").asText(), "自爆不问技能，直接天黑");
+        Assertions.assertFalse(game.player(explode.path("data"), wolfKing).path("alive").asBoolean());
     }
 
     @Test
@@ -1406,21 +1409,20 @@ class JudgeFlowIntegrationTests {
         Assertions.assertEquals("night_action", data.path("currentPhase").asText());
         Assertions.assertEquals(2, data.path("currentDay").asInt());
         Assertions.assertEquals(wolf + "号自爆，天黑请闭眼", data.path("latestAnnouncement").asText());
-        Assertions.assertTrue(game.player(data, wolf).path("alive").asBoolean(), "自爆的狼当晚还在，点完刀才死");
-        Assertions.assertTrue(game.player(data, wolf).path("exploded").asBoolean());
+        Assertions.assertFalse(game.player(data, wolf).path("alive").asBoolean(), "自爆的狼当场出局（2026-11-12 用户改定）");
         JsonNode skills = data.path("rounds").get(0).path("skills");
         Assertions.assertTrue(skills.toString().contains("\"kind\":\"self_destruct\""), skills.toString());
         Assertions.assertTrue(skills.toString().contains("\"actorSeatNo\":" + wolf), skills.toString());
 
-        // 当晚他照样在狼队那一步、能刀人
+        // 当晚他不在狼队那一步
         untilStep(game, "wolf");
-        JsonNode picks = game.snapshot(game.players.get(wolf - 1)).path("nightInfo").path("wolfPicks");
-        Assertions.assertTrue(picks.toString().contains("\"seatNo\":" + wolf), picks.toString());
+        int other = game.seatsByRole().get("狼人").stream().filter(seat -> seat != wolf).findFirst().orElseThrow();
+        JsonNode picks = game.snapshot(game.players.get(other - 1)).path("nightInfo").path("wolfPicks");
+        Assertions.assertFalse(picks.toString().contains("\"seatNo\":" + wolf + ","), picks.toString());
         int villager = game.seatsByRole().get("平民").get(1);
         JsonNode day = game.finishNight(villager, null);
         Assertions.assertFalse(game.player(day, villager).path("alive").asBoolean(), day.toString());
-        Assertions.assertFalse(game.player(day, wolf).path("alive").asBoolean(), "点完刀天亮时出局");
-        Assertions.assertEquals("[" + villager + "]", nightDeathsOf(day, 2).toString(), "他不进昨夜死讯");
+        Assertions.assertEquals("[" + villager + "]", nightDeathsOf(day, 2).toString());
     }
 
     /** 某一天的昨夜死讯（对局记录里的 nightDeaths）。 */
@@ -1431,19 +1433,6 @@ class JudgeFlowIntegrationTests {
             }
         }
         return objectMapper.createArrayNode();
-    }
-
-    @Test
-    void explodedWolfKnifedTheSameNightDiesOnce() throws Exception {
-        Game game = autoGame(false);
-        int wolf = toDaySpeech(game);
-        Assertions.assertEquals(0, game.call(game.players.get(wolf - 1), "/self-destruct", null).path("code").asInt());
-        JsonNode day = game.finishNight(wolf, null);
-        Assertions.assertFalse(game.player(day, wolf).path("alive").asBoolean(), day.toString());
-        Assertions.assertEquals("[]", nightDeathsOf(day, 2).toString(), "被自己人刀的自爆狼也不进昨夜死讯");
-        Integer deaths = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM judge_room_players WHERE room_id = ? AND alive = 0",
-                Integer.class, game.roomId);
-        Assertions.assertEquals(2, deaths, "第一夜的平民 + 自爆的狼，各一次");
     }
 
     @Test
@@ -1514,7 +1503,7 @@ class JudgeFlowIntegrationTests {
                     : game.skill(wolf, "{\"decision\":\"use\",\"targetSeatNo\":" + heir + "}");
             Assertions.assertEquals("night_action", after.path("currentPhase").asText(), after.toString());
             Assertions.assertEquals(2, after.path("currentDay").asInt());
-            Assertions.assertTrue(game.player(after, wolf).path("alive").asBoolean(), "天亮才死");
+            Assertions.assertFalse(game.player(after, wolf).path("alive").asBoolean(), "自爆当场出局");
             if (!timeout) {
                 Assertions.assertEquals(heir, after.path("sheriffSeatNo").asInt());
             }
@@ -1585,11 +1574,12 @@ class JudgeFlowIntegrationTests {
         Assertions.assertTrue(game.snapshot(game.players.get(wolf - 1)).path("dayInfo").path("canSelfDestruct").asBoolean());
         JsonNode data = game.call(game.players.get(wolf - 1), "/self-destruct", null).path("data");
         Assertions.assertFalse(game.player(data, wolf).path("alive").asBoolean());
-        Assertions.assertFalse(game.player(data, wolf).path("exploded").asBoolean(), "昨夜已死：算昨夜死亡，不当晚待死");
-        Assertions.assertTrue(nightDeathsOf(data, 1).toString().contains(String.valueOf(wolf)), data.path("rounds").toString());
+        String text = data.path("latestAnnouncement").asText();
+        Assertions.assertEquals(1, text.split(wolf + "号", -1).length - 1, text);
+        Assertions.assertFalse(nightDeathsOf(data, 1).toString().contains(String.valueOf(wolf)), data.path("rounds").toString());
         Integer deaths = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM judge_room_players WHERE room_id = ? AND alive = 0",
                 Integer.class, game.roomId);
-        Assertions.assertEquals(1, deaths, "只算一次出局");
+        Assertions.assertEquals(1, deaths, "只算一次出局（算自爆）");
     }
 
     @Test
@@ -2367,9 +2357,7 @@ class JudgeFlowIntegrationTests {
                     List<Integer> wolves = new ArrayList<>(roles.getOrDefault("狼人", List.of()));
                     wolves.addAll(roles.getOrDefault("黑狼王", List.of()));
                     for (int wolf : wolves) {
-                        // 狼王不能自刀：刀口是狼王自己时他不交
-                        boolean wolfKingSelf = wolf == knife && roles.getOrDefault("黑狼王", List.of()).contains(wolf);
-                        if (player(view, wolf).path("alive").asBoolean() && !wolfKingSelf) {
+                        if (player(view, wolf).path("alive").asBoolean()) {
                             act(wolf, "kill", knife);
                         }
                     }

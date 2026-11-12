@@ -70,7 +70,6 @@ export function stageLayout(snapshot, view, { selection = 0, stageHeight = 0 } =
       avatar: player?.avatar || '',
       initial: (player?.nickname || '').slice(0, 1),
       dead,
-      exploded: Boolean(player?.exploded),
       sheriff: sheriffSeat === seat.seatNo,
       role: role?.roleShort || '',
       roleColor: role?.roleColor || '',
@@ -81,8 +80,7 @@ export function stageLayout(snapshot, view, { selection = 0, stageHeight = 0 } =
       tagKind: '',
       tappable: false,
       selected: false,
-      // 白天自爆、天亮才出局的狼：座位变暗，夜里照样能被选（能被验、守、毒）
-      dim: dead || Boolean(player?.exploded),
+      dim: dead,
     }
     if (night) {
       const badge = badges.get(seat.seatNo) || { mate: false, votes: 0, selected: false, disabled: true }
