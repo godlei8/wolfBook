@@ -74,12 +74,12 @@ export function voteResultPanel(snapshot) {
 
 const PHASE_ACTIONS = {
   sheriff_signup: [['close_sheriff_signup', '截止报名']],
-  sheriff_speech: [['next_speaker', '下一位'], ['start_sheriff_vote', '开始投票']],
+  sheriff_speech: [['next_speaker', '跳过发言'], ['start_sheriff_vote', '开始投票']],
   sheriff_vote: [['resolve_sheriff_vote', '结算']],
   sheriff_pk: [['resolve_sheriff_vote', '结算']],
   day_announce: [['start_speech', '开始发言']],
   // 所有存活玩家发完言自动进放逐投票（通用流程 6），法官只能跳过离席的人
-  day_speech: [['next_speaker', '跳过这位']],
+  day_speech: [['next_speaker', '跳过发言']],
   exile_vote: [['resolve_vote', '结算投票']],
   vote_pk: [['resolve_vote', '结算 PK']],
   vote_result: [['continue', '继续']],

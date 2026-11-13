@@ -170,19 +170,19 @@ export function judgeActions(snapshot) {
   return { pause: !paused, resume: paused, forceOut: judge, finish: true }
 }
 
-/** 暂停遮罩：所有人同一张；能继续的人（法官、无法官房主）遮罩上有「继续计时」（遮罩盖住了顶栏）。 */
+/** 暂停遮罩：所有人同一张；能继续的人（法官、无法官房主）遮罩上有「继续游戏」（遮罩盖住了顶栏）。 */
 export function pausedOverlay(snapshot) {
   if (!snapshot?.paused || snapshot.roomStatus !== 'playing') return null
   return {
     title: '对局暂停',
-    hint: snapshot.judgeMode === 'joined' ? '计时已停，等房主继续' : '计时已停，等法官继续',
+    hint: snapshot.judgeMode === 'joined' ? '游戏已暂停，等房主继续' : '游戏已暂停，等法官继续',
     canResume: judgeActions(snapshot).resume,
   }
 }
 
 /**
- * 房主右上方的设置菜单（用户给定：无法官房主的暂停计时、提前结束不占底部，放进这里）。
- * 无法官房主：暂停 / 继续计时、提前结束；法官：提前结束（暂停在底部，点杀在点座位的菜单里）。
+ * 房主右上方的设置菜单（用户给定：无法官房主的暂停游戏、提前结束不占底部，放进这里）。
+ * 无法官房主：暂停 / 继续游戏、提前结束；法官：提前结束（暂停在底部，点杀在点座位的菜单里）。
  * 播报开关不进菜单，还是顶栏上的「播报开 / 关」（用户给定）。只在对局中有。
  */
 export function hostMenu(snapshot) {
@@ -190,7 +190,7 @@ export function hostMenu(snapshot) {
   const items = []
   const controls = judgeActions(snapshot)
   if (!snapshot.judgeViewer && controls.finish) {
-    items.push(controls.resume ? { key: 'resume', label: '继续计时' } : { key: 'pause', label: '暂停计时' })
+    items.push(controls.resume ? { key: 'resume', label: '继续游戏' } : { key: 'pause', label: '暂停游戏' })
     items.push({ key: 'finish', label: '提前结束' })
   } else if (snapshot.judgeViewer && controls.finish) {
     // 法官的暂停在底部操作栏，点杀在点座位的菜单里，提前结束放这里

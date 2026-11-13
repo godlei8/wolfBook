@@ -68,8 +68,8 @@ test('everyoneGetsTheSamePauseOverlay', () => {
   const player = pausedOverlay(room({ paused: true, judgeViewer: false, host: false }))
   assert.deepEqual([judge.title, judge.hint], [player.title, player.hint], '所有人看到同一张遮罩')
   assert.equal(judge.title, '对局暂停')
-  assert.equal(judge.hint, '计时已停，等法官继续')
-  assert.equal(pausedOverlay(room({ paused: true, judgeMode: 'joined' })).hint, '计时已停，等房主继续')
+  assert.equal(judge.hint, '游戏已暂停，等法官继续')
+  assert.equal(pausedOverlay(room({ paused: true, judgeMode: 'joined' })).hint, '游戏已暂停，等房主继续')
 })
 
 test('judgeSummaryBeforeWolvesChoose', () => {
@@ -110,10 +110,10 @@ test('judgeSeesTheMechWolfInItsOwnRow', async () => {
 })
 
 test('joinedHostControlsLiveInTheSettingsMenu', () => {
-  // 用户给定：无法官房主的暂停计时、提前结束放进右上方的设置菜单，不占底部；播报开关还在顶栏，不进菜单
+  // 用户给定：无法官房主的暂停游戏、提前结束放进右上方的设置菜单，不占底部；播报开关还在顶栏，不进菜单
   const host = room({ judgeViewer: false, judgeMode: 'joined', host: true })
   assert.deepEqual(hostMenu(host).map((item) => [item.key, item.label]), [
-    ['pause', '暂停计时'],
+    ['pause', '暂停游戏'],
     ['finish', '提前结束'],
   ])
   assert.deepEqual(hostMenu({ ...host, paused: true }).map((item) => item.key), ['resume', 'finish'])

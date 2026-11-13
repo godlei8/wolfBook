@@ -377,7 +377,7 @@ function confirmFinish() {
   })
 }
 
-// 房主右上方的设置菜单：暂停 / 继续计时、提前结束（播报开关在顶栏）
+// 房主右上方的设置菜单：暂停 / 继续游戏、提前结束（播报开关在顶栏）
 function openMenu() {
   const items = menuItems.value
   if (!items.length) return
@@ -530,7 +530,7 @@ onUnload(() => {
       <text class="jr-pause__moon">☾</text>
       <text class="jr-pause__title serif">{{ overlay.title }}</text>
       <text class="jr-pause__hint">{{ overlay.hint }}</text>
-      <view v-if="overlay.canResume" class="nt-btn nt-btn--gold jr-pause__resume" :class="{ 'nt-btn--disabled': actionLoading }" @tap="onAct({ kind: 'advance', payload: { action: 'resume' } })">继续计时</view>
+      <view v-if="overlay.canResume" class="nt-btn nt-btn--gold jr-pause__resume" :class="{ 'nt-btn--disabled': actionLoading }" @tap="onAct({ kind: 'advance', payload: { action: 'resume' } })">继续游戏</view>
     </view>
 
     <view v-if="view !== 'lobby' && (hasJudgeBar || hostItems.length)" class="nt-bar jr-judgebar">
@@ -546,7 +546,7 @@ onUnload(() => {
         class="nt-btn jr-judgebar__btn"
         :class="[judgeBar.resume ? 'nt-btn--gold' : 'nt-btn--ghost', { 'nt-btn--disabled': actionLoading }]"
         @tap="pauseOrResume"
-      >{{ judgeBar.resume ? '继续计时' : '暂停计时' }}</view>
+      >{{ judgeBar.resume ? '继续游戏' : '暂停游戏' }}</view>
     </view>
 
     <LogSheet v-if="logOpen && snapshot" :snapshot="snapshot" @close="logOpen = false" />

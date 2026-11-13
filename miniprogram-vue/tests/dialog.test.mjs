@@ -43,9 +43,9 @@ test('alertHasNoCancel', () => {
 test('actionSheetReturnsTheTappedIndexOrFails', () => {
   const picked = []
   const failed = []
-  showActionSheet({ itemList: ['暂停计时', '提前结束'], success: (res) => picked.push(res.tapIndex), fail: () => failed.push(1) })
+  showActionSheet({ itemList: ['暂停游戏', '提前结束'], success: (res) => picked.push(res.tapIndex), fail: () => failed.push(1) })
   assert.equal(dialogState.kind, 'sheet')
-  assert.deepEqual(dialogState.items.map((item) => [item.label, item.danger]), [['暂停计时', false], ['提前结束', true]])
+  assert.deepEqual(dialogState.items.map((item) => [item.label, item.danger]), [['暂停游戏', false], ['提前结束', true]])
   pick(1)
   assert.deepEqual(picked, [1])
   showActionSheet({ itemList: ['A'], success: (res) => picked.push(res.tapIndex), fail: () => failed.push(1) })

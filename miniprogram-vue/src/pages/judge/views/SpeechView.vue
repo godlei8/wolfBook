@@ -1,6 +1,6 @@
 <script setup>
 // 白天发言：中间是当前发言人，两侧座位亮出发言的人；下面只提示警左 / 警右（不列整个顺序）和这一位的倒计时（到点只提示，不强制换人），
-// 发言者本人有「结束发言」，到点自动换下一位。法官的「跳过这位」在房间页底部的操作栏。
+// 发言者本人有「结束发言」，到点自动换下一位。法官的「跳过发言」在房间页底部的操作栏。
 import { computed } from 'vue'
 import { countdown, phaseTitle } from '../../../utils/judge/room-view.js'
 import { speechPanel } from '../../../utils/judge/day.js'
