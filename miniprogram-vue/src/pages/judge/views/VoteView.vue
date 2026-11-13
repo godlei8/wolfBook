@@ -1,6 +1,6 @@
 <script setup>
 // 放逐投票 / PK 投票（点两侧的座位选人，进度只显示投了几人）和票型公布（座位上标票数，中间列出加权票数和投票人）。
-// 房主的「结算 / 继续」在房间页底部的操作栏。
+// 到点或全员投完自动结算，票型公布停 10 秒自动继续；法官的「结算 / 继续」在房间页底部的操作栏。
 import { computed, ref, watch } from 'vue'
 import { countdown, phaseTitle } from '../../../utils/judge/room-view.js'
 import { voteResultPanel, votePanel } from '../../../utils/judge/day.js'
@@ -125,7 +125,7 @@ function vote(targetSeatNo) {
         <block v-else>
           <text class="nt-game__lead">{{ verdict }}</text>
           <text class="nt-game__hint">弃票：{{ outcome.abstain || '无' }}</text>
-          <text class="nt-game__hint">座位左上角是得票数（警长 1.5 票）。房主点「继续」往下走。</text>
+          <text class="nt-game__hint">座位左上角是得票数（警长 1.5 票）。{{ clock.seconds > 0 ? `${clock.seconds} 秒后自动继续` : '马上继续' }}</text>
         </block>
       </view>
     </view>

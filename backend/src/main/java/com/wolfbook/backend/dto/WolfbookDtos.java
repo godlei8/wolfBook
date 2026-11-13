@@ -737,7 +737,7 @@ public final class WolfbookDtos {
 
     /** 白天发言顺序和当前发言人下标。 */
     /** direction：实际用的发言方向（left 警左 / right 警右 / dead_left 死左 / dead_right 死右），随机起点为 null。 */
-    public record JudgeSpeechView(List<Integer> order, int index, String direction) {
+    public record JudgeSpeechView(List<Integer> order, int index, String direction, boolean pk) {
     }
 
     /** 上警：candidate 报名 / 取消（报名阶段）；withdraw 退水（警上发言阶段）；targetSeatNo 警长投票；speechOrder 警长定发言顺序（left / right / dead_left / dead_right）。 */

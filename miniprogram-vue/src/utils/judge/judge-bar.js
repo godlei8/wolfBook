@@ -1,5 +1,5 @@
-// 有法官模式的上帝视角（纯函数，有单测）：座位身份角标、今晚汇总、暂停 / 点杀按钮、暂停遮罩。
-// 只有法官（judgeViewer）拿得到这些；暂停遮罩所有人同一张。
+// 有法官模式的上帝视角（纯函数，有单测）：座位身份角标、今晚汇总、控场按钮、暂停遮罩。
+// 身份和汇总只有法官（judgeViewer）拿得到；控场按钮法官和无法官房主有；暂停遮罩所有人同一张。
 
 import { isWolfTeam } from './night-order.js'
 
@@ -156,12 +156,21 @@ export function tonightRows(snapshot, board = null) {
   return rows
 }
 
+/**
+ * 控场按钮（用户给定）：有法官时法官有暂停 / 继续、点杀、提前结束；无法官房主只有暂停 / 继续和提前结束（记流局）。
+ * 只在对局中。
+ */
 export function judgeActions(snapshot) {
-  if (!snapshot?.judgeViewer || snapshot.roomStatus !== 'playing') return { pause: false, resume: false, forceOut: false }
-  return snapshot.paused ? { pause: false, resume: true, forceOut: true } : { pause: true, resume: false, forceOut: true }
+  const none = { pause: false, resume: false, forceOut: false, finish: false }
+  if (snapshot?.roomStatus !== 'playing') return none
+  const judge = Boolean(snapshot.judgeViewer)
+  const joinedHost = snapshot.judgeMode === 'joined' && Boolean(snapshot.host)
+  if (!judge && !joinedHost) return none
+  const paused = Boolean(snapshot.paused)
+  return { pause: !paused, resume: paused, forceOut: judge, finish: true }
 }
 
 export function pausedOverlay(snapshot) {
   if (!snapshot?.paused || snapshot.roomStatus !== 'playing') return null
-  return { title: '法官暂停', hint: '计时已停，等法官继续' }
+  return { title: '对局暂停', hint: snapshot.judgeMode === 'joined' ? '计时已停，等房主继续' : '计时已停，等法官继续' }
 }

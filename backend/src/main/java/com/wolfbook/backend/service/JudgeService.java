@@ -395,6 +395,10 @@ public class JudgeService {
         if (!PHASE_DAY_SPEECH.equals(room.getCurrentPhase())) {
             throw new ApiException(4002, "当前不是发言阶段");
         }
+        if (pkSpeech(room)) {
+            openPkVote(room, PHASE_DAY_SPEECH, PHASE_VOTE_PK, "PK 发言结束，其余玩家只能投给他们", now);
+            return;
+        }
         String announcement = StringUtils.hasText(request.announcement())
                 ? request.announcement().trim()
                 : "进入放逐投票阶段";
@@ -553,6 +557,10 @@ public class JudgeService {
                 .orElse(support.writeJson(support.mapOf("nightDeaths", deadSeatNos))));
         if (!finished) {
             startPending(room, players, deadSeatNos, JudgeLastWords.Cause.NIGHT, now);
+            if (PHASE_DAY_ANNOUNCE.equals(room.getCurrentPhase())) {
+                // 用户给定：公布死讯后停 5 秒，自动开始发言
+                setPhaseClock(room, JudgeDayClock.ANNOUNCE_SECONDS, now);
+            }
         }
         room.setUpdateTime(now);
         support.updateRoomGuarded(room, ROOM_STATUS_PLAYING, PHASE_NIGHT_ACTION, expectedNightStep);
@@ -624,7 +632,8 @@ public class JudgeService {
             room.setCurrentPhase(PHASE_RESULT);
             room.setPhaseData(support.writeJson(support.mapOf("verdictReason", verdict.get().reason())));
         } else {
-            room.setStepDeadline(null);
+            // 用户给定：票型公布停 10 秒自动进入下一步（被放逐的人先处理技能和遗言，回来后重新计时）
+            setPhaseClock(room, JudgeDayClock.RESULT_SECONDS, now);
             room.setCurrentPhase(PHASE_VOTE_RESULT);
             room.setPhaseData(support.writeJson(support.mapOf("pkSeats", nextPk, "resolvedFrom", votePhase)));
             if (eliminatedSeatNo != null) {
@@ -667,7 +676,8 @@ public class JudgeService {
         room.setCurrentPhase(PHASE_RESULT);
         room.setNightStep(null);
         room.setStepDeadline(null);
-        room.setPhaseData(support.writeJson(support.mapOf("verdictReason", DRAW.equals(winnerCamp) ? "法官结束了对局（流局）" : "法官判定" + winnerCamp + "胜利")));
+        String ender = JUDGE_MODE_OBSERVER.equals(room.getJudgeMode()) ? "法官" : "房主";
+        room.setPhaseData(support.writeJson(support.mapOf("verdictReason", DRAW.equals(winnerCamp) ? ender + "提前结束了对局（流局）" : ender + "判定" + winnerCamp + "胜利")));
         room.setUpdateTime(now);
         support.updateRoomGuarded(room, ROOM_STATUS_PLAYING, null);
         support.addEvent(
@@ -906,22 +916,8 @@ public class JudgeService {
             support.addEvent(roomId, room.getCurrentDay(), phase, self.getPlayerId(), List.of(), EVENT_SHERIFF_VOTE_SUBMIT,
                     support.mapOf("targetSeatNo", request.targetSeatNo()), Map.of(), VISIBILITY_JUDGE_ONLY, now);
         } else if (StringUtils.hasText(request.speechOrder())) {
-            if (!PHASE_DAY_ANNOUNCE.equals(phase)) {
-                throw new ApiException(4002, "现在不能选发言顺序");
-            }
-            if (!Boolean.TRUE.equals(self.getSheriff())) {
-                throw new ApiException(4003, "只有警长能决定发言顺序");
-            }
-            String choice = request.speechOrder().trim();
-            if (!Set.of(JudgeDayFlow.LEFT, JudgeDayFlow.RIGHT, JudgeDayFlow.DEAD_LEFT, JudgeDayFlow.DEAD_RIGHT).contains(choice)) {
-                throw new ApiException(4000, "发言顺序只能是警左、警右、死左、死右");
-            }
-            Map<String, Object> phaseData = new LinkedHashMap<>(support.readMap(room.getPhaseData()));
-            phaseData.put("sheriffOrder", choice);
-            room.setPhaseData(support.writeJson(phaseData));
-            room.setUpdateTime(now);
-            support.updateRoomGuarded(room, ROOM_STATUS_PLAYING, PHASE_DAY_ANNOUNCE);
-            return assembler.buildSnapshot(openid, roomId);
+            // 用户给定：警长不选发言顺序，系统随机警左或警右
+            throw new ApiException(4003, "发言顺序由系统随机");
         } else {
             throw new ApiException(4000, "请求格式错误");
         }
@@ -964,6 +960,10 @@ public class JudgeService {
 
     private void handleStartSheriffVote(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players, LocalDateTime now) {
         requirePhase(room, PHASE_SHERIFF_SPEECH);
+        if (pkSpeech(room)) {
+            openPkVote(room, PHASE_SHERIFF_SPEECH, PHASE_SHERIFF_PK, "PK 发言结束，警下再投一次", now);
+            return;
+        }
         List<Integer> remaining = support.onStage(players);
         if (remaining.isEmpty()) {
             finishSheriff(room, players, remaining, null, List.of(), now);
@@ -1000,12 +1000,17 @@ public class JudgeService {
         if (outcome.eliminatedSeat() != null && bySeat.containsKey(outcome.eliminatedSeat())) {
             finishSheriff(room, players, support.onStage(players), outcome.eliminatedSeat(), outcome.tallies(), now);
         } else if (PHASE_SHERIFF_VOTE.equals(phase) && !outcome.tiedSeats().isEmpty()) {
+            // 通用流程 4.4：平票者再各说一轮（先发言的后发言），说完自动 PK 投票
             Map<String, Object> phaseData = new LinkedHashMap<>(support.readMap(room.getPhaseData()));
+            List<Integer> spoke = phaseData.get("speech") instanceof Map<?, ?> speech
+                    ? support.asIntegerList(support.castMap(speech).get("order")) : List.of();
+            List<Integer> pkOrder = JudgeDayFlow.pkSpeechOrder(outcome.tiedSeats(), spoke);
             phaseData.put("pkSeats", outcome.tiedSeats());
+            phaseData.put("speech", support.mapOf("order", pkOrder, "index", 0, "pk", true));
             room.setPhaseData(support.writeJson(phaseData));
-            room.setCurrentPhase(PHASE_SHERIFF_PK);
+            room.setCurrentPhase(PHASE_SHERIFF_SPEECH);
             room.setLatestAnnouncement(seatsText(outcome.tiedSeats()) + "平票，PK 发言后警下再投一次");
-            setPhaseClock(room, JudgeDayClock.VOTE_SECONDS, now);
+            setPhaseClock(room, support.roomRules(room).sheriffSpeechSeconds(), now);
             support.addEvent(room.getRoomId(), room.getCurrentDay(), PHASE_SHERIFF_PK, null, List.of(), EVENT_SHERIFF_RESOLVED,
                     support.mapOf("candidates", support.onStage(players)),
                     support.mapOf("tallies", summarizeTallies(outcome), "pkSeatNos", outcome.tiedSeats()), VISIBILITY_PUBLIC, now);
@@ -1060,7 +1065,12 @@ public class JudgeService {
             addFinishedEvent(room, verdict.get(), null, announcement, now);
         } else {
             room.setPhaseData(support.writeJson(nightNext ? support.mapOf("nightDeaths", deaths, "nightNext", true) : support.mapOf("nightDeaths", deaths)));
+            room.setStepDeadline(null);
             startPending(room, players, deaths, JudgeLastWords.Cause.NIGHT, now);
+            if (PHASE_DAY_ANNOUNCE.equals(room.getCurrentPhase())) {
+                // 用户给定：公布死讯后停 5 秒，自动开始发言（警上自爆那天自动天黑）
+                setPhaseClock(room, JudgeDayClock.ANNOUNCE_SECONDS, now);
+            }
         }
     }
 
@@ -1080,20 +1090,10 @@ public class JudgeService {
         Integer sheriffSeat = players.stream()
                 .filter(player -> Boolean.TRUE.equals(player.getSheriff()) && Boolean.TRUE.equals(player.getAlive()))
                 .map(JudgeRoomPlayerEntity::getSeatNo).findFirst().orElse(null);
-        String choice = support.trimToNull(request.speechDirection());
-        if (choice == null) {
-            choice = support.trimToNull(support.asString(phaseData.get("sheriffOrder")));
-        }
-        List<Integer> order;
-        String direction;
-        Integer startSeat = support.normalizeSeatNo(request.speechStartSeat());
-        if (startSeat != null && alive.contains(startSeat)) {
-            order = JudgeDayFlow.speechOrderFrom(alive, room.getPlayerCount(), startSeat, !JudgeDayFlow.RIGHT.equals(choice));
-            direction = null;
-        } else {
-            order = JudgeDayFlow.speechOrder(alive, room.getPlayerCount(), choice, sheriffSeat, nightDeaths, random);
-            direction = JudgeDayFlow.speechMode(choice, sheriffSeat, nightDeaths);
-        }
+        // 用户给定：警长不选发言顺序，有警长时系统随机警左或警右（警长最后发言）；没警长有死者死左，否则随机
+        String choice = sheriffSeat == null ? null : JudgeDayFlow.sheriffDirection(random);
+        List<Integer> order = JudgeDayFlow.speechOrder(alive, room.getPlayerCount(), choice, sheriffSeat, nightDeaths, random);
+        String direction = JudgeDayFlow.speechMode(choice, sheriffSeat, nightDeaths);
         room.setPhaseData(support.writeJson(support.mapOf("speech", support.mapOf("order", order, "index", 0, "direction", direction))));
         room.setCurrentPhase(PHASE_DAY_SPEECH);
         setPhaseClock(room, order.isEmpty() ? null : speechSeconds(room, PHASE_DAY_SPEECH, order.get(0), sheriffSeat), now);
@@ -1104,7 +1104,7 @@ public class JudgeService {
         support.updateRoomGuarded(room, ROOM_STATUS_PLAYING, PHASE_DAY_ANNOUNCE);
     }
 
-    /** 下一位发言：当前发言者自己点「结束发言」，或者房主跳过。 */
+    /** 下一位发言：当前发言者自己点「结束发言」，或者法官跳过（无法官房主不能跳）。到点由惰性推进换人。 */
     private WolfbookDtos.JudgeRoomSnapshotView nextSpeaker(String openid, String roomId) {
         JudgeRoomEntity room = support.getRoom(roomId);
         requireNotPaused(room);
@@ -1112,36 +1112,66 @@ public class JudgeService {
         if (!ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) || (!PHASE_DAY_SPEECH.equals(phase) && !PHASE_SHERIFF_SPEECH.equals(phase))) {
             throw new ApiException(4002, "现在不是发言阶段");
         }
-        Map<String, Object> phaseData = new LinkedHashMap<>(support.readMap(room.getPhaseData()));
-        Map<String, Object> speech = phaseData.get("speech") instanceof Map<?, ?> map ? new LinkedHashMap<>(support.castMap(map)) : new LinkedHashMap<>();
+        Map<String, Object> speech = speechOf(room);
         List<Integer> order = support.asIntegerList(speech.get("order"));
         int index = support.safeInt(support.asPositiveIntegerOrZero(speech.get("index")), 0);
         JudgeRoomPlayerEntity self = support.findPlayer(roomId, openid);
-        boolean host = openid.equals(room.getOwnerUserId());
+        boolean judge = JUDGE_MODE_OBSERVER.equals(room.getJudgeMode()) && self != null && Boolean.TRUE.equals(self.getJudgeObserver());
         boolean speaker = self != null && index < order.size() && Objects.equals(self.getSeatNo(), order.get(index));
-        if (!host && !speaker) {
-            throw new ApiException(4003, "只有正在发言的人或房主能切到下一位");
+        if (!judge && !speaker) {
+            throw new ApiException(4003, "只有正在发言的人或法官能切到下一位");
         }
+        advanceSpeaker(room, LocalDateTime.now(APP_ZONE));
+        return assembler.buildSnapshot(openid, roomId);
+    }
+
+    private Map<String, Object> speechOf(JudgeRoomEntity room) {
+        return support.readMap(room.getPhaseData()).get("speech") instanceof Map<?, ?> map
+                ? new LinkedHashMap<>(support.castMap(map)) : new LinkedHashMap<>();
+    }
+
+    /** 这一轮发言是不是平票 PK 发言（说完进 PK 投票）。 */
+    private boolean pkSpeech(JudgeRoomEntity room) {
+        return Boolean.TRUE.equals(speechOf(room).get("pk"));
+    }
+
+    /**
+     * 换下一位发言人（发言人点结束、法官跳过、到点）。所有人说完：白天进放逐投票，警上进警长投票（通用流程 4、6），
+     * PK 发言说完进 PK 投票。写回房间。
+     */
+    private void advanceSpeaker(JudgeRoomEntity room, LocalDateTime now) {
+        String phase = support.safeText(room.getCurrentPhase(), "");
+        Map<String, Object> phaseData = new LinkedHashMap<>(support.readMap(room.getPhaseData()));
+        Map<String, Object> speech = speechOf(room);
+        List<Integer> order = support.asIntegerList(speech.get("order"));
+        int index = support.safeInt(support.asPositiveIntegerOrZero(speech.get("index")), 0);
         int next = Math.min(index + 1, order.size());
-        LocalDateTime now = LocalDateTime.now(APP_ZONE);
-        if (PHASE_DAY_SPEECH.equals(phase) && next >= order.size()) {
-            // 通用流程 6：所有存活玩家发完言，自动进入放逐投票（警上发言结束仍由房主点开始投票）
-            speech.put("index", next);
-            phaseData.put("speech", speech);
-            room.setPhaseData(support.writeJson(phaseData));
-            handleStartVote(room, new WolfbookDtos.JudgeRoomAdvanceRequest(null, null, null, null, null, null, null, null, null, null), now);
-            return assembler.buildSnapshot(openid, roomId);
-        }
         speech.put("index", next);
         phaseData.put("speech", speech);
         room.setPhaseData(support.writeJson(phaseData));
-        Integer sheriffSeat = support.loadPlayers(roomId).stream()
+        if (next >= order.size()) {
+            if (PHASE_DAY_SPEECH.equals(phase)) {
+                handleStartVote(room, systemRequest("start_vote"), now);
+            } else {
+                handleStartSheriffVote(room, support.loadPlayers(room.getRoomId()), now);
+            }
+            return;
+        }
+        Integer sheriffSeat = support.loadPlayers(room.getRoomId()).stream()
                 .filter(player -> Boolean.TRUE.equals(player.getSheriff()) && Boolean.TRUE.equals(player.getAlive()))
                 .map(JudgeRoomPlayerEntity::getSeatNo).findFirst().orElse(null);
-        setPhaseClock(room, next < order.size() ? speechSeconds(room, phase, order.get(next), sheriffSeat) : null, now);
+        setPhaseClock(room, speechSeconds(room, phase, order.get(next), sheriffSeat), now);
         room.setUpdateTime(now);
         support.updateRoomGuarded(room, ROOM_STATUS_PLAYING, phase);
-        return assembler.buildSnapshot(openid, roomId);
+    }
+
+    /** PK 发言说完：进 PK 投票（平票的人留在 phase_data.pkSeats）。写回房间。 */
+    private void openPkVote(JudgeRoomEntity room, String fromPhase, String votePhase, String line, LocalDateTime now) {
+        room.setCurrentPhase(votePhase);
+        room.setLatestAnnouncement(seatsText(support.pkSeats(room)) + line);
+        setPhaseClock(room, JudgeDayClock.VOTE_SECONDS, now);
+        room.setUpdateTime(now);
+        support.updateRoomGuarded(room, ROOM_STATUS_PLAYING, fromPhase);
     }
 
     /** 警上自爆那天公布完死讯：房主点「天黑」。 */
@@ -1155,14 +1185,27 @@ public class JudgeService {
         support.updateRoomGuarded(room, ROOM_STATUS_PLAYING, PHASE_DAY_ANNOUNCE);
     }
 
-    /** 票型公布之后：有平票进 PK，否则进下一夜。 */
+    /** 票型公布之后：有平票先 PK 发言（通用流程 7.4，先发言的后发言），否则进下一夜。 */
     private void handleContinue(JudgeRoomEntity room, LocalDateTime now) {
         requirePhase(room, PHASE_VOTE_RESULT);
         List<Integer> pk = support.pkSeats(room);
         if (!pk.isEmpty()) {
-            room.setCurrentPhase(PHASE_VOTE_PK);
-            room.setLatestAnnouncement(seatsText(pk) + "PK，其余玩家只能投给他们");
-            setPhaseClock(room, JudgeDayClock.VOTE_SECONDS, now);
+            List<Integer> spoke = support.loadEvents(room.getRoomId()).stream()
+                    .filter(event -> EVENT_SPEECH_ORDER.equals(event.getActionType())
+                            && Objects.equals(support.safeInt(event.getDayNo(), 1), support.safeInt(room.getCurrentDay(), 1)))
+                    .reduce((first, second) -> second)
+                    .map(event -> support.asIntegerList(support.readMap(event.getPayloadJson()).get("order")))
+                    .orElse(List.of());
+            List<Integer> pkOrder = JudgeDayFlow.pkSpeechOrder(pk, spoke);
+            Map<String, Object> phaseData = new LinkedHashMap<>(support.readMap(room.getPhaseData()));
+            phaseData.put("speech", support.mapOf("order", pkOrder, "index", 0, "pk", true));
+            room.setPhaseData(support.writeJson(phaseData));
+            room.setCurrentPhase(PHASE_DAY_SPEECH);
+            room.setLatestAnnouncement(seatsText(pk) + "PK 发言，请" + pkOrder.get(0) + "号开始");
+            Integer sheriffSeat = support.loadPlayers(room.getRoomId()).stream()
+                    .filter(player -> Boolean.TRUE.equals(player.getSheriff()) && Boolean.TRUE.equals(player.getAlive()))
+                    .map(JudgeRoomPlayerEntity::getSeatNo).findFirst().orElse(null);
+            setPhaseClock(room, speechSeconds(room, PHASE_DAY_SPEECH, pkOrder.get(0), sheriffSeat), now);
         } else {
             enterNight(room, "天黑请闭眼", now);
         }
@@ -1278,8 +1321,10 @@ public class JudgeService {
         List<Map<String, Object>> pending = support.pendingList(phaseData);
         Map<String, Object> current = pending.get(0);
         int seat = support.safeInt(support.asPositiveInteger(current.get("seat")), 0);
-        boolean hostSkipsLastWords = PENDING_LAST_WORDS.equals(support.asString(current.get("kind"))) && openid.equals(room.getOwnerUserId());
-        if (!hostSkipsLastWords && (self == null || !Objects.equals(self.getSeatNo(), seat))) {
+        // 跳过别人的遗言只有法官能做（无法官房主只有暂停和提前结束）
+        boolean judgeSkipsLastWords = PENDING_LAST_WORDS.equals(support.asString(current.get("kind")))
+                && JUDGE_MODE_OBSERVER.equals(room.getJudgeMode()) && self != null && Boolean.TRUE.equals(self.getJudgeObserver());
+        if (!judgeSkipsLastWords && (self == null || !Objects.equals(self.getSeatNo(), seat))) {
             throw new ApiException(4003, "现在不是你的技能");
         }
         resolvePending(room, players, support.safeText(support.trimToNull(request.decision()), "skip"), request.targetSeatNo(), LocalDateTime.now(APP_ZONE));
@@ -1352,8 +1397,15 @@ public class JudgeService {
             return;
         }
         if (pending.isEmpty()) {
-            room.setCurrentPhase(support.safeText(support.asString(phaseData.get("resumePhase")), PHASE_DAY_ANNOUNCE));
-            room.setStepDeadline(support.parseDeadline(Map.of("deadline", support.safeText(support.asString(phaseData.get("resumeDeadline")), ""))));
+            String resume = support.safeText(support.asString(phaseData.get("resumePhase")), PHASE_DAY_ANNOUNCE);
+            room.setCurrentPhase(resume);
+            if (PHASE_DAY_ANNOUNCE.equals(resume)) {
+                setPhaseClock(room, JudgeDayClock.ANNOUNCE_SECONDS, now);
+            } else if (PHASE_VOTE_RESULT.equals(resume)) {
+                setPhaseClock(room, JudgeDayClock.RESULT_SECONDS, now);
+            } else {
+                room.setStepDeadline(support.parseDeadline(Map.of("deadline", support.safeText(support.asString(phaseData.get("resumeDeadline")), ""))));
+            }
             phaseData.remove("pending");
             phaseData.remove("resumePhase");
             phaseData.remove("resumeDeadline");
@@ -1456,7 +1508,7 @@ public class JudgeService {
 
     private void requireNotPaused(JudgeRoomEntity room) {
         if (ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) && support.isPaused(room)) {
-            throw new ApiException(4002, "法官暂停中");
+            throw new ApiException(4002, "对局暂停中");
         }
     }
 
@@ -1631,24 +1683,49 @@ public class JudgeService {
         } else if (PHASE_SHERIFF_SIGNUP.equals(phase) && room.getStepDeadline() != null && now.isAfter(room.getStepDeadline())) {
             // 报名到点：没选的人算不上警
             handleCloseSheriffSignup(room, support.loadPlayers(roomId), systemRequest("close_sheriff_signup"), now);
+        } else if (PHASE_DAY_SPEECH.equals(phase) || PHASE_SHERIFF_SPEECH.equals(phase)) {
+            // 发言按人计时，到点自动换下一位（用户给定）
+            if (room.getStepDeadline() != null && now.isAfter(room.getStepDeadline())) {
+                advanceSpeaker(room, now);
+            }
+        } else if (PHASE_DAY_ANNOUNCE.equals(phase) || PHASE_VOTE_RESULT.equals(phase)) {
+            if (room.getStepDeadline() == null) {
+                // 升级前停在这里的房间没有截止时间：从现在开始计
+                setPhaseClock(room, PHASE_DAY_ANNOUNCE.equals(phase) ? JudgeDayClock.ANNOUNCE_SECONDS : JudgeDayClock.RESULT_SECONDS, now);
+                room.setUpdateTime(now);
+                support.updateRoomGuarded(room, ROOM_STATUS_PLAYING, phase);
+            } else if (now.isAfter(room.getStepDeadline())) {
+                if (PHASE_VOTE_RESULT.equals(phase)) {
+                    handleContinue(room, now);
+                } else if (Boolean.TRUE.equals(support.readMap(room.getPhaseData()).get("nightNext"))) {
+                    handleStartNight(room, now);
+                } else {
+                    handleStartSpeech(room, support.loadPlayers(roomId), systemRequest("start_speech"), now);
+                }
+            }
         }
     }
 
     /**
-     * 推进动作的权限：点杀、暂停 / 继续只认法官；旧流程房间其余动作也只认法官（线上旧版小程序的主持台）；
-     * 新流程房间其余动作认房主，但系统负责的夜间推进（手动切步、改判）不开放，有法官时也不能流局。
+     * 推进动作的权限（用户给定：白天黑夜都由系统按倒计时推进）：
+     * 无法官房间的房主只有暂停 / 继续和提前结束（记流局）；有法官时法官有暂停 / 继续、点杀、提前结束，
+     * 还可以不等倒计时提前推进白天的每一步。夜里的步骤谁都不能手动推进。
      */
     private JudgeRoomEntity requireAdvancePermission(String roomId, String openid, String action) {
-        if (Set.of("force_out", "pause", "resume").contains(action)) {
+        JudgeRoomEntity room = support.getRoom(roomId);
+        if ("next_step".equals(action) || "resolve_night".equals(action)) {
+            throw new ApiException(4003, "夜里由系统推进");
+        }
+        boolean observer = JUDGE_MODE_OBSERVER.equals(room.getJudgeMode());
+        if (observer) {
             return requireJudgeRoom(roomId, openid);
         }
-        JudgeRoomEntity room = support.getRoom(roomId);
-        support.requireHost(roomId, openid);
-        if ("next_step".equals(action) || "resolve_night".equals(action)) {
-            throw new ApiException(4003, "新流程由系统推进");
+        if ("force_out".equals(action)) {
+            throw new ApiException(4003, "当前只有法官可以执行此操作");
         }
-        if ("finish".equals(action) && JUDGE_MODE_OBSERVER.equals(room.getJudgeMode())) {
-            throw new ApiException(4003, "有法官模式不能流局");
+        support.requireHost(roomId, openid);
+        if (!Set.of("pause", "resume", "finish").contains(action)) {
+            throw new ApiException(4003, "无法官房间由系统自动推进");
         }
         return room;
     }

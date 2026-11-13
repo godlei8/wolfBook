@@ -1,7 +1,7 @@
 <script setup>
 // 出局待办：当事人看到技能询问 / 开枪选人 / 移交警徽（点两侧座位选人）；其他人只看到「等待出局玩家确认」，
 // 法官多一行是谁、什么待办。别人的座位上看不出是谁在处理（stageLayout 只给当事人可点的座位）。
-// 遗言公开：所有人看到谁在留遗言和倒计时，本人「结束遗言」、房主「跳过」。
+// 遗言公开：所有人看到谁在留遗言和倒计时，本人「结束遗言」、法官「跳过」。
 import { computed, ref, watch } from 'vue'
 import { countdown, phaseTitle } from '../../../utils/judge/room-view.js'
 import { pendingPanel } from '../../../utils/judge/pending.js'

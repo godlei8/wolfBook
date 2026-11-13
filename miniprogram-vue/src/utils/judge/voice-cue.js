@@ -59,8 +59,8 @@ function dayCue(snapshot, now) {
     case 'sheriff_pk':
       return cue(snapshot, phase, ['警长平票，进入 PK 投票'])
     case 'day_announce': {
-      // 警上自爆：先报公告、等遗言，「天黑请闭眼」留给房主点了天黑之后夜里第一步
-      if (snapshot.nightNext) return cue(snapshot, `${phase}:explode`, [snapshot.latestAnnouncement, '请出局的玩家发表遗言，房主再点天黑'])
+      // 警上自爆：先报公告、等遗言，「天黑请闭眼」留给自动天黑之后夜里第一步
+      if (snapshot.nightNext) return cue(snapshot, `${phase}:explode`, [snapshot.latestAnnouncement, '请出局的玩家发表遗言'])
       const panel = announcePanel(snapshot)
       const round = (snapshot.rounds || []).find((item) => item.dayNo === (snapshot.currentDay || 1))
       // 当天上过警的话「天亮了」已经在上警前播过

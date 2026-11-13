@@ -390,7 +390,7 @@ public class JudgeSnapshotAssembler {
             return null;
         }
         return new WolfbookDtos.JudgeSpeechView(support.asIntegerList(map.get("order")), support.asPositiveIntegerOrZero(map.get("index")),
-                support.trimToNull(support.asString(map.get("direction"))));
+                support.trimToNull(support.asString(map.get("direction"))), Boolean.TRUE.equals(map.get("pk")));
     }
 
     /** 夜里当前这一步：持有者和法官看得到台词，其他人只知道是第几步、哪个角色（播报里本来就会念）。 */

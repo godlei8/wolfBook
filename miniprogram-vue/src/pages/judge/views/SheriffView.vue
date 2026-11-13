@@ -1,6 +1,6 @@
 <script setup>
 // 上警：报名（只看到自己报没报）→ 警上发言（警上的人能退水，发言者本人能结束发言）→ 警长投票 / PK（没上警的人点两侧带「警」的座位投）。
-// 房主的推进按钮（截止报名、开始投票等）在房间页底部的操作栏。
+// 每一步到点自动走；法官的提前推进按钮（截止报名、开始投票等）在房间页底部的操作栏。
 import { computed, ref, watch } from 'vue'
 import { countdown, phaseTitle } from '../../../utils/judge/room-view.js'
 import { sheriffPanel } from '../../../utils/judge/sheriff.js'
@@ -126,7 +126,7 @@ function vote() {
           </view>
         </block>
         <block v-else-if="panel.stage === 'speech'">
-          <text class="nt-game__lead">{{ panel.speakerSeat ? `${panel.speakerSeat} 号警上发言` : '警上发言' }}</text>
+          <text class="nt-game__lead">{{ panel.speakerSeat ? `${panel.speakerSeat} 号${snapshot.speech && snapshot.speech.pk ? ' PK 发言' : '警上发言'}` : '警上发言' }}</text>
           <text class="nt-game__hint">警上：{{ panel.candidates.join('、') || '无' }} 号。警上的人可以退水。</text>
           <view v-if="panel.canWithdraw || panel.isSpeaker" class="nt-game__buttons">
             <view v-if="panel.isSpeaker" class="nt-btn nt-btn--gold nt-game__button" :class="{ 'nt-btn--disabled': busy }" @tap="endSpeech">结束发言</view>

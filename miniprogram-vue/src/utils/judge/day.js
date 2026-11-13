@@ -1,5 +1,5 @@
-// 白天：发言、放逐投票、票型公布、房主操作栏（纯函数，有单测）。
-// 投票进度只显示投了几个人，不显示投给谁；房主的按钮只带 action，不带出局者 / 胜方 / 发言顺序（新流程按规则结算，带了后端会拒）。
+// 白天：发言、放逐投票、票型公布、法官的推进按钮（纯函数，有单测）。
+// 投票进度只显示投了几个人，不显示投给谁；法官的按钮只带 action，不带出局者 / 胜方 / 发言顺序（新流程按规则结算，带了后端会拒）。
 import { speakerOf } from './sheriff.js'
 
 function aliveSelf(snapshot) {
@@ -18,7 +18,7 @@ export function speechPanel(snapshot) {
   return {
     speakerSeat,
     nextSeat: order[index + 1] || null,
-    directionText: DIRECTION_TEXT[direction] || (order.length ? `从 ${order[0]} 号开始` : ''),
+    directionText: snapshot?.speech?.pk ? 'PK 发言' : DIRECTION_TEXT[direction] || (order.length ? `从 ${order[0]} 号开始` : ''),
     isSpeaker: Boolean(speakerSeat) && aliveSelf(snapshot) && snapshot.selfPlayer.seatNo === speakerSeat,
     // 发言时长只有 30 秒时一开始就剩 30 秒，那就只在最后 10 秒变红
     warnAt: Number(snapshot?.rules?.speechSeconds || 120) > 30 ? 30 : 10,
@@ -78,16 +78,19 @@ const PHASE_ACTIONS = {
   sheriff_vote: [['resolve_sheriff_vote', '结算']],
   sheriff_pk: [['resolve_sheriff_vote', '结算']],
   day_announce: [['start_speech', '开始发言']],
-  // 所有存活玩家发完言自动进放逐投票（通用流程 6），房主只能跳过离席的人
+  // 所有存活玩家发完言自动进放逐投票（通用流程 6），法官只能跳过离席的人
   day_speech: [['next_speaker', '跳过这位']],
   exile_vote: [['resolve_vote', '结算投票']],
   vote_pk: [['resolve_vote', '结算 PK']],
   vote_result: [['continue', '继续']],
 }
 
-/** 房主的白天操作栏。无法官房主多一个「强制结束」（记流局，二次确认）；有法官时不能流局。暂停中全部不可点。 */
+/**
+ * 法官的白天推进按钮（用户给定：每一步都按倒计时自动走，法官可以不等倒计时提前推进）。
+ * 无法官房主没有推进按钮（暂停和提前结束在 judge-bar.js 的 judgeActions）。暂停中全部不可点。
+ */
 export function hostActions(snapshot) {
-  if (!snapshot?.host || snapshot.roomStatus !== 'playing') return []
+  if (!snapshot?.judgeViewer || snapshot.roomStatus !== 'playing') return []
   // 警上自爆那天公布完死讯直接天黑
   const phaseActions = snapshot.currentPhase === 'day_announce' && snapshot.nightNext
     ? [['start_night', '天黑']]
@@ -99,8 +102,5 @@ export function hostActions(snapshot) {
     confirm: false,
     payload: { action },
   }))
-  if (items.length && snapshot.judgeMode === 'joined') {
-    items.push({ action: 'finish', label: '强制结束', disabled: Boolean(snapshot.paused), confirm: true, payload: { action: 'finish' } })
-  }
   return items
 }

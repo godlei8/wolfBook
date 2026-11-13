@@ -65,8 +65,9 @@ const identity = computed(() => identityCard(snapshot.value, board.value))
 const identityOpen = ref(false)
 const judgeBar = computed(() => judgeActions(snapshot.value))
 const overlay = computed(() => pausedOverlay(snapshot.value))
-const hasJudgeBar = computed(() => judgeBar.value.pause || judgeBar.value.resume || judgeBar.value.forceOut)
-// 房主的白天推进按钮（有法官时房主就是法官，和暂停 / 点杀放在同一条操作栏）
+const hasJudgeBar = computed(() => judgeBar.value.pause || judgeBar.value.resume || judgeBar.value.forceOut || judgeBar.value.finish)
+// 法官提前推进白天的按钮（每一步本来就按倒计时自动走），和暂停 / 更多（点杀、提前结束）放在同一条操作栏；
+// 无法官房主只有暂停 / 继续和提前结束
 const hostItems = computed(() => hostActions(snapshot.value))
 const hasBar = computed(() => view.value === 'lobby' || hasJudgeBar.value || hostItems.value.length > 0)
 // 点杀：先打开座位面板选人，再二次确认
@@ -338,16 +339,30 @@ function onAct(event) {
 
 function tapHostItem(item) {
   if (item.disabled || actionLoading.value) return
-  if (!item.confirm) {
-    onAct({ kind: 'advance', payload: item.payload })
-    return
-  }
+  onAct({ kind: 'advance', payload: item.payload })
+}
+
+// 提前结束：记流局，二次确认
+function confirmFinish() {
+  if (actionLoading.value) return
   uni.showModal({
-    title: item.label,
-    content: '强制结束这一局，记为流局？',
+    title: '提前结束',
+    content: '提前结束这一局，记为流局？',
     confirmText: '结束',
     success: (result) => {
-      if (result.confirm) onAct({ kind: 'advance', payload: item.payload })
+      if (result.confirm) onAct({ kind: 'advance', payload: { action: 'finish' } })
+    },
+  })
+}
+
+// 法官的「更多」：点杀、提前结束
+function openMore() {
+  if (actionLoading.value) return
+  uni.showActionSheet({
+    itemList: ['点杀', '提前结束'],
+    success: (result) => {
+      if (result.tapIndex === 0) forceOutOpen.value = true
+      if (result.tapIndex === 1) confirmFinish()
     },
   })
 }
@@ -451,7 +466,7 @@ onUnload(() => {
     <NightView v-else-if="view === 'night'" :snapshot="snapshot" :board="board" :now="now" :busy="actionLoading" :stage-height="stageHeight" :bar="hasBar" @fit="stageHeight = $event" @act="onAct" />
     <PendingView v-else-if="view === 'pending'" :snapshot="snapshot" :now="now" :busy="actionLoading" :stage-height="stageHeight" :bar="hasBar" @fit="stageHeight = $event" @act="onAct" />
     <SheriffView v-else-if="view === 'sheriff'" :snapshot="snapshot" :now="now" :busy="actionLoading" :stage-height="stageHeight" :bar="hasBar" @fit="stageHeight = $event" @act="onAct" />
-    <AnnounceView v-else-if="view === 'announce'" :snapshot="snapshot" :busy="actionLoading" :stage-height="stageHeight" :bar="hasBar" @fit="stageHeight = $event" @act="onAct" />
+    <AnnounceView v-else-if="view === 'announce'" :snapshot="snapshot" :now="now" :busy="actionLoading" :stage-height="stageHeight" :bar="hasBar" @fit="stageHeight = $event" @act="onAct" />
     <SpeechView v-else-if="view === 'speech'" :snapshot="snapshot" :now="now" :busy="actionLoading" :stage-height="stageHeight" :bar="hasBar" @fit="stageHeight = $event" @act="onAct" />
     <VoteView v-else-if="view === 'vote' || view === 'voteResult'" :snapshot="snapshot" :now="now" :busy="actionLoading" :stage-height="stageHeight" :bar="hasBar" @fit="stageHeight = $event" @act="onAct" />
     <ResultView v-else-if="view === 'result'" :snapshot="snapshot" :board="board" @open-log="logOpen = true" />
@@ -474,7 +489,7 @@ onUnload(() => {
         v-for="item in hostItems"
         :key="item.action"
         class="nt-btn jr-judgebar__btn"
-        :class="[item.confirm ? 'nt-btn--ghost' : 'nt-btn--gold', { 'nt-btn--disabled': item.disabled || actionLoading }]"
+        :class="['nt-btn--gold', { 'nt-btn--disabled': item.disabled || actionLoading }]"
         @tap="tapHostItem(item)"
       >{{ item.label }}</view>
       <view
@@ -483,7 +498,8 @@ onUnload(() => {
         :class="[judgeBar.resume ? 'nt-btn--gold' : 'nt-btn--ghost', { 'nt-btn--disabled': actionLoading }]"
         @tap="pauseOrResume"
       >{{ judgeBar.resume ? '继续计时' : '暂停计时' }}</view>
-      <view v-if="judgeBar.forceOut" class="nt-btn nt-btn--ghost jr-judgebar__btn" @tap="forceOutOpen = true">点杀</view>
+      <view v-if="judgeBar.forceOut" class="nt-btn nt-btn--ghost jr-judgebar__btn" @tap="openMore">更多</view>
+      <view v-else-if="judgeBar.finish" class="nt-btn nt-btn--ghost jr-judgebar__btn" @tap="confirmFinish">提前结束</view>
     </view>
 
     <LogSheet v-if="logOpen && snapshot" :snapshot="snapshot" @close="logOpen = false" />

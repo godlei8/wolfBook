@@ -65,6 +65,25 @@ public final class JudgeDayFlow {
         return walk(aliveSeats, playerCount, anchor, clockwise, false, last);
     }
 
+    /** 有警长时的发言方向（用户给定：警长不选，系统随机警左或警右，警长最后发言）。 */
+    public static String sheriffDirection(Random random) {
+        return random.nextBoolean() ? LEFT : RIGHT;
+    }
+
+    /**
+     * PK 发言顺序（通用流程 4.4 / 7.4）：平票者再各说一轮，先发言的后发言；
+     * 之前那一轮里没排到的（比如没说上话的）按座位号放在最后。
+     */
+    public static List<Integer> pkSpeechOrder(List<Integer> tiedSeats, List<Integer> previousOrder) {
+        List<Integer> previous = previousOrder == null ? List.of() : previousOrder;
+        List<Integer> spoke = tiedSeats.stream().filter(previous::contains)
+                .sorted((a, b) -> Integer.compare(previous.indexOf(b), previous.indexOf(a))).toList();
+        List<Integer> rest = tiedSeats.stream().filter(seat -> !previous.contains(seat)).sorted().toList();
+        List<Integer> order = new java.util.ArrayList<>(spoke);
+        order.addAll(rest);
+        return List.copyOf(order);
+    }
+
     /** 实际用的发言方向：选的方向用不了（没警长选警左 / 警右、没死者选死左 / 死右）时有死者按死左，否则随机（null）。 */
     public static String speechMode(String choice, Integer sheriffSeat, List<Integer> nightDeaths) {
         boolean hasDeath = nightDeaths != null && !nightDeaths.isEmpty();

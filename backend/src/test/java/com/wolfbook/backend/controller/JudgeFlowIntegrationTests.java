@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -276,7 +277,10 @@ class JudgeFlowIntegrationTests {
         JsonNode playerView = game.snapshot(game.players.get(8));
         Assertions.assertTrue(playerView.path("voteTallies").size() > 0, "票型公布对全场可见");
 
-        Assertions.assertEquals("vote_pk", game.advance(game.host, "{\"action\":\"continue\"}").path("data").path("currentPhase").asText());
+        JsonNode pkSpeech = game.advance(game.host, "{\"action\":\"continue\"}").path("data");
+        Assertions.assertEquals("day_speech", pkSpeech.path("currentPhase").asText(), "先 PK 发言：" + pkSpeech);
+        Assertions.assertTrue(pkSpeech.path("speech").path("pk").asBoolean());
+        Assertions.assertEquals("vote_pk", game.advance(game.host, "{\"action\":\"start_vote\"}").path("data").path("currentPhase").asText());
         Assertions.assertEquals(4003, game.call(game.players.get(4), "/vote", "{\"targetSeatNo\":6}").path("code").asInt(), "平票者不能投");
         Assertions.assertEquals(4000, game.call(game.players.get(0), "/vote", "{\"targetSeatNo\":7}").path("code").asInt(), "只能投平票者");
         game.vote(1, 5);
@@ -516,18 +520,23 @@ class JudgeFlowIntegrationTests {
 
     @Test
     void hostCannotDictateResultsInAutoRooms() throws Exception {
-        // 无法官房主只是普通玩家：不能指定谁出局、谁赢，也不能改系统定的发言顺序
+        // 无法官房主只是普通玩家：白天由系统推进，不能指定谁出局、谁赢；法官也不能改系统定的发言顺序和票型
         Game game = joinedGame(2, 12);
         game.finishNight();
         game.skipPending();
-        Assertions.assertEquals(4000, game.advance(game.host, "{\"action\":\"start_speech\",\"speechStartSeat\":5}").path("code").asInt());
-        Assertions.assertEquals(4000, game.advance(game.host, "{\"action\":\"start_speech\",\"speechDirection\":\"right\"}").path("code").asInt());
-        game.advance(game.host, "{\"action\":\"start_speech\"}");
-        game.advance(game.host, "{\"action\":\"start_vote\"}");
-        Assertions.assertEquals(4000, game.advance(game.host, "{\"action\":\"resolve_vote\",\"eliminatedSeatNo\":5}").path("code").asInt());
-        Assertions.assertEquals(4000, game.advance(game.host, "{\"action\":\"resolve_vote\",\"winnerCamp\":\"好人\"}").path("code").asInt());
+        Assertions.assertEquals(4003, game.advance(game.host, "{\"action\":\"start_speech\"}").path("code").asInt());
         Assertions.assertEquals(4000, game.advance(game.host, "{\"action\":\"finish\",\"winnerCamp\":\"好人\"}").path("code").asInt());
-        Assertions.assertEquals("exile_vote", game.snapshot(game.host).path("currentPhase").asText());
+        Assertions.assertEquals("day_announce", game.snapshot(game.host).path("currentPhase").asText());
+
+        Game judged = autoGame(false);
+        judged.finishNight();
+        Assertions.assertEquals(4000, judged.advance(judged.host, "{\"action\":\"start_speech\",\"speechStartSeat\":5}").path("code").asInt());
+        Assertions.assertEquals(4000, judged.advance(judged.host, "{\"action\":\"start_speech\",\"speechDirection\":\"right\"}").path("code").asInt());
+        judged.advance(judged.host, "{\"action\":\"start_speech\"}");
+        judged.advance(judged.host, "{\"action\":\"start_vote\"}");
+        Assertions.assertEquals(4000, judged.advance(judged.host, "{\"action\":\"resolve_vote\",\"eliminatedSeatNo\":5}").path("code").asInt());
+        Assertions.assertEquals(4000, judged.advance(judged.host, "{\"action\":\"resolve_vote\",\"winnerCamp\":\"好人\"}").path("code").asInt());
+        Assertions.assertEquals("exile_vote", judged.snapshot(judged.host).path("currentPhase").asText());
     }
 
     @Test
@@ -585,7 +594,6 @@ class JudgeFlowIntegrationTests {
         Assertions.assertEquals(4003, proxy.path("code").asInt(), proxy.toString());
         Assertions.assertEquals(4003, game.advance(game.host, "{\"action\":\"next_step\",\"stepIndex\":0}").path("code").asInt());
         Assertions.assertEquals(4003, game.advance(game.host, "{\"action\":\"resolve_night\",\"deadSeatNos\":[]}").path("code").asInt());
-        Assertions.assertEquals(4003, game.advance(game.host, "{\"action\":\"finish\"}").path("code").asInt());
     }
 
     @Test
@@ -597,16 +605,16 @@ class JudgeFlowIntegrationTests {
     }
 
     @Test
-    void deadJoinedHostStillAdvancesTheDay() throws Exception {
+    void deadJoinedHostStillPausesWhileTheDayRunsItself() throws Exception {
         Game game = joinedGame(2, 12);
         // 狼可以自刀，1 号（房主）拿什么牌都刀得到
         game.finishNight(1, null);
         game.skipPending();
         JsonNode day = game.snapshot(game.host);
         Assertions.assertFalse(game.player(day, 1).path("alive").asBoolean(), day.toString());
-        JsonNode speech = game.advance(game.host, "{\"action\":\"start_speech\"}");
-        Assertions.assertEquals(0, speech.path("code").asInt(), speech.toString());
-        Assertions.assertEquals("day_speech", speech.path("data").path("currentPhase").asText());
+        Assertions.assertEquals("day_speech", game.expireDeadline().path("currentPhase").asText(), "系统自己开始发言");
+        JsonNode paused = game.advance(game.host, "{\"action\":\"pause\"}");
+        Assertions.assertEquals(0, paused.path("code").asInt(), "出局的房主照样能暂停：" + paused);
     }
 
     @Test
@@ -661,11 +669,12 @@ class JudgeFlowIntegrationTests {
     }
 
     @Test
-    void onlyTheJudgePauses() throws Exception {
+    void onlyTheJudgeOrTheJoinedHostPauses() throws Exception {
         Game game = autoGame(false);
         Assertions.assertEquals(4003, game.advance(game.players.get(0), "{\"action\":\"pause\"}").path("code").asInt());
         Game joined = joinedGame(2, 12);
-        Assertions.assertEquals(4003, joined.advance(joined.host, "{\"action\":\"pause\"}").path("code").asInt(), "无法官房间没有法官");
+        Assertions.assertEquals(4003, joined.advance(joined.players.get(1), "{\"action\":\"pause\"}").path("code").asInt());
+        Assertions.assertEquals(0, joined.advance(joined.host, "{\"action\":\"pause\"}").path("code").asInt(), "无法官房主能暂停");
     }
 
     @Test
@@ -819,8 +828,8 @@ class JudgeFlowIntegrationTests {
     }
 
     @Test
-    void lastSheriffSpeakerDoesNotStartTheSheriffVote() throws Exception {
-        // 警上发言结束后的警长投票仍由房主点，这次不改
+    void lastSheriffSpeakerStartsTheSheriffVote() throws Exception {
+        // 用户给定：警上全部说完自动进入投票
         Game game = autoGame12(true);
         Map<String, List<Integer>> roles = game.seatsByRole();
         JsonNode stage = toSheriffSpeech(game, null, roles.get("预言家").get(0), roles.get("平民").get(0));
@@ -829,11 +838,11 @@ class JudgeFlowIntegrationTests {
         for (int i = 0; i < speakers; i++) {
             view = game.advance(game.host, "{\"action\":\"next_speaker\"}").path("data");
         }
-        Assertions.assertEquals("sheriff_speech", view.path("currentPhase").asText(), view.toString());
+        Assertions.assertEquals("sheriff_vote", view.path("currentPhase").asText(), view.toString());
     }
 
     @Test
-    void speechClockIsShownButNotForced() throws Exception {
+    void speechTimeRunningOutPassesToTheNextSpeaker() throws Exception {
         Game game = autoGame(false);
         game.finishNight();
         game.advance(game.host, "{\"action\":\"start_speech\"}");
@@ -841,7 +850,7 @@ class JudgeFlowIntegrationTests {
         Assertions.assertTrue(seconds >= 118 && seconds <= 120, "每人发言 120 秒，实际 " + seconds);
         JsonNode after = game.expireDeadline();
         Assertions.assertEquals("day_speech", after.path("currentPhase").asText());
-        Assertions.assertEquals(0, after.path("speech").path("index").asInt(), "到点不强制切下一位");
+        Assertions.assertEquals(1, after.path("speech").path("index").asInt(), "到点自动换下一位（用户给定）");
     }
 
     // ---- 玩家各自的夜间私密信息 ----
@@ -1773,7 +1782,9 @@ class JudgeFlowIntegrationTests {
         game.sheriff(below.get(1), "{\"targetSeatNo\":" + a + "}");
         game.sheriff(below.get(2), "{\"targetSeatNo\":" + b + "}");
         game.sheriff(below.get(3), "{\"targetSeatNo\":" + b + "}");
-        JsonNode pk = game.advance(game.host, "{\"action\":\"resolve_sheriff_vote\"}").path("data");
+        JsonNode pkSpeech = game.advance(game.host, "{\"action\":\"resolve_sheriff_vote\"}").path("data");
+        Assertions.assertEquals("sheriff_speech", pkSpeech.path("currentPhase").asText(), "先 PK 发言：" + pkSpeech);
+        JsonNode pk = game.advance(game.host, "{\"action\":\"start_sheriff_vote\"}").path("data");
         Assertions.assertEquals("sheriff_pk", pk.path("currentPhase").asText(), pk.toString());
 
         JsonNode own = game.call(game.players.get(c - 1), "/sheriff", "{\"targetSeatNo\":" + a + "}");
@@ -2013,13 +2024,12 @@ class JudgeFlowIntegrationTests {
         return game.call(game.players.get(seat - 1), "/night-action", "{\"actionType\":\"" + action + "\",\"targetSeatNo\":" + target + "}");
     }
 
-    /** 天亮后：待办跳过，发言、投票没人投（无人出局），票型公布后入夜。 */
+    /** 天亮后：每一步都到点（待办跳过、发言轮完、没人投票无人出局、票型公布），直到入夜。 */
     private JsonNode toNextNight(Game game) throws Exception {
-        game.skipPending();
-        game.advance(game.host, "{\"action\":\"start_speech\"}");
-        game.advance(game.host, "{\"action\":\"start_vote\"}");
-        game.advance(game.host, "{\"action\":\"resolve_vote\"}");
-        JsonNode night = game.advance(game.host, "{\"action\":\"continue\"}").path("data");
+        JsonNode night = game.snapshot(game.host);
+        for (int i = 0; i < 40 && !"night_action".equals(night.path("currentPhase").asText()); i++) {
+            night = game.expireDeadline();
+        }
         Assertions.assertEquals("night_action", night.path("currentPhase").asText(), night.toString());
         return night;
     }
@@ -2522,32 +2532,24 @@ class JudgeFlowIntegrationTests {
                 game.call(game.players.get(mech - 1), "/night-action", "{\"actionType\":\"learn\",\"targetSeatNo\":" + roles.get("女巫").get(0) + "}");
                 assertNoLeaks(game);
             }
-            if ("day_announce".equals(view.path("currentPhase").asText())) {
-                game.advance(game.host, "{\"action\":\"start_speech\"}");
-            } else if ("day_speech".equals(view.path("currentPhase").asText())) {
-                game.advance(game.host, "{\"action\":\"start_vote\"}");
-            } else if ("vote_result".equals(view.path("currentPhase").asText())) {
-                game.advance(game.host, "{\"action\":\"continue\"}");
-            } else {
-                game.expireDeadline();
-            }
+            game.expireDeadline();
         }
         Assertions.assertTrue(maxDay >= 2, "扫描至少要走到第二天，现在只到第 " + maxDay + " 天");
     }
 
     @Test
     void noPlayerSeesAnotherPlayersSecretsOnTheSeerBoard() throws Exception {
-        playAndScan(autoGame12(false), 40);
+        playAndScan(autoGame12(false), 60);
     }
 
     @Test
     void noPlayerSeesAnotherPlayersSecretsOnTheMechWolfBoard() throws Exception {
-        playAndScan(mechWolfGame(), 40);
+        playAndScan(mechWolfGame(), 60);
     }
 
     @Test
     void noPlayerSeesAnotherPlayersSecretsOnTheWolfKingBoard() throws Exception {
-        playAndScan(wolfKingGame(), 40);
+        playAndScan(wolfKingGame(), 60);
     }
 
     @Test
@@ -2566,22 +2568,19 @@ class JudgeFlowIntegrationTests {
     }
 
     @Test
-    void everyoneSeesTheSheriffsSpeechOrderChoice() throws Exception {
-        // 实测问题 3：警长定完发言顺序，大家都看得到选了哪边
+    void everyoneSeesTheSpeechDirection() throws Exception {
+        // 发言阶段只告诉大家是警左还是警右（系统随机，警长不选）
         Game game = autoGame12(true);
         game.finishNight();
         int sheriff = game.seatsByRole().get("平民").get(0);
         game.sheriff(sheriff, "{\"candidate\":true}");
         JsonNode announce = game.advance(game.host, "{\"action\":\"close_sheriff_signup\"}").path("data");
         Assertions.assertEquals("day_announce", announce.path("currentPhase").asText(), announce.toString());
-        Assertions.assertTrue(announce.path("sheriffOrder").isNull(), "还没选");
-        game.sheriff(sheriff, "{\"speechOrder\":\"right\"}");
-        int other = game.seatsByRole().get("平民").get(1);
-        Assertions.assertEquals("right", game.snapshot(game.players.get(other - 1)).path("sheriffOrder").asText());
-        // 发言阶段也只告诉大家是警左还是警右（实际用的方向）
-        JsonNode speech = game.advance(game.host, "{\"action\":\"start_speech\"}").path("data");
+        JsonNode speech = game.expireDeadline();
         Assertions.assertEquals("day_speech", speech.path("currentPhase").asText(), speech.toString());
-        Assertions.assertEquals("right", game.snapshot(game.players.get(other - 1)).path("speech").path("direction").asText());
+        int other = game.seatsByRole().get("平民").get(1);
+        String direction = game.snapshot(game.players.get(other - 1)).path("speech").path("direction").asText();
+        Assertions.assertTrue(Set.of("left", "right").contains(direction), direction);
     }
 
     @Test
@@ -2831,6 +2830,150 @@ class JudgeFlowIntegrationTests {
         Assertions.assertEquals(4000, joined.call(joined.host, "/remove", "{\"seatNo\":" + hostSeat + "}").path("code").asInt(), "不能请自己离开");
     }
 
+    // ---- 白天全自动（用户给定）：每一步按倒计时推进；无法官房主只有暂停 / 继续和提前结束；有法官时法官还能提前推进、提前结束 ----
+
+    /** 无法官、不上警的预女猎白：第一夜平安夜，停在公布死讯。 */
+    private Game joinedDay() throws Exception {
+        Game game = joinedGame(2, 12);
+        JsonNode day = game.finishNight();
+        Assertions.assertEquals("day_announce", day.path("currentPhase").asText(), day.toString());
+        return game;
+    }
+
+    /** 一直让当前发言人到点，直到不在发言阶段。 */
+    private JsonNode runOutSpeeches(Game game) throws Exception {
+        JsonNode view = game.snapshot(game.host);
+        for (int i = 0; i < 20 && Set.of("day_speech", "sheriff_speech").contains(view.path("currentPhase").asText()); i++) {
+            view = game.expireDeadline();
+        }
+        return view;
+    }
+
+    @Test
+    void joinedHostOnlyPausesAndEndsTheGame() throws Exception {
+        Game game = joinedDay();
+        Assertions.assertEquals(4003, game.advance(game.host, "{\"action\":\"start_speech\"}").path("code").asInt(), "无法官房间由系统推进");
+        Assertions.assertEquals(4003, game.advance(game.host, "{\"action\":\"force_out\",\"forceOutSeatNo\":2}").path("code").asInt(), "点杀只有法官");
+        Assertions.assertEquals(4003, game.advance(game.players.get(1), "{\"action\":\"pause\"}").path("code").asInt(), "别的玩家不能暂停");
+        JsonNode paused = game.advance(game.host, "{\"action\":\"pause\"}");
+        Assertions.assertEquals(0, paused.path("code").asInt(), paused.toString());
+        Assertions.assertTrue(paused.path("data").path("paused").asBoolean());
+        Assertions.assertEquals(0, game.advance(game.host, "{\"action\":\"resume\"}").path("code").asInt());
+        JsonNode ended = game.advance(game.host, "{\"action\":\"finish\"}");
+        Assertions.assertEquals(0, ended.path("code").asInt(), ended.toString());
+        Assertions.assertEquals("流局", ended.path("data").path("winnerCamp").asText());
+    }
+
+    @Test
+    void theAnnouncementLeadsIntoSpeechesByItself() throws Exception {
+        Game game = joinedDay();
+        long seconds = secondsToDeadline(game);
+        Assertions.assertTrue(seconds >= 3 && seconds <= 5, "公布死讯停 5 秒，实际 " + seconds);
+        JsonNode speech = game.expireDeadline();
+        Assertions.assertEquals("day_speech", speech.path("currentPhase").asText(), speech.toString());
+        Assertions.assertEquals(0, speech.path("speech").path("index").asInt());
+    }
+
+    @Test
+    void aSpeakerWhoseTimeRunsOutPassesToTheNextAndTheLastOpensTheVote() throws Exception {
+        Game game = joinedDay();
+        JsonNode speech = game.expireDeadline();
+        int speakers = speech.path("speech").path("order").size();
+        JsonNode next = game.expireDeadline();
+        Assertions.assertEquals("day_speech", next.path("currentPhase").asText());
+        Assertions.assertEquals(1, next.path("speech").path("index").asInt(), "到点自动换下一位");
+        JsonNode view = runOutSpeeches(game);
+        Assertions.assertEquals("exile_vote", view.path("currentPhase").asText(), "全部说完自动投票，共 " + speakers + " 人");
+    }
+
+    @Test
+    void theVoteResultMovesOnByItself() throws Exception {
+        Game game = joinedDay();
+        game.expireDeadline();
+        runOutSpeeches(game);
+        JsonNode result = game.expireDeadline();
+        Assertions.assertEquals("vote_result", result.path("currentPhase").asText(), "没人投，全员弃票：" + result);
+        long seconds = secondsToDeadline(game);
+        Assertions.assertTrue(seconds >= 8 && seconds <= 10, "票型公布停 10 秒，实际 " + seconds);
+        JsonNode night = game.expireDeadline();
+        Assertions.assertEquals("night_action", night.path("currentPhase").asText(), night.toString());
+        Assertions.assertEquals(2, night.path("currentDay").asInt());
+    }
+
+    @Test
+    void anExileTieHasAPkSpeechRoundBeforeThePkVote() throws Exception {
+        Game game = joinedDay();
+        JsonNode speech = game.expireDeadline();
+        List<Integer> order = new ArrayList<>();
+        speech.path("speech").path("order").forEach(seat -> order.add(seat.asInt()));
+        runOutSpeeches(game);
+        // 3 号和 8 号各 6 票
+        for (int seat = 1; seat <= 12; seat++) {
+            game.vote(seat, seat <= 6 ? (seat == 3 ? 8 : 3) : (seat == 8 ? 3 : 8));
+        }
+        JsonNode result = game.snapshot(game.host);
+        Assertions.assertEquals("vote_result", result.path("currentPhase").asText(), result.toString());
+        JsonNode pkSpeech = game.expireDeadline();
+        Assertions.assertEquals("day_speech", pkSpeech.path("currentPhase").asText(), pkSpeech.toString());
+        Assertions.assertTrue(pkSpeech.path("speech").path("pk").asBoolean(), pkSpeech.path("speech").toString());
+        List<Integer> expected = order.indexOf(3) < order.indexOf(8) ? List.of(8, 3) : List.of(3, 8);
+        List<Integer> pkOrder = new ArrayList<>();
+        pkSpeech.path("speech").path("order").forEach(seat -> pkOrder.add(seat.asInt()));
+        Assertions.assertEquals(expected, pkOrder, "先发言的后发言");
+        JsonNode pkVote = runOutSpeeches(game);
+        Assertions.assertEquals("vote_pk", pkVote.path("currentPhase").asText(), pkVote.toString());
+    }
+
+    @Test
+    void theSheriffSpeechEndsIntoTheVoteAndATieIntoAPkSpeech() throws Exception {
+        Game game = autoGame12(true);
+        Map<String, List<Integer>> roles = game.seatsByRole();
+        int seer = roles.get("预言家").get(0);
+        int villager = roles.get("平民").get(0);
+        toSheriffSpeech(game, null, seer, villager);
+        JsonNode vote = runOutSpeeches(game);
+        Assertions.assertEquals("sheriff_vote", vote.path("currentPhase").asText(), "警上全部说完自动投票");
+        List<Integer> voters = new ArrayList<>();
+        for (int seat = 1; seat <= 12; seat++) {
+            if (seat != seer && seat != villager) {
+                voters.add(seat);
+            }
+        }
+        for (int i = 0; i < voters.size(); i++) {
+            game.sheriff(voters.get(i), "{\"targetSeatNo\":" + (i % 2 == 0 ? seer : villager) + "}");
+        }
+        JsonNode pk = game.snapshot(game.host);
+        Assertions.assertEquals("sheriff_speech", pk.path("currentPhase").asText(), "平票先 PK 发言：" + pk);
+        Assertions.assertTrue(pk.path("speech").path("pk").asBoolean());
+        JsonNode pkVote = runOutSpeeches(game);
+        Assertions.assertEquals("sheriff_pk", pkVote.path("currentPhase").asText(), pkVote.toString());
+    }
+
+    @Test
+    void theSheriffDoesNotChooseTheSpeechOrder() throws Exception {
+        Game game = autoGame12(true);
+        int sheriff = electWolfSheriff(game);
+        Assertions.assertEquals(4003, game.call(game.players.get(sheriff - 1), "/sheriff", "{\"speechOrder\":\"left\"}").path("code").asInt());
+        JsonNode speech = game.snapshot(game.host);
+        Assertions.assertTrue(Set.of("left", "right").contains(speech.path("speech").path("direction").asText()),
+                "系统随机警左或警右：" + speech.path("speech"));
+        List<Integer> order = new ArrayList<>();
+        speech.path("speech").path("order").forEach(seat -> order.add(seat.asInt()));
+        Assertions.assertEquals(sheriff, order.get(order.size() - 1), "警长最后发言");
+    }
+
+    @Test
+    void theJudgeMayAdvanceEarlyAndEndTheGame() throws Exception {
+        Game game = autoGame(false);
+        game.finishNight();
+        JsonNode speech = game.advance(game.host, "{\"action\":\"start_speech\"}");
+        Assertions.assertEquals(0, speech.path("code").asInt(), "法官可以不等倒计时提前推进：" + speech);
+        Assertions.assertEquals(0, game.advance(game.host, "{\"action\":\"next_speaker\"}").path("code").asInt());
+        JsonNode ended = game.advance(game.host, "{\"action\":\"finish\"}");
+        Assertions.assertEquals(0, ended.path("code").asInt(), "法官可以提前结束：" + ended);
+        Assertions.assertEquals("流局", ended.path("data").path("winnerCamp").asText());
+    }
+
     // ---- helpers ----
 
     /** 种子板子 2「预女猎白」：12 人，4 狼、预言家、女巫、猎人、白痴、4 平民；夜间顺序 狼人 → 女巫 → 预言家 → 猎人。 */
@@ -2858,14 +3001,16 @@ class JudgeFlowIntegrationTests {
 
     /** 天亮后直接发言、投票：voters 全投 target，然后结算。返回结算后的快照。 */
     private JsonNode exile(Game game, List<Integer> voters, int target) throws Exception {
-        game.advance(game.host, "{\"action\":\"start_speech\"}");
-        game.advance(game.host, "{\"action\":\"start_vote\"}");
+        JsonNode view = game.snapshot(game.host);
+        for (int i = 0; i < 40 && !"exile_vote".equals(view.path("currentPhase").asText()); i++) {
+            view = game.expireDeadline();
+        }
+        Assertions.assertEquals("exile_vote", view.path("currentPhase").asText(), view.toString());
         for (int voter : voters) {
             game.vote(voter, target);
         }
-        JsonNode resolved = game.advance(game.host, "{\"action\":\"resolve_vote\"}");
-        Assertions.assertEquals(0, resolved.path("code").asInt(), resolved.toString());
-        return resolved.path("data");
+        JsonNode resolved = game.snapshot(game.host);
+        return "exile_vote".equals(resolved.path("currentPhase").asText()) ? game.expireDeadline() : resolved;
     }
 
     private JsonNode autoGameHostSnapshot() throws Exception {

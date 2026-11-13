@@ -1,6 +1,6 @@
 <script setup>
 // 天亮公布死讯；有警长时警长本人选发言顺序（警左 / 警右，有人出局再加死左 / 死右）。
-// 房主的「开始发言」在房间页底部的操作栏。
+// 停几秒后系统自动开始发言（警上自爆那天自动天黑）；法官的「开始发言」在房间页底部的操作栏。
 import { computed } from 'vue'
 import { phaseTitle } from '../../../utils/judge/room-view.js'
 import { announcePanel } from '../../../utils/judge/sheriff.js'
@@ -10,6 +10,7 @@ import { useStageFit } from '../../../utils/judge/stage-fit.js'
 const props = defineProps({
   snapshot: { type: Object, required: true },
   busy: { type: Boolean, default: false },
+  now: { type: Number, default: () => Date.now() },
   // 房间页记住的牌桌高度（rpx）和底部有没有固定操作栏
   stageHeight: { type: Number, default: 0 },
   bar: { type: Boolean, default: false },
@@ -17,7 +18,7 @@ const props = defineProps({
 const emit = defineEmits(['act', 'fit'])
 
 const layout = computed(() => stageLayout(props.snapshot, 'announce', { stageHeight: props.stageHeight }))
-const panel = computed(() => announcePanel(props.snapshot))
+const panel = computed(() => announcePanel(props.snapshot, props.now))
 const title = computed(() => phaseTitle(props.snapshot))
 const deadPlayers = computed(() => (props.snapshot.players || []).filter((player) => panel.value.deaths.includes(player.seatNo)))
 useStageFit(props, emit, () => layout.value.cardHeight)
@@ -27,11 +28,6 @@ function seatClass(seat) {
 }
 
 function tapSeat() {}
-
-function choose(option) {
-  if (props.busy) return
-  emit('act', { kind: 'sheriff', payload: { speechOrder: option.value } })
-}
 </script>
 
 <template>
@@ -81,25 +77,9 @@ function choose(option) {
 
     <view class="nt-gutter nt-game__area" :style="gameAreaStyle(bar)">
       <view class="nt-panel nt-game__panel">
-        <block v-if="panel.sheriffSeat">
-          <text class="nt-game__lead">警长 {{ panel.sheriffSeat }} 号决定发言顺序</text>
-          <text v-if="panel.announcement" class="nt-game__hint">{{ panel.announcement }}</text>
-          <view v-if="panel.canChooseOrder" class="ja-order">
-            <view
-              v-for="option in panel.orderOptions"
-              :key="option.value"
-              class="nt-btn ja-order__button"
-              :class="[panel.chosenOrder === option.value ? 'nt-btn--gold' : 'nt-btn--ghost', { 'nt-btn--disabled': busy }]"
-              @tap="choose(option)"
-            >{{ option.label }}</view>
-          </view>
-          <text class="nt-game__hint">{{ panel.chosenOrderText }}</text>
-        </block>
-        <block v-else>
-          <text class="nt-game__lead">天亮了</text>
-          <text v-if="panel.announcement" class="nt-game__hint">{{ panel.announcement }}</text>
-          <text class="nt-game__hint">{{ panel.hint }}</text>
-        </block>
+        <text class="nt-game__lead">{{ panel.sheriffSeat ? `天亮了 · 警长 ${panel.sheriffSeat} 号` : '天亮了' }}</text>
+        <text v-if="panel.announcement" class="nt-game__hint">{{ panel.announcement }}</text>
+        <text class="nt-game__hint ja-next">{{ panel.hint }}</text>
       </view>
     </view>
   </view>
@@ -130,15 +110,7 @@ function choose(option) {
   color: var(--text-2);
 }
 
-.ja-order {
-  margin-top: auto;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16rpx;
-}
-
-.ja-order__button {
-  width: calc(50% - 8rpx);
-  box-sizing: border-box;
+.ja-next {
+  color: var(--moon);
 }
 </style>

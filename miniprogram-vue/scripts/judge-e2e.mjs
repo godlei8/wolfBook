@@ -10,7 +10,7 @@ import { stageLayout } from '../src/utils/judge/stage.js'
 import { lobbyAction } from '../src/utils/judge/lobby.js'
 import { pendingPanel } from '../src/utils/judge/pending.js'
 import { announcePanel, sheriffPanel } from '../src/utils/judge/sheriff.js'
-import { hostActions, votePanel } from '../src/utils/judge/day.js'
+import { hostActions, speechPanel, votePanel } from '../src/utils/judge/day.js'
 import { voiceCue } from '../src/utils/judge/voice-cue.js'
 import { verdictText } from '../src/utils/judge/rounds.js'
 import { gameLog } from '../src/utils/judge/game-log.js'
@@ -215,7 +215,7 @@ async function runGame({ mode, keyword, count, explode = false }) {
           }
           if (panel.candidate) signed += 1
         }
-        if (signed >= 2) await hostDo(host, roomId, hostSnap, 'close_sheriff_signup')
+        if (signed >= 2) await advanceOrWait(host, roomId, hostSnap, 'close_sheriff_signup')
       } else if (stage === 'speech') {
         if (explode && hostSnap.currentDay > 1 && explosions === 0) fail('第二天接着竞选，但第一天没有自爆过')
         const exploder = explode && explosions < 2
@@ -229,7 +229,7 @@ async function runGame({ mode, keyword, count, explode = false }) {
           if (!text.includes(expected)) fail(`第 ${explosions} 次警上自爆公告应含「${expected}」：${text}`)
           console.log(`  ${snaps[exploder].selfPlayer.seatNo} 号警上自爆：${text}`)
         } else {
-          await hostDo(host, roomId, hostSnap, 'start_sheriff_vote')
+          await endSpeech(everyone, snaps, roomId, (s) => sheriffPanel(s).isSpeaker)
         }
       } else {
         for (let i = 0; i < everyone.length; i += 1) {
@@ -240,14 +240,12 @@ async function runGame({ mode, keyword, count, explode = false }) {
         }
       }
     } else if (view === 'announce') {
-      for (let i = 0; i < everyone.length; i += 1) {
-        const panel = announcePanel(snaps[i])
-        if (panel.canChooseOrder) await act(everyone[i], `/api/judge/rooms/${roomId}/sheriff`, { speechOrder: panel.orderOptions[1].value }, 'speech order')
-      }
-      await hostDo(host, roomId, hostSnap, hostSnap.nightNext ? 'start_night' : 'start_speech')
+      // 停 5 秒自动开始发言 / 天黑；有法官时法官提前推进
+      if (!announcePanel(hostSnap).hint) fail('天亮公布没有倒计时提示')
+      await advanceOrWait(host, roomId, hostSnap, hostSnap.nightNext ? 'start_night' : 'start_speech')
     } else if (view === 'speech') {
-      // 发完言自动进投票：房主一位一位跳过，最后一位跳过就是投票
-      await hostDo(host, roomId, hostSnap, 'next_speaker')
+      // 发言人自己点「结束发言」；最后一位说完自动进投票
+      await endSpeech(everyone, snaps, roomId, (s) => speechPanel(s).isSpeaker)
     } else if (view === 'vote') {
       for (let i = 0; i < everyone.length; i += 1) {
         const panel = votePanel(snaps[i])
@@ -256,7 +254,8 @@ async function runGame({ mode, keyword, count, explode = false }) {
         await act(everyone[i], `/api/judge/rooms/${roomId}/vote`, { targetSeatNo: target }, 'vote')
       }
     } else if (view === 'voteResult') {
-      await hostDo(host, roomId, hostSnap, 'continue')
+      // 票型公布停 10 秒自动继续；有法官时法官提前推进
+      await advanceOrWait(host, roomId, hostSnap, 'continue')
     }
     await sleep(1500)
   }
@@ -296,6 +295,21 @@ function checkMechWolfSecrecy(snaps) {
   }
   const deadlines = new Set(snaps.filter((s) => s?.currentStep?.kind === 'mech_wolf').map((s) => s.currentStep.deadline))
   if (deadlines.size > 1) fail(`机械狼那一步截止时间不一致：${[...deadlines].join(' / ')}`)
+}
+
+/** 用户给定：白天每一步都按倒计时自动走。有法官时法官提前推进（顺便测这个按钮）；无法官房主没有推进按钮，等系统走。 */
+async function advanceOrWait(host, roomId, hostSnap, action) {
+  if (hostSnap.judgeViewer) {
+    await hostDo(host, roomId, hostSnap, action)
+    return
+  }
+  if (hostActions(hostSnap).length) fail(`无法官房主不该有推进按钮（阶段 ${hostSnap.currentPhase}）`)
+}
+
+/** 当前发言人自己结束发言（两种模式都一样）；没找到发言人就等到点自动换。 */
+async function endSpeech(everyone, snaps, roomId, isSpeaker) {
+  const index = snaps.findIndex((s) => s && isSpeaker(s))
+  if (index >= 0) await act(everyone[index], `/api/judge/rooms/${roomId}/advance`, { action: 'next_speaker' }, 'end speech')
 }
 
 async function hostDo(host, roomId, hostSnap, action) {

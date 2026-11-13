@@ -57,8 +57,9 @@ test('voteResultShowsTheTallyOfTheLastRound', () => {
   assert.equal(tie.eliminatedSeat, null)
 })
 
-test('hostActionsFollowThePhase', () => {
-  const host = (phase, extra = {}) => hostActions(room(phase, me(1), { host: true, ...extra })).map((item) => item.action)
+test('onlyTheJudgeGetsAdvanceButtons', () => {
+  // 用户给定：白天黑夜由系统推进；有法官时法官可以不等倒计时提前推进，无法官房主没有推进按钮
+  const host = (phase, extra = {}) => hostActions(room(phase, { seatNo: null, judgeObserver: true }, { host: true, judgeViewer: true, ...extra })).map((item) => item.action)
   assert.deepEqual(host('sheriff_signup'), ['close_sheriff_signup'])
   assert.deepEqual(host('sheriff_speech'), ['next_speaker', 'start_sheriff_vote'])
   assert.deepEqual(host('sheriff_vote'), ['resolve_sheriff_vote'])
@@ -69,16 +70,15 @@ test('hostActionsFollowThePhase', () => {
   assert.deepEqual(host('vote_pk'), ['resolve_vote'])
   assert.deepEqual(host('vote_result'), ['continue'])
   assert.deepEqual(host('night_action'), [])
-  assert.deepEqual(host('day_speech', { judgeMode: 'joined' }), ['next_speaker', 'finish'])
-  assert.equal(hostActions(room('day_speech', me(1), { host: true, judgeMode: 'joined' })).find((item) => item.action === 'finish').confirm, true)
-  assert.deepEqual(hostActions(room('day_speech', me(1))), [], '不是房主没有按钮')
-  assert.ok(hostActions(room('day_speech', me(1), { host: true, paused: true })).every((item) => item.disabled), '暂停中都不能点')
+  assert.deepEqual(hostActions(room('day_speech', me(1), { host: true, judgeMode: 'joined' })), [], '无法官房主没有推进按钮')
+  assert.deepEqual(hostActions(room('day_speech', me(1))), [], '玩家没有按钮')
+  assert.ok(hostActions(room('day_speech', null, { host: true, judgeViewer: true, paused: true })).every((item) => item.disabled), '暂停中都不能点')
 })
 
 test('hostActionsNeverCarryResultFields', () => {
   const phases = ['sheriff_signup', 'sheriff_speech', 'sheriff_vote', 'day_announce', 'day_speech', 'exile_vote', 'vote_pk', 'vote_result']
   for (const phase of phases) {
-    for (const item of hostActions(room(phase, me(1), { host: true, judgeMode: 'joined' }))) {
+    for (const item of hostActions(room(phase, null, { host: true, judgeViewer: true }))) {
       assert.deepEqual(Object.keys(item.payload), ['action'], `${phase} ${item.action}`)
     }
   }
@@ -96,10 +96,14 @@ test('speechClockWarnsAtThirtyOnlyForLongSpeeches', () => {
 })
 
 test('explodedDayAnnounceOnlyOffersNight', () => {
-  const host = (extra = {}) => hostActions(room('day_announce', me(1), { host: true, ...extra })).map((item) => item.action)
+  const host = (extra = {}) => hostActions(room('day_announce', null, { host: true, judgeViewer: true, ...extra })).map((item) => item.action)
   assert.deepEqual(host({ nightNext: true }), ['start_night'])
-  assert.deepEqual(host({ nightNext: true, judgeMode: 'joined' }), ['start_night', 'finish'])
   assert.deepEqual(host({ nightNext: false }), ['start_speech'])
+})
+
+test('pkSpeechSaysPk', () => {
+  const panel = speechPanel(room('day_speech', me(4), { speech: { order: [8, 3], index: 0, direction: null, pk: true } }))
+  assert.equal(panel.directionText, 'PK 发言')
 })
 
 test('speechOnlyTellsTheDirection', () => {

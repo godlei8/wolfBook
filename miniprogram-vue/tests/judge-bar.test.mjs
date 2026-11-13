@@ -50,11 +50,16 @@ test('tonightRowsSummariseTheNight', () => {
   assert.deepEqual(tonightRows(room({ judgeViewer: false })), [])
 })
 
-test('pausedRoomOffersResumeOnly', () => {
-  assert.deepEqual(judgeActions(room()), { pause: true, resume: false, forceOut: true })
-  assert.deepEqual(judgeActions(room({ paused: true })), { pause: false, resume: true, forceOut: true })
-  assert.deepEqual(judgeActions(room({ judgeViewer: false })), { pause: false, resume: false, forceOut: false })
-  assert.deepEqual(judgeActions(room({ roomStatus: 'finished' })), { pause: false, resume: false, forceOut: false })
+test('judgeAndJoinedHostControls', () => {
+  // 用户给定：法官暂停 / 继续、点杀、提前结束；无法官房主只有暂停 / 继续和提前结束
+  assert.deepEqual(judgeActions(room()), { pause: true, resume: false, forceOut: true, finish: true })
+  assert.deepEqual(judgeActions(room({ paused: true })), { pause: false, resume: true, forceOut: true, finish: true })
+  const none = { pause: false, resume: false, forceOut: false, finish: false }
+  assert.deepEqual(judgeActions(room({ judgeViewer: false })), none)
+  assert.deepEqual(judgeActions(room({ roomStatus: 'finished' })), none)
+  const joinedHost = room({ judgeViewer: false, judgeMode: 'joined', host: true })
+  assert.deepEqual(judgeActions(joinedHost), { pause: true, resume: false, forceOut: false, finish: true })
+  assert.deepEqual(judgeActions(room({ judgeViewer: false, judgeMode: 'joined', host: false })), none, '无法官的普通玩家没有')
 })
 
 test('everyoneGetsTheSamePauseOverlay', () => {
@@ -62,7 +67,9 @@ test('everyoneGetsTheSamePauseOverlay', () => {
   const judge = pausedOverlay(room({ paused: true }))
   const player = pausedOverlay(room({ paused: true, judgeViewer: false, host: false }))
   assert.deepEqual(judge, player)
-  assert.equal(judge.title, '法官暂停')
+  assert.equal(judge.title, '对局暂停')
+  assert.equal(judge.hint, '计时已停，等法官继续')
+  assert.equal(pausedOverlay(room({ paused: true, judgeMode: 'joined' })).hint, '计时已停，等房主继续')
 })
 
 test('judgeSummaryBeforeWolvesChoose', () => {

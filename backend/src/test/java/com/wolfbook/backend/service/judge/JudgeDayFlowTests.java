@@ -50,4 +50,28 @@ class JudgeDayFlowTests {
         assertEquals(8, order.size());
         assertEquals(ALIVE, order.stream().sorted().toList());
     }
+
+    // 通用流程 4.4 / 7.4：平票者再各说一轮，先发言的后发言
+    @Test
+    void pkSpeakersGoInReverseOfHowTheySpoke() {
+        assertEquals(List.of(9, 2), JudgeDayFlow.pkSpeechOrder(List.of(2, 9), List.of(5, 2, 7, 9, 11)));
+        assertEquals(List.of(6, 3, 1), JudgeDayFlow.pkSpeechOrder(List.of(1, 3, 6), List.of(1, 3, 6)));
+    }
+
+    @Test
+    void pkSeatsMissingFromThePreviousOrderGoLastBySeat() {
+        assertEquals(List.of(4, 8, 10), JudgeDayFlow.pkSpeechOrder(List.of(10, 8, 4), List.of(1, 4, 2)));
+        assertEquals(List.of(3, 5), JudgeDayFlow.pkSpeechOrder(List.of(5, 3), List.of()));
+    }
+
+    // 用户给定：警长不选发言顺序，系统随机警左或警右
+    @Test
+    void sheriffDirectionIsRandomLeftOrRight() {
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        Random random = new Random(7);
+        for (int i = 0; i < 40; i++) {
+            seen.add(JudgeDayFlow.sheriffDirection(random));
+        }
+        assertEquals(java.util.Set.of(JudgeDayFlow.LEFT, JudgeDayFlow.RIGHT), seen);
+    }
 }
