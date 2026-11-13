@@ -12,6 +12,8 @@ public final class JudgeDayClock {
     public static final int VOTE_SECONDS = 30;
     /** 公布死讯（死者的技能、遗言处理完）后停多久自动开始发言 / 天黑（用户给定 5 秒）。 */
     public static final int ANNOUNCE_SECONDS = 5;
+    /** 有警长时给警长选发言顺序的时间，到点开始发言，没选系统随机警左 / 警右。 */
+    public static final int SHERIFF_ORDER_SECONDS = 15;
     /** 票型公布停多久自动进入下一步（用户给定 10 秒）。 */
     public static final int RESULT_SECONDS = 10;
     public static final int SHERIFF_SIGNUP_SECONDS = 20;

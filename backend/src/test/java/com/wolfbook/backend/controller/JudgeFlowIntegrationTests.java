@@ -192,7 +192,7 @@ class JudgeFlowIntegrationTests {
         Assertions.assertEquals("day_speech", speech.path("data").path("currentPhase").asText(), speech.toString());
         JsonNode order = speech.path("data").path("speech").path("order");
         Assertions.assertEquals(8, order.size(), "出局的人不发言");
-        Assertions.assertEquals(dead % PLAYER_COUNT + 1, order.get(0).asInt(), "有死者时从死者左边开始");
+        Assertions.assertTrue(speech.path("data").path("speech").path("direction").isNull(), "没警长系统随机起点和方向（有死者也不按死左）");
         Assertions.assertEquals(0, speech.path("data").path("speech").path("index").asInt());
     }
 
@@ -2568,19 +2568,17 @@ class JudgeFlowIntegrationTests {
     }
 
     @Test
-    void everyoneSeesTheSpeechDirection() throws Exception {
-        // 发言阶段只告诉大家是警左还是警右（系统随机，警长不选）
+    void everyoneSeesTheSheriffsSpeechOrderChoice() throws Exception {
+        // 实测问题 3：警长定完发言顺序，大家都看得到选了哪边；发言阶段也只告诉大家实际用的方向
         Game game = autoGame12(true);
-        game.finishNight();
-        int sheriff = game.seatsByRole().get("平民").get(0);
-        game.sheriff(sheriff, "{\"candidate\":true}");
-        JsonNode announce = game.advance(game.host, "{\"action\":\"close_sheriff_signup\"}").path("data");
-        Assertions.assertEquals("day_announce", announce.path("currentPhase").asText(), announce.toString());
-        JsonNode speech = game.expireDeadline();
-        Assertions.assertEquals("day_speech", speech.path("currentPhase").asText(), speech.toString());
+        int sheriff = sheriffAtAnnounce(game);
+        Assertions.assertTrue(game.snapshot(game.host).path("sheriffOrder").isNull(), "还没选");
+        game.sheriff(sheriff, "{\"speechOrder\":\"right\"}");
         int other = game.seatsByRole().get("平民").get(1);
-        String direction = game.snapshot(game.players.get(other - 1)).path("speech").path("direction").asText();
-        Assertions.assertTrue(Set.of("left", "right").contains(direction), direction);
+        Assertions.assertEquals("right", game.snapshot(game.players.get(other - 1)).path("sheriffOrder").asText());
+        JsonNode speech = game.advance(game.host, "{\"action\":\"start_speech\"}").path("data");
+        Assertions.assertEquals("day_speech", speech.path("currentPhase").asText(), speech.toString());
+        Assertions.assertEquals("right", game.snapshot(game.players.get(other - 1)).path("speech").path("direction").asText());
     }
 
     @Test
@@ -2949,17 +2947,54 @@ class JudgeFlowIntegrationTests {
         Assertions.assertEquals("sheriff_pk", pkVote.path("currentPhase").asText(), pkVote.toString());
     }
 
+    /** 第一天警长当选、公布死讯，停在给警长选发言顺序的时候。返回警长座位。 */
+    private int sheriffAtAnnounce(Game game) throws Exception {
+        game.finishNight();
+        int sheriff = game.seatsByRole().get("平民").get(0);
+        game.sheriff(sheriff, "{\"candidate\":true}");
+        JsonNode announce = game.advance(game.host, "{\"action\":\"close_sheriff_signup\"}").path("data");
+        Assertions.assertEquals("day_announce", announce.path("currentPhase").asText(), announce.toString());
+        return sheriff;
+    }
+
     @Test
-    void theSheriffDoesNotChooseTheSpeechOrder() throws Exception {
+    void theSheriffHasFifteenSecondsToChooseTheOrder() throws Exception {
         Game game = autoGame12(true);
-        int sheriff = electWolfSheriff(game);
-        Assertions.assertEquals(4003, game.call(game.players.get(sheriff - 1), "/sheriff", "{\"speechOrder\":\"left\"}").path("code").asInt());
-        JsonNode speech = game.snapshot(game.host);
-        Assertions.assertTrue(Set.of("left", "right").contains(speech.path("speech").path("direction").asText()),
-                "系统随机警左或警右：" + speech.path("speech"));
+        int sheriff = sheriffAtAnnounce(game);
+        long seconds = secondsToDeadline(game);
+        Assertions.assertTrue(seconds >= 13 && seconds <= 15, "有警长给 15 秒选发言顺序，实际 " + seconds);
+        int other = game.seatsByRole().get("平民").get(1);
+        Assertions.assertEquals(4003, game.call(game.players.get(other - 1), "/sheriff", "{\"speechOrder\":\"left\"}").path("code").asInt(), "只有警长能选");
+        game.sheriff(sheriff, "{\"speechOrder\":\"left\"}");
+        JsonNode speech = game.expireDeadline();
+        Assertions.assertEquals("day_speech", speech.path("currentPhase").asText(), speech.toString());
+        Assertions.assertEquals("left", speech.path("speech").path("direction").asText());
         List<Integer> order = new ArrayList<>();
         speech.path("speech").path("order").forEach(seat -> order.add(seat.asInt()));
         Assertions.assertEquals(sheriff, order.get(order.size() - 1), "警长最后发言");
+    }
+
+    @Test
+    void anUndecidedSheriffGetsARandomLeftOrRight() throws Exception {
+        Game game = autoGame12(true);
+        int sheriff = sheriffAtAnnounce(game);
+        JsonNode speech = game.expireDeadline();
+        Assertions.assertTrue(Set.of("left", "right").contains(speech.path("speech").path("direction").asText()),
+                "警长没选，系统随机警左或警右：" + speech.path("speech"));
+        List<Integer> order = new ArrayList<>();
+        speech.path("speech").path("order").forEach(seat -> order.add(seat.asInt()));
+        Assertions.assertEquals(sheriff, order.get(order.size() - 1), "警长最后发言");
+    }
+
+    @Test
+    void withoutASheriffTheOrderIsRandomEvenWithDeaths() throws Exception {
+        // 用户给定：没警长系统随机起点和方向（有人死了也不按死左）
+        Game game = joinedGame(2, 12);
+        game.finishNight(game.seatsByRole().get("平民").get(0), null);
+        game.skipPending();
+        JsonNode speech = game.expireDeadline();
+        Assertions.assertEquals("day_speech", speech.path("currentPhase").asText(), speech.toString());
+        Assertions.assertTrue(speech.path("speech").path("direction").isNull(), "随机起点和方向：" + speech.path("speech"));
     }
 
     @Test

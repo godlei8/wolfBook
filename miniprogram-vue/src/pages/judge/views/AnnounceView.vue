@@ -1,6 +1,7 @@
 <script setup>
 // 天亮公布死讯；有警长时警长本人选发言顺序（警左 / 警右，有人出局再加死左 / 死右）。
-// 停几秒后系统自动开始发言（警上自爆那天自动天黑）；法官的「开始发言」在房间页底部的操作栏。
+// 有警长时警长限时选发言顺序（没选系统随机），到点系统自动开始发言；没警长停 5 秒；警上自爆那天自动天黑。
+// 法官的「开始发言」在房间页底部的操作栏。
 import { computed } from 'vue'
 import { phaseTitle } from '../../../utils/judge/room-view.js'
 import { announcePanel } from '../../../utils/judge/sheriff.js'
@@ -28,6 +29,11 @@ function seatClass(seat) {
 }
 
 function tapSeat() {}
+
+function choose(option) {
+  if (props.busy) return
+  emit('act', { kind: 'sheriff', payload: { speechOrder: option.value } })
+}
 </script>
 
 <template>
@@ -79,6 +85,16 @@ function tapSeat() {}
       <view class="nt-panel nt-game__panel">
         <text class="nt-game__lead">{{ panel.sheriffSeat ? `天亮了 · 警长 ${panel.sheriffSeat} 号` : '天亮了' }}</text>
         <text v-if="panel.announcement" class="nt-game__hint">{{ panel.announcement }}</text>
+        <view v-if="panel.canChooseOrder" class="ja-order">
+          <view
+            v-for="option in panel.orderOptions"
+            :key="option.value"
+            class="nt-btn ja-order__button"
+            :class="[panel.chosenOrder === option.value ? 'nt-btn--gold' : 'nt-btn--ghost', { 'nt-btn--disabled': busy }]"
+            @tap="choose(option)"
+          >{{ option.label }}</view>
+        </view>
+        <text v-if="panel.chosenOrderText" class="nt-game__hint">{{ panel.chosenOrderText }}</text>
         <text class="nt-game__hint ja-next">{{ panel.hint }}</text>
       </view>
     </view>
@@ -112,5 +128,17 @@ function tapSeat() {}
 
 .ja-next {
   color: var(--moon);
+}
+
+.ja-order {
+  margin-top: 16rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
+.ja-order__button {
+  width: calc(50% - 8rpx);
+  box-sizing: border-box;
 }
 </style>

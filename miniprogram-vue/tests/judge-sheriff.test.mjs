@@ -45,17 +45,36 @@ test('pkVotesOnlyForTiedSeats', () => {
   assert.equal(out.myVote, 3)
 })
 
-test('nobodyChoosesTheOrderAnyMore', () => {
-  // 用户给定：警长不选发言顺序，系统随机警左或警右
+test('onlyTheSheriffChoosesTheOrder', () => {
   const extra = { sheriffSeatNo: 2, latestAnnouncement: '昨晚 4 号出局', rounds: [{ dayNo: 1, nightDeaths: [4] }] }
   const sheriff = announcePanel(room('day_announce', me(2), extra))
   assert.deepEqual(sheriff.deaths, [4])
   assert.equal(sheriff.sheriffSeat, 2)
-  assert.equal('canChooseOrder' in sheriff, false)
-  assert.equal('orderOptions' in sheriff, false)
+  assert.equal(sheriff.canChooseOrder, true)
+  assert.deepEqual(sheriff.orderOptions.map((option) => option.value), ['left', 'right', 'dead_left', 'dead_right'])
+  assert.equal(announcePanel(room('day_announce', me(3), extra)).canChooseOrder, false)
   const quiet = announcePanel(room('day_announce', me(2), { sheriffSeatNo: 2, rounds: [{ dayNo: 1, nightDeaths: [] }] }))
   assert.deepEqual(quiet.deaths, [])
   assert.equal(quiet.text, '昨晚是平安夜')
+  assert.deepEqual(quiet.orderOptions.map((option) => option.label), ['警左', '警右'])
+  assert.equal(announcePanel(room('day_announce', me(2, false), extra)).canChooseOrder, false)
+  assert.equal(announcePanel(room('day_announce', me(2), { ...extra, nightNext: true })).canChooseOrder, false, '今天直接天黑')
+})
+
+test('announceShowsTheChosenSpeechOrder', () => {
+  // 实测问题 3：警长选完，别人看到「警长选了警右」；用户给定：限时内没选系统随机
+  const round = { dayNo: 1, nightDeaths: [] }
+  const deadline = '2026-11-13T20:00:15'
+  const now = Date.parse('2026-11-13T20:00:03+08:00')
+  const other = announcePanel(room('day_announce', me(4), { sheriffSeatNo: 2, rounds: [round], sheriffOrder: 'right' }), now)
+  assert.equal(other.chosenOrderText, '警长选了警右')
+  const waiting = announcePanel(room('day_announce', me(4), { sheriffSeatNo: 2, rounds: [round], sheriffOrder: null, phaseDeadline: deadline }), now)
+  assert.equal(waiting.chosenOrderText, '等警长选择，没选系统随机警左或警右')
+  const deciding = announcePanel(room('day_announce', me(2), { sheriffSeatNo: 2, rounds: [round], sheriffOrder: null, phaseDeadline: deadline }), now)
+  assert.equal(deciding.chosenOrderText, '12 秒内选好，没选系统随机警左或警右')
+  const sheriff = announcePanel(room('day_announce', me(2), { sheriffSeatNo: 2, rounds: [round], sheriffOrder: 'left' }))
+  assert.equal(sheriff.chosenOrder, 'left')
+  assert.equal(sheriff.chosenOrderText, '你选了警左，开始发言前还能改')
 })
 
 test('sheriffVoteSaysWhyYouCannotVote', () => {

@@ -65,7 +65,7 @@ public final class JudgeDayFlow {
         return walk(aliveSeats, playerCount, anchor, clockwise, false, last);
     }
 
-    /** 有警长时的发言方向（用户给定：警长不选，系统随机警左或警右，警长最后发言）。 */
+    /** 警长没选发言顺序时的方向（用户给定：系统随机警左或警右，警长最后发言）。 */
     public static String sheriffDirection(Random random) {
         return random.nextBoolean() ? LEFT : RIGHT;
     }

@@ -51,16 +51,37 @@ export function sheriffPanel(snapshot) {
 }
 
 /** 天亮公布：昨晚出局的人来自对局记录当天的 nightDeaths；警长本人选发言顺序（有人出局再多「死左 / 死右」）。 */
+const ORDER_LABELS = { left: '警左', right: '警右', dead_left: '死左', dead_right: '死右' }
+
 /**
- * 天亮公布（用户给定）：公布死讯后停 5 秒自动开始发言，警上自爆那天自动天黑；警长不选发言顺序，系统随机警左或警右。
- * now 是校准过的当前时间，用来算还剩几秒。
+ * 天亮公布（用户给定）：有警长时警长选警左 / 警右（有死者还能选死左 / 死右），限时内没选系统随机警左或警右，到点开始发言；
+ * 没警长停 5 秒自动开始发言（系统随机起点和方向）；警上自爆那天公布完死讯自动天黑。now 是校准过的当前时间。
  */
 export function announcePanel(snapshot, now = Date.now()) {
   const day = snapshot?.currentDay || 1
   const round = (snapshot?.rounds || []).find((item) => item.dayNo === day)
   const deaths = round?.nightDeaths || []
   const sheriffSeat = snapshot?.sheriffSeatNo || null
+  const self = snapshot?.selfPlayer
+  const canChooseOrder = Boolean(
+    sheriffSeat && !snapshot?.nightNext && seated(snapshot) && self.seatNo === sheriffSeat && snapshot?.currentPhase === 'day_announce',
+  )
+  const orderOptions = [
+    { value: 'left', label: '警左' },
+    { value: 'right', label: '警右' },
+  ]
+  if (deaths.length) {
+    orderOptions.push({ value: 'dead_left', label: '死左' }, { value: 'dead_right', label: '死右' })
+  }
   const seconds = countdown(snapshot?.phaseDeadline, now, false).seconds
+  // 警长选了哪边（实测问题 3）：快照 sheriffOrder 全场可见
+  const chosenOrder = snapshot?.sheriffOrder || null
+  const chosenLabel = ORDER_LABELS[chosenOrder] || ''
+  let chosenOrderText = ''
+  if (sheriffSeat && !snapshot?.nightNext) {
+    if (chosenOrder) chosenOrderText = canChooseOrder ? `你选了${chosenLabel}，开始发言前还能改` : `警长选了${chosenLabel}`
+    else chosenOrderText = canChooseOrder ? `${seconds} 秒内选好，没选系统随机警左或警右` : '等警长选择，没选系统随机警左或警右'
+  }
   const next = snapshot?.nightNext ? '天黑' : '开始发言'
   let hint = seconds > 0 ? `${seconds} 秒后自动${next}` : `马上${next}`
   if (!snapshot?.nightNext && sheriffSeat) hint += '，警长最后发言'
@@ -69,6 +90,10 @@ export function announcePanel(snapshot, now = Date.now()) {
     text: deaths.length ? `昨晚 ${deaths.join('、')} 号出局` : '昨晚是平安夜',
     announcement: snapshot?.latestAnnouncement || '',
     sheriffSeat,
+    canChooseOrder,
+    orderOptions,
+    chosenOrder,
+    chosenOrderText,
     hint,
   }
 }

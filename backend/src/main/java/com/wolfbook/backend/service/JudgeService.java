@@ -558,8 +558,8 @@ public class JudgeService {
         if (!finished) {
             startPending(room, players, deadSeatNos, JudgeLastWords.Cause.NIGHT, now);
             if (PHASE_DAY_ANNOUNCE.equals(room.getCurrentPhase())) {
-                // 用户给定：公布死讯后停 5 秒，自动开始发言
-                setPhaseClock(room, JudgeDayClock.ANNOUNCE_SECONDS, now);
+                // 用户给定：公布死讯后自动开始发言（有警长先给他选发言顺序的时间）
+                setPhaseClock(room, announceSeconds(room, players), now);
             }
         }
         room.setUpdateTime(now);
@@ -916,8 +916,22 @@ public class JudgeService {
             support.addEvent(roomId, room.getCurrentDay(), phase, self.getPlayerId(), List.of(), EVENT_SHERIFF_VOTE_SUBMIT,
                     support.mapOf("targetSeatNo", request.targetSeatNo()), Map.of(), VISIBILITY_JUDGE_ONLY, now);
         } else if (StringUtils.hasText(request.speechOrder())) {
-            // 用户给定：警长不选发言顺序，系统随机警左或警右
-            throw new ApiException(4003, "发言顺序由系统随机");
+            if (!PHASE_DAY_ANNOUNCE.equals(phase)) {
+                throw new ApiException(4002, "现在不能选发言顺序");
+            }
+            if (!Boolean.TRUE.equals(self.getSheriff()) || !Boolean.TRUE.equals(self.getAlive())) {
+                throw new ApiException(4003, "只有警长能决定发言顺序");
+            }
+            String choice = request.speechOrder().trim();
+            if (!Set.of(JudgeDayFlow.LEFT, JudgeDayFlow.RIGHT, JudgeDayFlow.DEAD_LEFT, JudgeDayFlow.DEAD_RIGHT).contains(choice)) {
+                throw new ApiException(4000, "发言顺序只能是警左、警右、死左、死右");
+            }
+            Map<String, Object> phaseData = new LinkedHashMap<>(support.readMap(room.getPhaseData()));
+            phaseData.put("sheriffOrder", choice);
+            room.setPhaseData(support.writeJson(phaseData));
+            room.setUpdateTime(now);
+            support.updateRoomGuarded(room, ROOM_STATUS_PLAYING, PHASE_DAY_ANNOUNCE);
+            return assembler.buildSnapshot(openid, roomId);
         } else {
             throw new ApiException(4000, "请求格式错误");
         }
@@ -1068,8 +1082,8 @@ public class JudgeService {
             room.setStepDeadline(null);
             startPending(room, players, deaths, JudgeLastWords.Cause.NIGHT, now);
             if (PHASE_DAY_ANNOUNCE.equals(room.getCurrentPhase())) {
-                // 用户给定：公布死讯后停 5 秒，自动开始发言（警上自爆那天自动天黑）
-                setPhaseClock(room, JudgeDayClock.ANNOUNCE_SECONDS, now);
+                // 用户给定：公布死讯后自动开始发言（有警长先给他选发言顺序的时间；警上自爆那天 5 秒后自动天黑）
+                setPhaseClock(room, announceSeconds(room, players), now);
             }
         }
     }
@@ -1090,10 +1104,13 @@ public class JudgeService {
         Integer sheriffSeat = players.stream()
                 .filter(player -> Boolean.TRUE.equals(player.getSheriff()) && Boolean.TRUE.equals(player.getAlive()))
                 .map(JudgeRoomPlayerEntity::getSeatNo).findFirst().orElse(null);
-        // 用户给定：警长不选发言顺序，有警长时系统随机警左或警右（警长最后发言）；没警长有死者死左，否则随机
-        String choice = sheriffSeat == null ? null : JudgeDayFlow.sheriffDirection(random);
-        List<Integer> order = JudgeDayFlow.speechOrder(alive, room.getPlayerCount(), choice, sheriffSeat, nightDeaths, random);
-        String direction = JudgeDayFlow.speechMode(choice, sheriffSeat, nightDeaths);
+        // 用户给定：有警长由警长选（警左 / 警右，有死者还能选死左 / 死右），限时内没选系统随机警左或警右，警长最后发言；
+        // 没警长系统随机起点和方向（有死者也不按死左）
+        String chosen = support.trimToNull(support.asString(phaseData.get("sheriffOrder")));
+        String choice = sheriffSeat == null ? null : chosen != null ? chosen : JudgeDayFlow.sheriffDirection(random);
+        List<Integer> deaths = sheriffSeat == null ? List.of() : nightDeaths;
+        List<Integer> order = JudgeDayFlow.speechOrder(alive, room.getPlayerCount(), choice, sheriffSeat, deaths, random);
+        String direction = JudgeDayFlow.speechMode(choice, sheriffSeat, deaths);
         room.setPhaseData(support.writeJson(support.mapOf("speech", support.mapOf("order", order, "index", 0, "direction", direction))));
         room.setCurrentPhase(PHASE_DAY_SPEECH);
         setPhaseClock(room, order.isEmpty() ? null : speechSeconds(room, PHASE_DAY_SPEECH, order.get(0), sheriffSeat), now);
@@ -1128,6 +1145,13 @@ public class JudgeService {
     private Map<String, Object> speechOf(JudgeRoomEntity room) {
         return support.readMap(room.getPhaseData()).get("speech") instanceof Map<?, ?> map
                 ? new LinkedHashMap<>(support.castMap(map)) : new LinkedHashMap<>();
+    }
+
+    /** 公布死讯停多久：有活着的警长给他 15 秒选发言顺序；没有警长（或今天直接天黑）5 秒。 */
+    private int announceSeconds(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players) {
+        boolean sheriffAlive = players.stream().anyMatch(player -> Boolean.TRUE.equals(player.getSheriff()) && Boolean.TRUE.equals(player.getAlive()));
+        boolean nightNext = Boolean.TRUE.equals(support.readMap(room.getPhaseData()).get("nightNext"));
+        return sheriffAlive && !nightNext ? JudgeDayClock.SHERIFF_ORDER_SECONDS : JudgeDayClock.ANNOUNCE_SECONDS;
     }
 
     /** 这一轮发言是不是平票 PK 发言（说完进 PK 投票）。 */
@@ -1400,7 +1424,7 @@ public class JudgeService {
             String resume = support.safeText(support.asString(phaseData.get("resumePhase")), PHASE_DAY_ANNOUNCE);
             room.setCurrentPhase(resume);
             if (PHASE_DAY_ANNOUNCE.equals(resume)) {
-                setPhaseClock(room, JudgeDayClock.ANNOUNCE_SECONDS, now);
+                setPhaseClock(room, announceSeconds(room, players), now);
             } else if (PHASE_VOTE_RESULT.equals(resume)) {
                 setPhaseClock(room, JudgeDayClock.RESULT_SECONDS, now);
             } else {
@@ -1691,7 +1715,7 @@ public class JudgeService {
         } else if (PHASE_DAY_ANNOUNCE.equals(phase) || PHASE_VOTE_RESULT.equals(phase)) {
             if (room.getStepDeadline() == null) {
                 // 升级前停在这里的房间没有截止时间：从现在开始计
-                setPhaseClock(room, PHASE_DAY_ANNOUNCE.equals(phase) ? JudgeDayClock.ANNOUNCE_SECONDS : JudgeDayClock.RESULT_SECONDS, now);
+                setPhaseClock(room, PHASE_DAY_ANNOUNCE.equals(phase) ? announceSeconds(room, support.loadPlayers(roomId)) : JudgeDayClock.RESULT_SECONDS, now);
                 room.setUpdateTime(now);
                 support.updateRoomGuarded(room, ROOM_STATUS_PLAYING, phase);
             } else if (now.isAfter(room.getStepDeadline())) {

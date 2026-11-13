@@ -242,6 +242,10 @@ async function runGame({ mode, keyword, count, explode = false }) {
     } else if (view === 'announce') {
       // 停 5 秒自动开始发言 / 天黑；有法官时法官提前推进
       if (!announcePanel(hostSnap).hint) fail('天亮公布没有倒计时提示')
+      for (let i = 0; i < everyone.length; i += 1) {
+        const panel = announcePanel(snaps[i])
+        if (panel.canChooseOrder && !panel.chosenOrder) await act(everyone[i], `/api/judge/rooms/${roomId}/sheriff`, { speechOrder: panel.orderOptions[1].value }, 'speech order')
+      }
       await advanceOrWait(host, roomId, hostSnap, hostSnap.nightNext ? 'start_night' : 'start_speech')
     } else if (view === 'speech') {
       // 发言人自己点「结束发言」；最后一位说完自动进投票
