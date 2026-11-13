@@ -110,17 +110,16 @@ test('judgeSeesTheMechWolfInItsOwnRow', async () => {
 })
 
 test('joinedHostControlsLiveInTheSettingsMenu', () => {
-  // 用户给定：无法官房主的暂停计时、提前结束放进右上方的设置菜单，不占底部
+  // 用户给定：无法官房主的暂停计时、提前结束放进右上方的设置菜单，不占底部；播报开关还在顶栏，不进菜单
   const host = room({ judgeViewer: false, judgeMode: 'joined', host: true })
-  assert.deepEqual(hostMenu(host, { supported: true, on: true }).map((item) => [item.key, item.label]), [
+  assert.deepEqual(hostMenu(host).map((item) => [item.key, item.label]), [
     ['pause', '暂停计时'],
     ['finish', '提前结束'],
-    ['voice', '关闭播报'],
   ])
-  assert.deepEqual(hostMenu({ ...host, paused: true }, { supported: false, on: false }).map((item) => item.key), ['resume', 'finish'])
-  assert.deepEqual(hostMenu(room({ judgeViewer: false, judgeMode: 'joined', host: false }), { supported: true, on: true }), [], '普通玩家没有')
-  assert.deepEqual(hostMenu(room(), { supported: true, on: false }).map((item) => [item.key, item.label]), [['finish', '提前结束'], ['voice', '打开播报']], '法官：暂停在底部，提前结束在菜单里')
-  assert.deepEqual(hostMenu({ ...host, roomStatus: 'lobby' }, { supported: true, on: true }).map((item) => item.key), ['voice'], '大厅里只有播报')
+  assert.deepEqual(hostMenu({ ...host, paused: true }).map((item) => item.key), ['resume', 'finish'])
+  assert.deepEqual(hostMenu(room({ judgeViewer: false, judgeMode: 'joined', host: false })), [], '普通玩家没有')
+  assert.deepEqual(hostMenu(room()).map((item) => [item.key, item.label]), [['finish', '提前结束']], '法官：暂停在底部，提前结束在菜单里')
+  assert.deepEqual(hostMenu({ ...host, roomStatus: 'lobby' }), [], '大厅里没有设置菜单')
 })
 
 test('thePauseOverlayLetsTheControllerResume', () => {

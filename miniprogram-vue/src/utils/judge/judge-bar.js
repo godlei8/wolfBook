@@ -182,10 +182,10 @@ export function pausedOverlay(snapshot) {
 
 /**
  * 房主右上方的设置菜单（用户给定：无法官房主的暂停计时、提前结束不占底部，放进这里）。
- * 无法官房主：暂停 / 继续计时、提前结束；法官：提前结束（暂停在底部，点杀在点座位的菜单里）；能播报时多一项开关播报。
- * voice：{ supported, on }。
+ * 无法官房主：暂停 / 继续计时、提前结束；法官：提前结束（暂停在底部，点杀在点座位的菜单里）。
+ * 播报开关不进菜单，还是顶栏上的「播报开 / 关」（用户给定）。只在对局中有。
  */
-export function hostMenu(snapshot, voice = {}) {
+export function hostMenu(snapshot) {
   if (!snapshot?.host) return []
   const items = []
   const controls = judgeActions(snapshot)
@@ -196,6 +196,5 @@ export function hostMenu(snapshot, voice = {}) {
     // 法官的暂停在底部操作栏，点杀在点座位的菜单里，提前结束放这里
     items.push({ key: 'finish', label: '提前结束' })
   }
-  if (voice.supported) items.push({ key: 'voice', label: voice.on ? '关闭播报' : '打开播报' })
   return items
 }

@@ -71,7 +71,7 @@ const overlay = computed(() => pausedOverlay(snapshot.value))
 // 底部控场栏只给法官；无法官房主的暂停 / 提前结束在右上方的设置菜单（hostMenu）
 // 法官的底部栏：提前推进白天的按钮 + 暂停 / 继续（点杀在点座位的菜单里，提前结束在右上角设置）
 const hasJudgeBar = computed(() => Boolean(snapshot.value?.judgeViewer) && (judgeBar.value.pause || judgeBar.value.resume))
-const menuItems = computed(() => hostMenu(snapshot.value, { supported: voicePlayer.supported, on: voiceOn.value }))
+const menuItems = computed(() => hostMenu(snapshot.value))
 // 法官提前推进白天的按钮（每一步本来就按倒计时自动走），和暂停 / 更多（点杀、提前结束）放在同一条操作栏；
 // 无法官房主只有暂停 / 继续和提前结束
 const hostItems = computed(() => hostActions(snapshot.value))
@@ -363,7 +363,7 @@ function confirmFinish() {
   })
 }
 
-// 房主右上方的设置菜单：暂停 / 继续计时、提前结束、播报开关
+// 房主右上方的设置菜单：暂停 / 继续计时、提前结束（播报开关在顶栏）
 function openMenu() {
   const items = menuItems.value
   if (!items.length) return
@@ -372,8 +372,7 @@ function openMenu() {
     success: (result) => {
       const item = items[result.tapIndex]
       if (!item) return
-      if (item.key === 'voice') toggleVoice()
-      else if (item.key === 'finish') confirmFinish()
+      if (item.key === 'finish') confirmFinish()
       else onAct({ kind: 'advance', payload: { action: item.key } })
     },
   })
@@ -484,6 +483,7 @@ onUnload(() => {
         <text v-if="snapshot && view !== 'lobby'" class="jr-logbtn" @tap="logOpen = true">记录</text>
         <text v-if="identity" class="jr-logbtn" @tap="identityOpen = true">身份</text>
         <text v-if="snapshot && snapshot.judgeViewer && view !== 'lobby'" class="jr-judgechip">法官</text>
+        <text v-if="snapshot && snapshot.host && voicePlayer.supported" class="jr-logbtn" @tap="toggleVoice">{{ voiceOn ? '播报开' : '播报关' }}</text>
       </template>
       <template #right>
         <view v-if="menuItems.length" class="jr-gear" aria-label="设置" @tap="openMenu">
