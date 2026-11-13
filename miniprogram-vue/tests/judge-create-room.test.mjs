@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { boardRuleLine, buildCreatePayload, canChooseJoined, defaultRoomRules, stepRule } from '../src/utils/judge/create-room.js'
+import { boardConfigRows, boardRuleLine, buildCreatePayload, canChooseJoined, defaultRoomRules, stepRule } from '../src/utils/judge/create-room.js'
 
 const board = (judgeRules = {}, extra = {}) => ({
   id: 2,
@@ -48,4 +48,25 @@ test('boardRuleLineIsReadOnlyText', () => {
     '不能自救、一晚一瓶都是全局规则，板子上写的别的值不算')
   assert.equal(boardRuleLine(board({ winCondition: 'side' })), '屠边 · 女巫不能自救 · 一晚一瓶', '板子没设 = 默认不能自救')
   assert.equal(boardRuleLine(board({ winCondition: 'side' }, { roles: [{ name: '狼人' }, { name: '平民' }] })), '屠边')
+})
+
+// 建房第二步「板子配置」：跟板子走、房间里改不了的玩法规则，只读
+test('boardConfigShowsTheRulesThatComeWithTheBoard', () => {
+  const role = (roleId, name, faction) => ({ roleId, name, faction, count: 1 })
+  const mech = {
+    roles: [role(1, '守卫', '好人'), role(2, '狼人', '狼人'), role(3, '女巫', '好人'), role(4, '通灵师', '好人'), role(5, '机械狼', '狼人'), role(6, '猎人', '好人')],
+    ruleDetail: { judgeRules: { winCondition: 'side', poisonBounce: true } },
+  }
+  assert.deepEqual(boardConfigRows(mech), [
+    { label: '胜负', value: '屠边' },
+    { label: '女巫', value: '不能自救 · 一晚一瓶' },
+    { label: '弹毒', value: '开' },
+    { label: '夜间顺序', value: '机械狼 → 守卫 → 狼人 → 女巫 → 通灵师 → 猎人' },
+  ])
+  const plain = { roles: [role(1, '狼人', '狼人'), role(2, '平民', '好人')], winCondition: '屠城', ruleDetail: {} }
+  assert.deepEqual(boardConfigRows(plain), [
+    { label: '胜负', value: '屠城' },
+    { label: '夜间顺序', value: '狼人' },
+  ], '没有女巫、机械狼就不显示这两行')
+  assert.deepEqual(boardConfigRows(null), [])
 })

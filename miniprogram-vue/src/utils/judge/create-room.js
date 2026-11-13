@@ -1,4 +1,5 @@
-// 建房页的纯逻辑（有单测）：房间规则的默认值和步进范围、建房请求、板子玩法规则的只读一行。
+// 建房页的纯逻辑（有单测）：房间规则的默认值和步进范围、建房请求、板子玩法规则（只读）。
+import { buildNightSteps } from './night-order.js'
 // 房间规则只管节奏（上警、发言时长、行动时长）；胜负、女巫自救跟板子走，一晚一瓶是全局规则，建房页只读。
 
 export const ROOM_RULE_DEFAULTS = {
@@ -55,4 +56,18 @@ export function boardRuleLine(board) {
     parts.push('女巫不能自救', '一晚一瓶')
   }
   return parts.join(' · ')
+}
+
+/** 建房第二步「板子配置」：跟板子走、房间里改不了的玩法规则（胜负、女巫、弹毒、夜间顺序），只读。 */
+export function boardConfigRows(board) {
+  if (!board) return []
+  const rules = board.ruleDetail?.judgeRules || {}
+  const names = (board.roles || []).map((role) => role?.name)
+  const city = rules.winCondition ? rules.winCondition === 'city' : String(board.winCondition || '').includes('屠城')
+  const rows = [{ label: '胜负', value: city ? '屠城' : '屠边' }]
+  if (names.includes('女巫')) rows.push({ label: '女巫', value: '不能自救 · 一晚一瓶' })
+  if (names.includes('机械狼')) rows.push({ label: '弹毒', value: rules.poisonBounce ? '开' : '关' })
+  const steps = buildNightSteps(board).map((step) => step.roleName)
+  if (steps.length) rows.push({ label: '夜间顺序', value: steps.join(' → ') })
+  return rows
 }

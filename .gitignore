@@ -23,3 +23,6 @@ deploy/certs/
 deploy/runtime/backend/app.jar
 deploy/runtime/admin/dist/
 deploy/runtime/admin/nginx.prod.conf
+
+# 发版素材（截图、演示视频）：scripts/release-shots.py、scripts/release-game.py 生成，不进仓库
+release/
