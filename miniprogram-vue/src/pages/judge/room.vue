@@ -256,7 +256,21 @@ function narrate() {
 
 function toggleVoice() {
   voiceOn.value = !voiceOn.value
-  if (!voiceOn.value) stopVoice()
+  if (!voiceOn.value) {
+    stopVoice()
+    return
+  }
+  // 打开时先试播一句：房主当场知道这台手机有没有声音；合成失败、播放失败分开提示
+  stopVoice()
+  const run = ++voiceRun
+  voicePlaying = true
+  withTimeout(voicePlayer.playScript({ lines: ['播报已开启'] }), 10000)
+    .catch((error) => {
+      if (run === voiceRun) uni.showToast({ title: error?.message || '播报没有声音', icon: 'none' })
+    })
+    .finally(() => {
+      if (run === voiceRun) voicePlaying = false
+    })
 }
 
 // 停播时当前那句的播放回调可能不再回来，直接放开「正在播」

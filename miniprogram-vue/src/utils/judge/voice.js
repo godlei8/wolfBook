@@ -30,13 +30,16 @@ export function createJudgeVoicePlayer() {
         success(res) {
           const filePath = res?.filename || res?.filePath || res?.tempFilePath || ''
           if (!filePath) {
+            console.warn('WechatSI textToSpeech 没有返回语音文件', res)
             reject(new Error('语音合成失败'))
             return
           }
           resolve(filePath)
         },
-        fail() {
-          reject(new Error('语音合成失败'))
+        fail(res) {
+          // 开发者工具的 Console 里能看到插件原始的错误（retcode / msg），方便判断是不是插件没授权
+          console.warn('WechatSI textToSpeech 失败', res)
+          reject(new Error(res?.msg ? `语音合成失败：${res.msg}` : '语音合成失败'))
         },
       })
     })
@@ -54,9 +57,10 @@ export function createJudgeVoicePlayer() {
         audio.offError?.(handleError)
         resolve()
       }
-      const handleError = () => {
+      const handleError = (error) => {
         audio.offEnded?.(handleEnded)
         audio.offError?.(handleError)
+        console.warn('播报音频播放失败', error)
         reject(new Error('语音播放失败'))
       }
 
