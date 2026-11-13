@@ -47,11 +47,14 @@ test('joinedHostAlsoReadies', () => {
   const start = lobbyAction(room({ mode: 'joined', host: true, self: readyMe, players: [readyMe, ...others], extra: { canStart: true } }))
   assert.equal(start.kind, 'start')
   assert.equal(start.disabled, false)
+  // 用户给定：坐着的房主准备后也能取消准备（开始游戏旁边多一个「取消准备」）
+  assert.deepEqual(start.secondary, { kind: 'unready', label: '取消准备' })
+  assert.equal(lobbyAction(room({ host: true, self: { seatNo: null, judgeObserver: true, self: true }, players: [] })).secondary, undefined, '法官不入座，没有准备')
 })
 
 test('playersReadyAndUnready', () => {
   const me = seat(3, false, { self: true })
-  assert.deepEqual(lobbyAction(room({ self: me, players: [me] })), { kind: 'ready', label: '我已准备', disabled: false })
+  assert.deepEqual(lobbyAction(room({ self: me, players: [me] })), { kind: 'ready', label: '准备', disabled: false })
   const readyMe = { ...me, ready: true }
   assert.deepEqual(lobbyAction(room({ self: readyMe, players: [readyMe] })), { kind: 'unready', label: '取消准备', disabled: false })
   assert.equal(lobbyAction(room({ players: [seat(1, true)] })).kind, 'join')

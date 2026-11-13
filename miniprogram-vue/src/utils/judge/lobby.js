@@ -98,14 +98,16 @@ export function lobbyAction(snapshot) {
   const self = snapshot?.selfPlayer || null
   const seated = Boolean(self?.seatNo)
   if (snapshot?.host && (!seated || self?.ready)) {
-    if (snapshot.canStart) return { kind: 'start', label: '开始游戏', disabled: false }
+    // 坐着的房主（无法官）准备后也能取消准备：开始游戏旁边多一个「取消准备」
+    const secondary = seated ? { secondary: { kind: 'unready', label: '取消准备' } } : {}
+    if (snapshot.canStart) return { kind: 'start', label: '开始游戏', disabled: false, ...secondary }
     const missing = Math.max(0, (Number(snapshot.playerCount) || 0) - (Number(snapshot.readyCount) || 0))
-    return { kind: 'start', label: `还差 ${missing} 人`, disabled: true }
+    return { kind: 'start', label: `还差 ${missing} 人`, disabled: true, ...secondary }
   }
   if (seated) {
     return self.ready
       ? { kind: 'unready', label: '取消准备', disabled: false }
-      : { kind: 'ready', label: '我已准备', disabled: false }
+      : { kind: 'ready', label: '准备', disabled: false }
   }
   if (snapshot?.canJoin) return { kind: 'join', label: '加入并入座', disabled: false }
   return { kind: 'wait', label: '房间已满', disabled: true }

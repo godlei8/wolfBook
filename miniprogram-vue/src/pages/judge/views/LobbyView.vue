@@ -49,6 +49,11 @@ function changeRule(row, direction) {
   emit('act', { kind: 'rules', rules: input })
 }
 
+function tapSecondary() {
+  if (!action.value.secondary || props.busy) return
+  emit('act', { kind: action.value.secondary.kind })
+}
+
 function tapMain() {
   if (action.value.disabled || props.busy) return
   emit('act', { kind: action.value.kind })
@@ -233,6 +238,12 @@ function copyRoomCode() {
     </view>
 
     <view class="nt-bar">
+      <view
+        v-if="action.secondary"
+        class="nt-btn nt-btn--ghost jl-secondary"
+        :class="{ 'nt-btn--disabled': busy }"
+        @tap="tapSecondary"
+      >{{ action.secondary.label }}</view>
       <view
         class="nt-btn jr-cta"
         :class="[action.kind === 'unready' || action.disabled ? 'nt-btn--ghost' : 'nt-btn--gold', { 'nt-btn--disabled': action.disabled || busy }]"
@@ -624,5 +635,10 @@ function copyRoomCode() {
   font-size: 32rpx;
   line-height: 56rpx;
   text-align: center;
+}
+.jl-secondary {
+  flex: none;
+  width: 220rpx;
+  margin-right: 16rpx;
 }
 </style>
