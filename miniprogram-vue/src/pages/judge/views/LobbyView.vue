@@ -5,6 +5,7 @@
 import { computed } from 'vue'
 import { exitAction, lobbyAction, lobbySeats, rulesRows, seatTap, swapBanner } from '../../../utils/judge/lobby.js'
 import { stepRule } from '../../../utils/judge/create-room.js'
+import { showActionSheet, showModal } from '../../../utils/dialog.js'
 
 const props = defineProps({
   snapshot: { type: Object, required: true },
@@ -73,7 +74,7 @@ function confirmTap(tap) {
     return
   }
   const text = TAP_TEXT[tap.action] || TAP_TEXT.request
-  uni.showModal({
+  showModal({
     title: text.title,
     content: tap.confirm,
     confirmText: text.confirmText,
@@ -92,7 +93,7 @@ function tapSeat(seat) {
     confirmTap(tap)
     return
   }
-  uni.showActionSheet({
+  showActionSheet({
     itemList: tap.choices.map((choice) => choice.label),
     success: (result) => {
       const choice = tap.choices[result.tapIndex]
@@ -104,7 +105,7 @@ function tapSeat(seat) {
 function tapExit() {
   if (!exit.value || props.busy) return
   const item = exit.value
-  uni.showModal({
+  showModal({
     title: item.title,
     content: item.confirm,
     confirmText: item.kind === 'dissolve' ? '解散' : '离开',

@@ -4,6 +4,7 @@
 import { computed } from 'vue'
 import { countdown, phaseTitle } from '../../../utils/judge/room-view.js'
 import { speechPanel } from '../../../utils/judge/day.js'
+import { judgeRecap } from '../../../utils/judge/judge-desk.js'
 import { gameAreaStyle, stageLayout } from '../../../utils/judge/stage.js'
 import { useStageFit } from '../../../utils/judge/stage-fit.js'
 
@@ -16,6 +17,8 @@ const props = defineProps({
   bar: { type: Boolean, default: false },
 })
 const emit = defineEmits(['act', 'fit'])
+// 法官：昨晚发生了什么（只有法官看得到）
+const recap = computed(() => judgeRecap(props.snapshot))
 
 const layout = computed(() => stageLayout(props.snapshot, 'speech', { stageHeight: props.stageHeight }))
 const panel = computed(() => speechPanel(props.snapshot))
@@ -27,10 +30,15 @@ const nextSeat = computed(() => panel.value.nextSeat)
 useStageFit(props, emit, () => layout.value.cardHeight)
 
 function seatClass(seat) {
-  return { 'nt-seat--dim': seat.dim, 'nt-seat--on': seat.selected, 'nt-seat--speaking': seat.speaking, 'nt-seat--out': seat.out }
+  return { 'nt-seat--dim': seat.dim, 'nt-seat--on': seat.selected, 'nt-seat--speaking': seat.speaking, 'nt-seat--out': seat.out, 'nt-seat--target': seat.target }
 }
 
-function tapSeat() {}
+function tapSeat(seat) {
+  if (props.snapshot.judgeViewer) {
+    emit('act', { kind: 'judgeSeat', seatNo: seat.seatNo })
+    return
+  }
+}
 
 function endSpeech() {
   if (props.busy) return
@@ -57,6 +65,7 @@ function endSpeech() {
           <text class="nt-seat__no">{{ seat.seatNo }}</text>
           <text v-if="seat.role" class="nt-seat__role" :style="{ backgroundColor: seat.roleColor }">{{ seat.role }}</text>
           <text v-if="seat.tag" class="nt-seat__tag" :class="seat.tagKind ? `nt-seat__tag--${seat.tagKind}` : ''">{{ seat.tag }}</text>
+          <text v-if="seat.count" class="nt-seat__count" :class="`nt-seat__count--${seat.countKind}`">{{ seat.count }}</text>
           <text v-if="seat.sheriff" class="nt-seat__sheriff">★</text>
         </view>
       </view>
@@ -97,12 +106,45 @@ function endSpeech() {
         <view v-if="panel.isSpeaker" class="nt-game__buttons">
           <view class="nt-btn nt-btn--gold nt-game__button" :class="{ 'nt-btn--disabled': busy }" @tap="endSpeech">结束发言</view>
         </view>
+        <view v-if="recap" class="jd-recap">
+          <text class="jd-recap__label">昨晚（只有你知道）</text>
+          <text class="jd-recap__text">{{ recap }}</text>
+        </view>
+        <text v-if="snapshot.judgeViewer" class="jd-hint">座位左上角是发言顺序 · 到点自动换人 · 点座位可以点杀</text>
       </view>
     </view>
   </view>
 </template>
 
 <style scoped lang="scss">
+.jd-recap {
+  margin-top: 16rpx;
+  padding: 18rpx 22rpx;
+  border-radius: 22rpx;
+  background: var(--panel-sunk);
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.jd-recap__label {
+  color: var(--text-4);
+  font-size: 22rpx;
+}
+
+.jd-recap__text {
+  color: var(--text-soft);
+  font-size: 25rpx;
+  line-height: 1.6;
+}
+
+.jd-hint {
+  margin-top: auto;
+  padding-top: 12rpx;
+  color: var(--text-4);
+  font-size: 22rpx;
+}
+
 .js-over {
   font-size: 26rpx;
   font-weight: 700;

@@ -4,6 +4,8 @@ import { onLoad, onShow } from '@dcloudio/uni-app'
 import NavBar from '../../components/NavBar.vue'
 import userData from '../../services/user-data'
 import { formatDateTime } from '../../utils/format'
+import { showModal } from '../../utils/dialog.js'
+import NtDialogHost from '../../components/NtDialogHost.vue'
 
 const sessionId = ref('')
 const session = ref(null)
@@ -282,7 +284,7 @@ async function saveRecord() {
 
 function removeRecord(id) {
   if (!session.value) return
-  uni.showModal({
+  showModal({
     title: '删除记录',
     content: '确认删除这条记录吗？',
     success: async (res) => {
@@ -535,6 +537,7 @@ onShow(() => {
         <view class="nt-btn nt-btn--gold nt-btn--block" @tap="saveRecord">保存记录</view>
       </view>
     </view>
+    <NtDialogHost />
   </view>
 </template>
 

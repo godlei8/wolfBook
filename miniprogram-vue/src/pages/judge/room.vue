@@ -19,11 +19,14 @@ import storage from '../../services/storage'
 import { mergePollResult, pollInterval } from '../../utils/judge/room-poll.js'
 import { clockOffset, navTitle, pickView } from '../../utils/judge/room-view.js'
 import { identityCard } from '../../utils/judge/identity.js'
-import { judgeActions, pausedOverlay } from '../../utils/judge/judge-bar.js'
+import { hostMenu, judgeActions, pausedOverlay } from '../../utils/judge/judge-bar.js'
+import { judgeSeatSheet } from '../../utils/judge/judge-desk.js'
 import { hostActions } from '../../utils/judge/day.js'
 import { rememberCue, retryCue, shouldPlay, voiceCue, withTimeout } from '../../utils/judge/voice-cue.js'
 import { createJudgeVoicePlayer } from '../../utils/judge/voice'
 import { goToUserTab, hasAuthToken } from '../../utils/auth'
+import { showActionSheet, showModal } from '../../utils/dialog.js'
+import NtDialogHost from '../../components/NtDialogHost.vue'
 
 const roomId = ref('')
 const loadOptions = ref({})
@@ -65,16 +68,17 @@ const identity = computed(() => identityCard(snapshot.value, board.value))
 const identityOpen = ref(false)
 const judgeBar = computed(() => judgeActions(snapshot.value))
 const overlay = computed(() => pausedOverlay(snapshot.value))
-const hasJudgeBar = computed(() => judgeBar.value.pause || judgeBar.value.resume || judgeBar.value.forceOut || judgeBar.value.finish)
+// 底部控场栏只给法官；无法官房主的暂停 / 提前结束在右上方的设置菜单（hostMenu）
+// 法官的底部栏：提前推进白天的按钮 + 暂停 / 继续（点杀在点座位的菜单里，提前结束在右上角设置）
+const hasJudgeBar = computed(() => Boolean(snapshot.value?.judgeViewer) && (judgeBar.value.pause || judgeBar.value.resume))
+const menuItems = computed(() => hostMenu(snapshot.value, { supported: voicePlayer.supported, on: voiceOn.value }))
 // 法官提前推进白天的按钮（每一步本来就按倒计时自动走），和暂停 / 更多（点杀、提前结束）放在同一条操作栏；
 // 无法官房主只有暂停 / 继续和提前结束
 const hostItems = computed(() => hostActions(snapshot.value))
 const hasBar = computed(() => view.value === 'lobby' || hasJudgeBar.value || hostItems.value.length > 0)
 // 点杀：先打开座位面板选人，再二次确认
-const forceOutOpen = ref(false)
 // 对局记录面板（右上角常驻入口，白天夜里都能开）
 const logOpen = ref(false)
-const forceOutSeats = computed(() => (snapshot.value?.players || []).filter((player) => player.seatNo && player.alive !== false))
 
 function safeDecode(value) {
   if (!value) return ''
@@ -105,7 +109,7 @@ function exitRoom(text) {
   if (redirected) return
   redirected = true
   stopPolling()
-  uni.showModal({
+  showModal({
     title: '已退出房间',
     content: text,
     showCancel: false,
@@ -118,7 +122,7 @@ function goLegacy() {
   if (redirected) return
   redirected = true
   stopPolling()
-  uni.showModal({
+  showModal({
     title: '房间已失效',
     content: '这个房间是旧版小程序建的，新版不再支持，请重新建房。',
     showCancel: false,
@@ -333,6 +337,10 @@ function onAct(event) {
     }),
     selfDestruct: () => api.selfDestructJudge(id),
   }
+  if (event?.kind === 'judgeSeat') {
+    openJudgeSeat(event.seatNo)
+    return
+  }
   const task = tasks[event?.kind]
   if (task) runAction(task)
 }
@@ -345,7 +353,7 @@ function tapHostItem(item) {
 // 提前结束：记流局，二次确认
 function confirmFinish() {
   if (actionLoading.value) return
-  uni.showModal({
+  showModal({
     title: '提前结束',
     content: '提前结束这一局，记为流局？',
     confirmText: '结束',
@@ -355,20 +363,42 @@ function confirmFinish() {
   })
 }
 
-// 法官的「更多」：点杀、提前结束
-function openMore() {
-  if (actionLoading.value) return
-  uni.showActionSheet({
-    itemList: ['点杀', '提前结束'],
+// 房主右上方的设置菜单：暂停 / 继续计时、提前结束、播报开关
+function openMenu() {
+  const items = menuItems.value
+  if (!items.length) return
+  showActionSheet({
+    itemList: items.map((item) => item.label),
     success: (result) => {
-      if (result.tapIndex === 0) forceOutOpen.value = true
-      if (result.tapIndex === 1) confirmFinish()
+      const item = items[result.tapIndex]
+      if (!item) return
+      if (item.key === 'voice') toggleVoice()
+      else if (item.key === 'finish') confirmFinish()
+      else onAct({ kind: 'advance', payload: { action: item.key } })
+    },
+  })
+}
+
+// 法官点座位（用户给定：以牌桌为主叠加法官功能）：这个人的身份和经历，能点杀、正在发言时能跳过
+function openJudgeSeat(seatNo) {
+  const sheet = judgeSeatSheet(snapshot.value, seatNo)
+  if (!sheet) return
+  const player = (snapshot.value?.players || []).find((item) => item.seatNo === seatNo)
+  showActionSheet({
+    title: sheet.title,
+    content: sheet.content,
+    itemList: sheet.items.map((item) => item.label),
+    success: (result) => {
+      const item = sheet.items[result.tapIndex]
+      if (!item) return
+      if (item.key === 'skip') onAct({ kind: 'advance', payload: { action: 'next_speaker' } })
+      else if (item.key === 'forceOut' && player) confirmForceOut(player)
     },
   })
 }
 
 function confirmSelfDestruct() {
-  uni.showModal({
+  showModal({
     title: '自爆',
     content: '确定自爆？自爆后直接出局，有 60 秒遗言',
     confirmText: '自爆',
@@ -385,8 +415,7 @@ function pauseOrResume() {
 }
 
 function confirmForceOut(player) {
-  forceOutOpen.value = false
-  uni.showModal({
+  showModal({
     title: '点杀',
     content: `确定让 ${player.seatNo} 号 ${player.nickname || ''} 直接出局？`,
     confirmText: '点杀',
@@ -454,7 +483,12 @@ onUnload(() => {
       <template #side>
         <text v-if="snapshot && view !== 'lobby'" class="jr-logbtn" @tap="logOpen = true">记录</text>
         <text v-if="identity" class="jr-logbtn" @tap="identityOpen = true">身份</text>
-        <text v-if="snapshot && snapshot.host && voicePlayer.supported" class="jr-logbtn" @tap="toggleVoice">{{ voiceOn ? '播报开' : '播报关' }}</text>
+        <text v-if="snapshot && snapshot.judgeViewer && view !== 'lobby'" class="jr-judgechip">法官</text>
+      </template>
+      <template #right>
+        <view v-if="menuItems.length" class="jr-gear" aria-label="设置" @tap="openMenu">
+          <image class="jr-gear__icon" src="/static/icons/settings.svg" mode="aspectFit" />
+        </view>
       </template>
     </NavBar>
     <view v-if="pollError" class="nt-gutter">
@@ -482,6 +516,7 @@ onUnload(() => {
       <text class="jr-pause__moon">☾</text>
       <text class="jr-pause__title serif">{{ overlay.title }}</text>
       <text class="jr-pause__hint">{{ overlay.hint }}</text>
+      <view v-if="overlay.canResume" class="nt-btn nt-btn--gold jr-pause__resume" :class="{ 'nt-btn--disabled': actionLoading }" @tap="onAct({ kind: 'advance', payload: { action: 'resume' } })">继续计时</view>
     </view>
 
     <view v-if="view !== 'lobby' && (hasJudgeBar || hostItems.length)" class="nt-bar jr-judgebar">
@@ -498,8 +533,6 @@ onUnload(() => {
         :class="[judgeBar.resume ? 'nt-btn--gold' : 'nt-btn--ghost', { 'nt-btn--disabled': actionLoading }]"
         @tap="pauseOrResume"
       >{{ judgeBar.resume ? '继续计时' : '暂停计时' }}</view>
-      <view v-if="judgeBar.forceOut" class="nt-btn nt-btn--ghost jr-judgebar__btn" @tap="openMore">更多</view>
-      <view v-else-if="judgeBar.finish" class="nt-btn nt-btn--ghost jr-judgebar__btn" @tap="confirmFinish">提前结束</view>
     </view>
 
     <LogSheet v-if="logOpen && snapshot" :snapshot="snapshot" @close="logOpen = false" />
@@ -523,18 +556,7 @@ onUnload(() => {
       </view>
     </view>
 
-    <view v-if="forceOutOpen" class="jr-sheet" @tap="forceOutOpen = false">
-      <view class="nt-panel jr-sheet__body" @tap.stop>
-        <text class="nt-h2">点杀谁？</text>
-        <view class="jr-sheet__seats">
-          <view v-for="player in forceOutSeats" :key="player.seatNo" class="jr-sheet__seat" @tap="confirmForceOut(player)">
-            <text class="jr-sheet__no serif">{{ player.seatNo }}</text>
-            <text class="jr-sheet__name">{{ player.nickname }}</text>
-          </view>
-        </view>
-        <view class="nt-btn nt-btn--ghost" @tap="forceOutOpen = false">取消</view>
-      </view>
-    </view>
+    <NtDialogHost />
   </view>
 </template>
 
@@ -598,6 +620,36 @@ onUnload(() => {
   font-size: 26rpx;
 }
 
+.jr-pause__resume {
+  margin-top: 32rpx;
+  min-width: 320rpx;
+}
+
+.jr-gear {
+  width: 64rpx;
+  height: 56rpx;
+  border-radius: 20rpx;
+  background: var(--panel-raised);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.jr-judgechip {
+  margin-left: 12rpx;
+  padding: 8rpx 18rpx;
+  border-radius: 24rpx;
+  background: rgba(242, 179, 61, 0.16);
+  color: var(--gold);
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.jr-gear__icon {
+  width: 36rpx;
+  height: 36rpx;
+}
+
 .jr-judgebar {
   z-index: 50;
   gap: 20rpx;
@@ -625,45 +677,10 @@ onUnload(() => {
   justify-content: flex-end;
 }
 
-.jr-sheet__body {
-  margin: 0 var(--page-gutter) calc(env(safe-area-inset-bottom) + 32rpx);
-  padding: 32rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 24rpx;
-}
 
-.jr-sheet__seats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16rpx;
-}
 
-.jr-sheet__seat {
-  width: 128rpx;
-  padding: 12rpx 0;
-  border-radius: 20rpx;
-  background: var(--panel-raised);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4rpx;
-}
 
-.jr-sheet__no {
-  color: var(--gold);
-  font-size: 36rpx;
-  font-weight: 900;
-}
 
-.jr-sheet__name {
-  max-width: 112rpx;
-  color: var(--text-2);
-  font-size: 20rpx;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
 .jr-logbtn {
   margin-left: 12rpx;

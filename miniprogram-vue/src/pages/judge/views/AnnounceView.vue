@@ -25,10 +25,15 @@ const deadPlayers = computed(() => (props.snapshot.players || []).filter((player
 useStageFit(props, emit, () => layout.value.cardHeight)
 
 function seatClass(seat) {
-  return { 'nt-seat--dim': seat.dim, 'nt-seat--on': seat.selected, 'nt-seat--speaking': seat.speaking, 'nt-seat--out': seat.out }
+  return { 'nt-seat--dim': seat.dim, 'nt-seat--on': seat.selected, 'nt-seat--speaking': seat.speaking, 'nt-seat--out': seat.out, 'nt-seat--target': seat.target }
 }
 
-function tapSeat() {}
+function tapSeat(seat) {
+  if (props.snapshot.judgeViewer) {
+    emit('act', { kind: 'judgeSeat', seatNo: seat.seatNo })
+    return
+  }
+}
 
 function choose(option) {
   if (props.busy) return
@@ -55,6 +60,7 @@ function choose(option) {
           <text class="nt-seat__no">{{ seat.seatNo }}</text>
           <text v-if="seat.role" class="nt-seat__role" :style="{ backgroundColor: seat.roleColor }">{{ seat.role }}</text>
           <text v-if="seat.tag" class="nt-seat__tag" :class="seat.tagKind ? `nt-seat__tag--${seat.tagKind}` : ''">{{ seat.tag }}</text>
+          <text v-if="seat.count" class="nt-seat__count" :class="`nt-seat__count--${seat.countKind}`">{{ seat.count }}</text>
           <text v-if="seat.sheriff" class="nt-seat__sheriff">★</text>
         </view>
       </view>

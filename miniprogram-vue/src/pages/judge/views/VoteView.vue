@@ -4,6 +4,7 @@
 import { computed, ref, watch } from 'vue'
 import { countdown, phaseTitle } from '../../../utils/judge/room-view.js'
 import { voteResultPanel, votePanel } from '../../../utils/judge/day.js'
+import { judgeVotePanel } from '../../../utils/judge/judge-desk.js'
 import { gameAreaStyle, stageLayout } from '../../../utils/judge/stage.js'
 import { useStageFit } from '../../../utils/judge/stage-fit.js'
 
@@ -26,6 +27,8 @@ const result = computed(() => props.snapshot.currentPhase === 'vote_result')
 const layout = computed(() => stageLayout(props.snapshot, result.value ? 'voteResult' : 'vote', { selection: selection.value, stageHeight: props.stageHeight }))
 const panel = computed(() => votePanel(props.snapshot))
 const outcome = computed(() => voteResultPanel(props.snapshot))
+// 法官：实时票型（玩家只看到投了几个人）
+const live = computed(() => judgeVotePanel(props.snapshot))
 const title = computed(() => phaseTitle(props.snapshot))
 const clock = computed(() => countdown(props.snapshot.phaseDeadline, props.now, props.snapshot.paused))
 const info = computed(() => props.snapshot.dayInfo || {})
@@ -40,10 +43,14 @@ const verdict = computed(() => {
 useStageFit(props, emit, () => layout.value.cardHeight)
 
 function seatClass(seat) {
-  return { 'nt-seat--dim': seat.dim, 'nt-seat--on': seat.selected, 'nt-seat--speaking': seat.speaking, 'nt-seat--out': seat.out }
+  return { 'nt-seat--dim': seat.dim, 'nt-seat--on': seat.selected, 'nt-seat--speaking': seat.speaking, 'nt-seat--out': seat.out, 'nt-seat--target': seat.target }
 }
 
 function tapSeat(seat) {
+  if (props.snapshot.judgeViewer) {
+    emit('act', { kind: 'judgeSeat', seatNo: seat.seatNo })
+    return
+  }
   if (!seat.tappable) return
   selection.value = selection.value === seat.seatNo ? 0 : seat.seatNo
 }
@@ -73,6 +80,7 @@ function vote(targetSeatNo) {
           <text class="nt-seat__no">{{ seat.seatNo }}</text>
           <text v-if="seat.role" class="nt-seat__role" :style="{ backgroundColor: seat.roleColor }">{{ seat.role }}</text>
           <text v-if="seat.tag" class="nt-seat__tag" :class="seat.tagKind ? `nt-seat__tag--${seat.tagKind}` : ''">{{ seat.tag }}</text>
+          <text v-if="seat.count" class="nt-seat__count" :class="`nt-seat__count--${seat.countKind}`">{{ seat.count }}</text>
           <text v-if="seat.sheriff" class="nt-seat__sheriff">★</text>
         </view>
       </view>
@@ -111,7 +119,21 @@ function vote(targetSeatNo) {
 
     <view class="nt-gutter nt-game__area" :style="gameAreaStyle(bar)">
       <view class="nt-panel nt-game__panel">
-        <block v-if="!result">
+        <block v-if="!result && live">
+          <text class="nt-game__lead">实时票型 · {{ panel.progress }}</text>
+          <view v-for="row in live.rows" :key="row.seatNo" class="jd-tally">
+            <text class="jd-tally__label" :class="{ 'jd-tally__label--top': row.top }">{{ row.label }}</text>
+            <view class="jd-tally__track"><view class="jd-tally__bar" :class="{ 'jd-tally__bar--top': row.top }" :style="{ width: `${row.pct}%` }" /></view>
+            <text class="jd-tally__count" :class="{ 'jd-tally__label--top': row.top }">{{ row.count }}</text>
+          </view>
+          <text v-if="!live.rows.length" class="nt-game__hint">还没人投</text>
+          <view v-if="live.waiting.length" class="jd-waiting">
+            <text class="jd-waiting__label">还没投</text>
+            <text class="jd-waiting__seats">{{ live.waiting.join('、') }} 号</text>
+            <text class="jd-waiting__hint">到点算弃票</text>
+          </view>
+        </block>
+        <block v-else-if="!result">
           <text class="nt-game__lead">{{ panel.stage === 'pk' ? 'PK 投票：只能投平票的人' : '投出你怀疑的人' }}</text>
           <text class="nt-game__hint">{{ panel.progress }}{{ panel.mine ? ` · ${panel.mine}` : '' }}</text>
           <text v-if="!panel.canVote" class="nt-game__hint">{{ panel.reason }}</text>
@@ -133,6 +155,79 @@ function vote(targetSeatNo) {
 </template>
 
 <style scoped lang="scss">
+.jd-tally {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-top: 12rpx;
+}
+
+.jd-tally__label {
+  width: 140rpx;
+  color: var(--text-soft);
+  font-size: 25rpx;
+  font-weight: 700;
+}
+
+.jd-tally__label--top {
+  color: var(--camp-wolf);
+}
+
+.jd-tally__track {
+  flex: 1;
+  height: 16rpx;
+  border-radius: 999rpx;
+  background: var(--panel-sunk);
+  overflow: hidden;
+}
+
+.jd-tally__bar {
+  height: 100%;
+  background: var(--line-strong);
+}
+
+.jd-tally__bar--top {
+  background: var(--camp-wolf);
+}
+
+.jd-tally__count {
+  width: 90rpx;
+  text-align: right;
+  color: var(--text-soft);
+  font-size: 25rpx;
+  font-weight: 700;
+}
+
+.jd-waiting {
+  margin-top: auto;
+  padding: 14rpx 20rpx;
+  border-radius: 20rpx;
+  background: rgba(242, 179, 61, 0.14);
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+}
+
+.jd-waiting__label {
+  flex-shrink: 0;
+  color: var(--gold);
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.jd-waiting__seats {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  font-size: 24rpx;
+}
+
+.jd-waiting__hint {
+  flex-shrink: 0;
+  color: var(--text-3);
+  font-size: 22rpx;
+}
+
 .jv-tallies {
   align-self: stretch;
   display: flex;

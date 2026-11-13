@@ -8,6 +8,7 @@ import { computed, ref, watch } from 'vue'
 import { countdown, phaseTitle } from '../../../utils/judge/room-view.js'
 import { isStepHolder, nightArt, nightPanel } from '../../../utils/judge/night-panel.js'
 import { tonightRows } from '../../../utils/judge/judge-bar.js'
+import { judgeNightAlert } from '../../../utils/judge/judge-desk.js'
 import { gameAreaStyle, stageLayout } from '../../../utils/judge/stage.js'
 import { useStageFit } from '../../../utils/judge/stage-fit.js'
 
@@ -36,13 +37,18 @@ const clock = computed(() => countdown(props.snapshot.phaseDeadline, props.now, 
 const art = computed(() => nightArt(props.snapshot, props.board))
 // 法官的「今晚」汇总（法官手机不在零场外的约束里，大家都知道谁是法官）
 const rows = computed(() => tonightRows(props.snapshot, props.board))
+const alert = computed(() => judgeNightAlert(props.snapshot))
 useStageFit(props, emit, () => layout.value.cardHeight)
 
 function seatClass(seat) {
-  return { 'nt-seat--dim': seat.dim, 'nt-seat--on': seat.selected, 'nt-seat--speaking': seat.speaking, 'nt-seat--out': seat.out }
+  return { 'nt-seat--dim': seat.dim, 'nt-seat--on': seat.selected, 'nt-seat--speaking': seat.speaking, 'nt-seat--out': seat.out, 'nt-seat--target': seat.target }
 }
 
 function tapSeat(seat) {
+  if (props.snapshot.judgeViewer) {
+    emit('act', { kind: 'judgeSeat', seatNo: seat.seatNo })
+    return
+  }
   if (!holder.value || !seat.tappable) return
   selection.value = selection.value === seat.seatNo ? 0 : seat.seatNo
 }
@@ -79,6 +85,7 @@ function buttonClass(button) {
           <text v-if="seat.role" class="nt-seat__role" :style="{ backgroundColor: seat.roleColor }">{{ seat.role }}</text>
           <view v-if="seat.mate" class="nt-seat__mate" />
           <text v-if="seat.tag" class="nt-seat__tag" :class="seat.tagKind ? `nt-seat__tag--${seat.tagKind}` : ''">{{ seat.tag }}</text>
+          <text v-if="seat.count" class="nt-seat__count" :class="`nt-seat__count--${seat.countKind}`">{{ seat.count }}</text>
           <text v-if="seat.sheriff" class="nt-seat__sheriff">★</text>
         </view>
       </view>
@@ -106,6 +113,7 @@ function buttonClass(button) {
           <text class="jn-tonight__seats">{{ row.seats.join(' ') }} 号</text>
           <text class="jn-tonight__state">{{ row.state }}</text>
         </view>
+        <text v-if="alert" class="jd-alert">{{ alert }}</text>
       </view>
       <view v-else-if="panel" class="nt-panel nt-game__panel jn-panel">
         <block v-if="panel.kind === 'wolf'">
@@ -184,6 +192,16 @@ function buttonClass(button) {
 </template>
 
 <style scoped lang="scss">
+.jd-alert {
+  margin-top: 12rpx;
+  padding: 14rpx 20rpx;
+  border-radius: 20rpx;
+  background: rgba(242, 179, 61, 0.14);
+  color: var(--gold);
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
 .jn-art__img {
   width: 100%;
   height: 100%;

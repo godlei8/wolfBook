@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { godSeats, judgeActions, pausedOverlay, tonightRows } from '../src/utils/judge/judge-bar.js'
+import { godSeats, hostMenu, judgeActions, pausedOverlay, tonightRows } from '../src/utils/judge/judge-bar.js'
 
 const players = [
   { seatNo: 1, roleName: '狼人', faction: '狼人', alive: true, playing: true },
@@ -66,7 +66,7 @@ test('everyoneGetsTheSamePauseOverlay', () => {
   assert.equal(pausedOverlay(room()), null)
   const judge = pausedOverlay(room({ paused: true }))
   const player = pausedOverlay(room({ paused: true, judgeViewer: false, host: false }))
-  assert.deepEqual(judge, player)
+  assert.deepEqual([judge.title, judge.hint], [player.title, player.hint], '所有人看到同一张遮罩')
   assert.equal(judge.title, '对局暂停')
   assert.equal(judge.hint, '计时已停，等法官继续')
   assert.equal(pausedOverlay(room({ paused: true, judgeMode: 'joined' })).hint, '计时已停，等房主继续')
@@ -107,4 +107,24 @@ test('judgeSeesTheMechWolfInItsOwnRow', async () => {
   assert.deepEqual(wolf.seats, [1], '机械狼不在狼队那一行')
   const mech = rows.find((row) => row.role === '机械狼')
   assert.equal(mech.state, '学习 2 号 · 毒 1 号')
+})
+
+test('joinedHostControlsLiveInTheSettingsMenu', () => {
+  // 用户给定：无法官房主的暂停计时、提前结束放进右上方的设置菜单，不占底部
+  const host = room({ judgeViewer: false, judgeMode: 'joined', host: true })
+  assert.deepEqual(hostMenu(host, { supported: true, on: true }).map((item) => [item.key, item.label]), [
+    ['pause', '暂停计时'],
+    ['finish', '提前结束'],
+    ['voice', '关闭播报'],
+  ])
+  assert.deepEqual(hostMenu({ ...host, paused: true }, { supported: false, on: false }).map((item) => item.key), ['resume', 'finish'])
+  assert.deepEqual(hostMenu(room({ judgeViewer: false, judgeMode: 'joined', host: false }), { supported: true, on: true }), [], '普通玩家没有')
+  assert.deepEqual(hostMenu(room(), { supported: true, on: false }).map((item) => [item.key, item.label]), [['finish', '提前结束'], ['voice', '打开播报']], '法官：暂停在底部，提前结束在菜单里')
+  assert.deepEqual(hostMenu({ ...host, roomStatus: 'lobby' }, { supported: true, on: true }).map((item) => item.key), ['voice'], '大厅里只有播报')
+})
+
+test('thePauseOverlayLetsTheControllerResume', () => {
+  assert.equal(pausedOverlay(room({ paused: true, judgeViewer: false, judgeMode: 'joined', host: true })).canResume, true)
+  assert.equal(pausedOverlay(room({ paused: true })).canResume, true, '法官')
+  assert.equal(pausedOverlay(room({ paused: true, judgeViewer: false, host: false })).canResume, false)
 })

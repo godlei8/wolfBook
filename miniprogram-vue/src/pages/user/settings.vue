@@ -1,6 +1,8 @@
 <script setup>
 import NavBar from '../../components/NavBar.vue'
 import storage from '../../services/storage'
+import { showModal } from '../../utils/dialog.js'
+import NtDialogHost from '../../components/NtDialogHost.vue'
 
 function clearData() {
   const loggedIn = !!storage.getAuthToken()
@@ -13,7 +15,7 @@ function clearData() {
     ? `你当前未登录，本地的 ${localSessions} 条对局笔记和 ${localFavorites} 个收藏没有云端备份，清理后将永久删除。建议先登录同步再清理。`
     : '将清除登录态、缓存和本地记录。已同步到云端的收藏和笔记会在重新登录后恢复。'
 
-  uni.showModal({
+  showModal({
     title: hasLocalOnlyData ? '确认永久删除本地数据？' : '清理本地数据',
     content,
     confirmText: hasLocalOnlyData ? '仍要删除' : '清理',
@@ -47,6 +49,7 @@ function clearData() {
         <text class="nt-arrow">›</text>
       </view>
     </view>
+    <NtDialogHost />
   </view>
 </template>
 

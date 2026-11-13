@@ -7,6 +7,7 @@ import { godSeats } from './judge-bar.js'
 import { sheriffPanel, speakerOf } from './sheriff.js'
 import { voteResultPanel, votePanel } from './day.js'
 import { pendingPanel } from './pending.js'
+import { judgeSeatMarks } from './judge-desk.js'
 
 /** 牌桌下面操作面板区的高度（rpx），整局所有阶段、所有人一样：座位不跳，夜里也看不出谁有面板。 */
 export const GAME_PANEL_HEIGHT = 380
@@ -61,6 +62,21 @@ export function stageLayout(snapshot, view, { selection = 0, stageHeight = 0 } =
   const god = godSeats(snapshot)
   const marks = night ? null : phaseMarks(snapshot, view, selection)
   const sheriffSeat = snapshot?.sheriffSeatNo || 0
+  // 法官视角：在玩家的牌桌上叠加法官才看得到的标记（judge-desk.js）
+  const judgeMarks = judgeSeatMarks(snapshot, view)
+  const withJudge = (seat) => {
+    const mark = judgeMarks.get(seat.seatNo)
+    if (!mark) return seat
+    return {
+      ...seat,
+      tag: mark.tag || seat.tag,
+      tagKind: mark.tag ? mark.tagKind : seat.tagKind,
+      count: mark.count,
+      countKind: mark.countKind,
+      target: mark.ring === 'target',
+      speaking: seat.speaking || mark.ring === 'act',
+    }
+  }
 
   const decorate = (seat) => {
     const player = seat.player
@@ -83,6 +99,9 @@ export function stageLayout(snapshot, view, { selection = 0, stageHeight = 0 } =
       tappable: false,
       selected: false,
       dim: dead,
+      count: '',
+      countKind: '',
+      target: false,
     }
     if (night) {
       const badge = badges.get(seat.seatNo) || { mate: false, votes: 0, selected: false, disabled: true }
@@ -117,8 +136,8 @@ export function stageLayout(snapshot, view, { selection = 0, stageHeight = 0 } =
     cardHeight: columns.cardHeight,
     baseHeight: columns.baseHeight,
     sides: [
-      { key: 'left', seats: columns.left.map(decorate) },
-      { key: 'right', seats: columns.right.map(decorate) },
+      { key: 'left', seats: columns.left.map((seat) => withJudge(decorate(seat))) },
+      { key: 'right', seats: columns.right.map((seat) => withJudge(decorate(seat))) },
     ],
   }
 }

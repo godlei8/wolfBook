@@ -5,6 +5,8 @@ import NavBar from '../../components/NavBar.vue'
 import userData from '../../services/user-data'
 import { formatDateTime } from '../../utils/format'
 import { syncTabBar } from '../../utils/tabbar'
+import { showModal } from '../../utils/dialog.js'
+import NtDialogHost from '../../components/NtDialogHost.vue'
 
 const sessions = ref([])
 
@@ -45,7 +47,7 @@ function openSession(id) {
 }
 
 function removeSession(id) {
-  uni.showModal({
+  showModal({
     title: '删除对局',
     content: '确认删除这条笔记吗？删除后不能恢复。',
     success: async (res) => {
@@ -97,6 +99,7 @@ onShow(() => {
         <text class="nt-meta">最近更新 {{ item.updateLabel }}</text>
       </view>
     </view>
+    <NtDialogHost />
   </view>
 </template>
 

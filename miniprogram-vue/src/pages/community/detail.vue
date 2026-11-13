@@ -6,6 +6,8 @@ import NavBar from '../../components/NavBar.vue'
 import api from '../../services/api'
 import storage from '../../services/storage'
 import { formatDateTime } from '../../utils/format'
+import { showModal } from '../../utils/dialog.js'
+import NtDialogHost from '../../components/NtDialogHost.vue'
 
 const post = ref(null)
 const commentText = ref('')
@@ -90,7 +92,7 @@ async function submitComment() {
 function reportPost() {
   if (busy.value) return
   if (!ensureLogin()) return
-  uni.showModal({
+  showModal({
     title: '举报这条帖子',
     content: '确认举报吗？管理员会复核内容并处理。',
     confirmText: '举报',
@@ -195,6 +197,7 @@ onShareAppMessage(() => ({
       </view>
       <view class="nt-btn nt-btn--gold" :class="{ 'nt-btn--disabled': busy }" @tap="submitComment">发送</view>
     </view>
+    <NtDialogHost />
   </view>
 </template>
 

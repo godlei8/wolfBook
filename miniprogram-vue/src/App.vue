@@ -773,6 +773,50 @@ page {
   background: var(--gold);
 }
 
+/* 法官视角的座位标记（judge-desk.js）：谁刀谁 / 投给谁、刀口、发言顺序 */
+.nt-seat__tag--dark {
+  background: var(--panel-raised);
+  color: var(--text);
+}
+
+.nt-seat__tag--red {
+  background: var(--camp-wolf);
+}
+
+.nt-seat__tag--done {
+  background: var(--panel-raised);
+  color: var(--text-4);
+}
+
+.nt-seat__count {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  min-width: 48rpx;
+  padding: 0 10rpx;
+  box-sizing: border-box;
+  border-radius: 20rpx;
+  border: 3rpx solid var(--ink);
+  font-size: 24rpx;
+  font-weight: 900;
+  line-height: 36rpx;
+  text-align: center;
+  color: var(--ink);
+}
+
+.nt-seat__count--red {
+  background: var(--camp-wolf);
+}
+
+.nt-seat__count--light {
+  background: var(--text);
+}
+
+.nt-seat--target {
+  box-shadow: 0 0 0 6rpx var(--camp-wolf), 0 0 28rpx 8rpx rgba(255, 116, 104, 0.45);
+}
+
 .nt-seat__sheriff {
   position: absolute;
   right: -8rpx;

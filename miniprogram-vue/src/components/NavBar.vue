@@ -35,8 +35,9 @@ const insets = getNavInsets()
       </view>
       <view v-if="back" class="nav__back" @tap="goBackOrHome">‹</view>
       <text v-else-if="wordmark" class="nav__wordmark">{{ wordmark }}</text>
-      <!-- 右上角是微信胶囊，页面自己的按钮（语音、分享）跟在返回键右边 -->
+      <!-- 右上角是微信胶囊，页面自己的按钮（语音、分享）跟在返回键右边；right 插槽贴着最右边（小程序里在胶囊左边） -->
       <view class="nav__side"><slot name="side" /></view>
+      <view class="nav__right"><slot name="right" /></view>
     </view>
   </view>
 </template>
@@ -119,5 +120,13 @@ const insets = getNavInsets()
   font-size: 26rpx;
   font-weight: 700;
   letter-spacing: 8rpx;
+}
+
+.nav__right {
+  position: relative;
+  margin-left: auto;
+  margin-right: 16rpx;
+  display: flex;
+  align-items: center;
 }
 </style>

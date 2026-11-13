@@ -9,6 +9,8 @@ import { createAssistantStreamBuffer, shouldAutoScrollOnMessageAppend } from './
 import storage from '../../services/storage'
 import api from '../../services/api'
 import NavBar from '../../components/NavBar.vue'
+import { showActionSheet, showModal } from '../../utils/dialog.js'
+import NtDialogHost from '../../components/NtDialogHost.vue'
 
 const bootstrap = ref(null)
 const sessions = ref([])
@@ -93,7 +95,7 @@ function openTools() {
   if (sessions.value.length) items.push({ label: showHistory.value ? '收起历史会话' : `历史会话（${sessions.value.length}）`, run: () => (showHistory.value = !showHistory.value) })
   if (latestSessionId.value && latestSessionId.value !== activeSessionId.value) items.push({ label: '恢复最近一次', run: resumeLatestSession })
   if (activeSessionId.value) items.push({ label: '清空当前会话', run: resetCurrentSession })
-  uni.showActionSheet({
+  showActionSheet({
     itemList: items.map((item) => item.label),
     success: (res) => items[res.tapIndex]?.run(),
   })
@@ -394,7 +396,7 @@ function resetCurrentSession() {
     startNewSession()
     return
   }
-  uni.showModal({
+  showModal({
     title: '清空当前会话',
     content: '会删除这个会话里的全部对话记录，且无法恢复。',
     confirmText: '清空',
@@ -597,6 +599,7 @@ onUnload(() => {
         </view>
       </view>
     </view>
+    <NtDialogHost />
   </view>
 </template>
 
