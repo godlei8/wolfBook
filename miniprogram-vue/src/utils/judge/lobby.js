@@ -27,16 +27,34 @@ export function lobbySeats(snapshot) {
 /**
  * 点大厅里的一个座位（用户给定规则）：空位直接入座；有人的座位申请换座（对方 30 秒内同意才换）；
  * 已经申请过的座位再点是撤回。没入座的人（法官、还没进房）点了没反应。confirm 不为空时先弹确认框。
+ * 房主点有人的座位可以请他离开（被请离的不能再进这个房间）：不入座的法官直接是请离，坐着的房主在换座和请离里选（choices）。
  */
 export function seatTap(snapshot, seatNo) {
   const self = snapshot?.selfPlayer
-  if (!self?.seatNo || seatNo === self.seatNo) return null
   const player = (snapshot?.players || []).find((item) => item?.seatNo === seatNo)
+  const remove = player && snapshot?.host && seatNo !== self?.seatNo
+    ? { action: 'remove', seatNo, confirm: `请 ${seatNo} 号 ${player.nickname || ''} 离开房间？离开后他不能再进这个房间。` }
+    : null
+  if (!self?.seatNo) return remove
+  if (seatNo === self.seatNo) return null
   if (!player) return { action: 'move', seatNo, confirm: '' }
-  if (snapshot?.seatSwap?.outgoing?.seatNo === seatNo) {
-    return { action: 'cancel', seatNo, confirm: `撤回和 ${seatNo} 号的换座申请？` }
+  const swap = snapshot?.seatSwap?.outgoing?.seatNo === seatNo
+    ? { action: 'cancel', seatNo, confirm: `撤回和 ${seatNo} 号的换座申请？` }
+    : { action: 'request', seatNo, confirm: `申请和 ${seatNo} 号 ${player.nickname || ''} 换座？对方 30 秒内同意才会换。` }
+  if (!remove) return swap
+  return { choices: [{ ...swap, label: swap.action === 'cancel' ? '撤回换座申请' : '申请换座' }, { ...remove, label: '请他离开' }] }
+}
+
+/** 大厅底部的「解散房间 / 离开房间」（只在大厅）：房主解散（房间就没有了），入座的玩家离开（还可以再进）。 */
+export function exitAction(snapshot) {
+  if (snapshot?.roomStatus !== 'lobby') return null
+  if (snapshot?.host) {
+    return { kind: 'dissolve', label: '解散房间', title: '解散房间', confirm: '解散后房间就没有了，房间里的人都会退出。' }
   }
-  return { action: 'request', seatNo, confirm: `申请和 ${seatNo} 号 ${player.nickname || ''} 换座？对方 30 秒内同意才会换。` }
+  if (snapshot?.selfPlayer?.seatNo) {
+    return { kind: 'leave', label: '离开房间', title: '离开房间', confirm: '离开后座位会空出来，还可以再进。' }
+  }
+  return null
 }
 
 /** 大厅顶部的换座提示条：先显示别人发给我的（同意 / 拒绝），再显示我发出去的（撤回）；过期了不显示。 */

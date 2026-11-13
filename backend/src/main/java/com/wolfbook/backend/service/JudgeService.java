@@ -127,6 +127,18 @@ public class JudgeService {
         return lobby.joinRoom(authorization, roomId);
     }
 
+    public void dissolveRoom(String authorization, String roomId) {
+        lobby.dissolveRoom(authorization, roomId);
+    }
+
+    public WolfbookDtos.JudgeRoomSnapshotView leaveRoom(String authorization, String roomId) {
+        return lobby.leaveRoom(authorization, roomId);
+    }
+
+    public WolfbookDtos.JudgeRoomSnapshotView removePlayer(String authorization, String roomId, WolfbookDtos.JudgeSeatRequest request) {
+        return lobby.removePlayer(authorization, roomId, request);
+    }
+
     public WolfbookDtos.JudgeRoomSnapshotView changeSeat(String authorization, String roomId, WolfbookDtos.JudgeSeatRequest request) {
         return lobby.changeSeat(authorization, roomId, request);
     }
@@ -142,6 +154,7 @@ public class JudgeService {
     public WolfbookDtos.JudgeRoomSnapshotView getRoomSnapshot(String authorization, String roomId) {
         String openid = support.requireOpenid(authorization);
         String resolved = support.resolveRoomId(roomId);
+        support.requireNotRemoved(support.getRoom(resolved), openid);
         tick(resolved);
         return assembler.buildSnapshot(openid, resolved);
     }

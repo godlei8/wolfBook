@@ -90,6 +90,28 @@ function redirectInviteToLogin() {
   setTimeout(() => goToUserTab(), 240)
 }
 
+// 自己离开 / 解散了房间：停掉轮询，轻提示后回开局页
+function leaveRoomPage(text) {
+  if (redirected) return
+  redirected = true
+  stopPolling()
+  uni.showToast({ title: text, icon: 'none' })
+  setTimeout(() => uni.switchTab({ url: '/pages/judge/index' }), 600)
+}
+
+// 房间被房主解散了、自己被请离了：提示一次，回到开局页
+function exitRoom(text) {
+  if (redirected) return
+  redirected = true
+  stopPolling()
+  uni.showModal({
+    title: '已退出房间',
+    content: text,
+    showCancel: false,
+    success: () => uni.switchTab({ url: '/pages/judge/index' }),
+  })
+}
+
 // 旧版小程序建的房间（旧流程）已经不再支持：提示一次，回到开局页
 function goLegacy() {
   if (redirected) return
@@ -144,6 +166,10 @@ async function refresh() {
   }
   const merged = mergePollResult(snapshot.value, result, { requestedAt, lastActionAt })
   pollError.value = merged.error
+  if (merged.exit) {
+    exitRoom(merged.exit)
+    return
+  }
   if (merged.gone) {
     roomGone.value = true
     stopPolling()
@@ -295,6 +321,15 @@ function onAct(event) {
     sheriff: () => api.submitJudgeSheriff(id, event.payload),
     vote: () => api.submitJudgeVote(id, { targetSeatNo: event.targetSeatNo }),
     seat: () => api.changeJudgeSeat(id, event.payload),
+    remove: () => api.removeJudgePlayer(id, event.seatNo),
+    leave: () => api.leaveJudgeRoom(id).then(() => {
+      leaveRoomPage('已离开房间')
+      return null
+    }),
+    dissolve: () => api.dissolveJudgeRoom(id).then(() => {
+      leaveRoomPage('房间已解散')
+      return null
+    }),
     selfDestruct: () => api.selfDestructJudge(id),
   }
   const task = tasks[event?.kind]

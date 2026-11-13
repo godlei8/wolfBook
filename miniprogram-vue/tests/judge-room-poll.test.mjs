@@ -37,3 +37,15 @@ test('aMissingRoomStopsPolling', () => {
   assert.ok(!mergePollResult(null, { ok: false, code: 5000, message: '网络错误' }).gone, '别的错误照常重试')
   assert.ok(!mergePollResult(null, { ok: true, snapshot: { roomId: 1 } }).gone)
 })
+
+test('aDissolvedRoomOrBeingRemovedSendsYouBack', () => {
+  const inRoom = { roomId: 'r1', roomStatus: 'lobby' }
+  const dissolved = mergePollResult(inRoom, { ok: false, code: 4004, message: '房间不存在' })
+  assert.equal(dissolved.gone, true)
+  assert.equal(dissolved.exit, '房主已解散房间', '看着房间时房间没了 = 被解散了')
+  assert.equal(mergePollResult(null, { ok: false, code: 4004, message: '房间不存在' }).exit, undefined, '一开始就打不开的是房号不对，不弹回')
+  const removed = mergePollResult(inRoom, { ok: false, code: 4003, message: '你已被房主请离这个房间' })
+  assert.equal(removed.gone, true)
+  assert.equal(removed.exit, '你已被房主请离这个房间')
+  assert.equal(mergePollResult(null, { ok: false, code: 4003, message: '你已被房主请离这个房间' }).exit, '你已被房主请离这个房间')
+})

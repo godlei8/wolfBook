@@ -96,6 +96,7 @@ public class JudgeRoomSupport {
     static final String EVENT_ROOM_CREATED = "room_created";
     static final String EVENT_PLAYER_JOINED = "player_joined";
     static final String EVENT_SEAT_CHANGED = "seat_changed";
+    static final String EVENT_PLAYER_LEFT = "player_left";
     static final String EVENT_READY_CHANGED = "ready_changed";
     static final String EVENT_GAME_STARTED = "game_started";
     static final String EVENT_BROADCAST = "broadcast";
@@ -133,6 +134,8 @@ public class JudgeRoomSupport {
     /** 换座申请多久不理算拒绝（用户给定：30 秒）。 */
     static final int SEAT_SWAP_SECONDS = 30;
     static final String SWAP_REQUESTS = "swapRequests";
+    /** 大厅里被房主请离的人（用户 id），不能再进这个房间；开局时 phase_data 整个重置。 */
+    static final String REMOVED_PLAYERS = "removedPlayers";
     static final String PENDING_SKILL_ASK = JudgeLastWords.SKILL_ASK;
     static final String PENDING_HUNTER_SHOT = JudgeLastWords.HUNTER_SHOT;
     static final String PENDING_LAST_WORDS = JudgeLastWords.LAST_WORDS;
@@ -175,6 +178,29 @@ public class JudgeRoomSupport {
 
     /** 开局时存进房间的板子（阵容、夜间顺序、规则）和阵容里各角色（机制、阵营）。 */
     public record BoardSnapshot(Board board, List<RoleEntity> roles) {
+    }
+
+    /** 被房主请离的人（只在大厅里有）。 */
+    List<String> removedPlayers(JudgeRoomEntity room) {
+        List<String> removed = new ArrayList<>();
+        if (ROOM_STATUS_LOBBY.equals(room.getRoomStatus()) && readMap(room.getPhaseData()).get(REMOVED_PLAYERS) instanceof List<?> items) {
+            items.forEach(item -> removed.add(String.valueOf(item)));
+        }
+        return removed;
+    }
+
+    /** 被房主请离的人不能再看、再进这个房间（用户给定）。 */
+    void requireNotRemoved(JudgeRoomEntity room, String openid) {
+        if (removedPlayers(room).contains(openid)) {
+            throw new ApiException(4003, "你已被房主请离这个房间");
+        }
+    }
+
+    /** 解散：房间、座位、事件全部删掉，系统里不再有这个房间（短房号也空出来了）。 */
+    void deleteRoom(String roomId) {
+        judgeActionEventMapper.delete(new LambdaQueryWrapper<JudgeActionEventEntity>().eq(JudgeActionEventEntity::getRoomId, roomId));
+        judgeRoomPlayerMapper.delete(new LambdaQueryWrapper<JudgeRoomPlayerEntity>().eq(JudgeRoomPlayerEntity::getRoomId, roomId));
+        judgeRoomMapper.deleteById(roomId);
     }
 
     /** 还没过期的换座申请。 */

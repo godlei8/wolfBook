@@ -2738,6 +2738,99 @@ class JudgeFlowIntegrationTests {
         Assertions.assertTrue(moved.path("data").path("host").asBoolean(), "房主换了座位还是房主");
     }
 
+    // ---- 解散房间、离开、请离（用户给定：只在大厅；房主解散，玩家自己离开，房主可以请人离开；解散的房间就没有了）----
+
+    private JsonNode raw(Game game, String token) throws Exception {
+        String body = mockMvc.perform(get("/api/judge/rooms/" + game.roomId).header("Authorization", "Bearer " + token))
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(body);
+    }
+
+    private List<String> recentRoomIds(String token) throws Exception {
+        String body = mockMvc.perform(get("/api/judge/rooms/recent").header("Authorization", "Bearer " + token))
+                .andReturn().getResponse().getContentAsString();
+        List<String> ids = new ArrayList<>();
+        objectMapper.readTree(body).path("data").forEach(room -> ids.add(room.path("roomId").asText()));
+        return ids;
+    }
+
+    @Test
+    void hostDissolvesTheRoomInTheLobby() throws Exception {
+        Game game = lobbyGame();
+        String player = game.players.get(0);
+        String code = game.snapshot(game.host).path("roomCode").asText();
+        Assertions.assertEquals(4003, game.call(player, "/dissolve", null).path("code").asInt(), "只有房主能解散");
+        JsonNode dissolved = game.call(game.host, "/dissolve", null);
+        Assertions.assertEquals(0, dissolved.path("code").asInt(), dissolved.toString());
+        Assertions.assertEquals(4004, raw(game, player).path("code").asInt(), "解散后房间就没有了");
+        Assertions.assertFalse(recentRoomIds(game.host).contains(game.roomId), "房主的最近房间里没有了");
+        Assertions.assertFalse(recentRoomIds(player).contains(game.roomId), "玩家的最近房间里也没有了");
+        String byCode = mockMvc.perform(get("/api/judge/rooms/" + code).header("Authorization", "Bearer " + player))
+                .andReturn().getResponse().getContentAsString();
+        Assertions.assertEquals(4004, objectMapper.readTree(byCode).path("code").asInt(), "短房号也找不到了");
+        for (String table : List.of("judge_rooms", "judge_room_players", "judge_action_events")) {
+            Assertions.assertEquals(0, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + table + " WHERE room_id = ?", Integer.class, game.roomId),
+                    "系统里不再有这个房间：" + table);
+        }
+    }
+
+    @Test
+    void noDissolvingLeavingOrRemovingOnceTheGameStarts() throws Exception {
+        Game game = startedGame();
+        Assertions.assertEquals(4002, game.call(game.host, "/dissolve", null).path("code").asInt());
+        Assertions.assertEquals(4002, game.call(game.players.get(0), "/leave", null).path("code").asInt());
+        Assertions.assertEquals(4002, game.call(game.host, "/remove", "{\"seatNo\":1}").path("code").asInt());
+    }
+
+    @Test
+    void playerLeavesTheLobbyAndMayComeBack() throws Exception {
+        Game game = lobbyGame();
+        String one = game.players.get(0);
+        String two = game.players.get(1);
+        seat(game, two, "request", 1);
+        JsonNode left = game.call(one, "/leave", null);
+        Assertions.assertEquals(0, left.path("code").asInt(), left.toString());
+        JsonNode view = game.snapshot(two);
+        Assertions.assertTrue(view.path("seatSwap").isNull(), "离开的人相关的换座申请作废：" + view.path("seatSwap"));
+        boolean seatOneTaken = false;
+        for (JsonNode p : view.path("players")) {
+            seatOneTaken |= p.path("seatNo").asInt() == 1;
+        }
+        Assertions.assertFalse(seatOneTaken, "1 号空出来了");
+        Assertions.assertFalse(recentRoomIds(one).contains(game.roomId), "离开的人最近房间里没有了");
+        Assertions.assertEquals(4003, game.call(one, "/leave", null).path("code").asInt(), "不在房间里");
+        Assertions.assertEquals(0, game.call(one, "/join", null).path("code").asInt(), "自己离开的可以再进");
+        Assertions.assertEquals(1, seatOf(game, one), "回来坐第一个空位");
+    }
+
+    @Test
+    void hostOfAJoinedRoomDissolvesInsteadOfLeaving() throws Exception {
+        Game game = lobbyGame("{\"boardId\":" + BOARD_ID + ",\"judgeMode\":\"joined\",\"autoJudge\":true}", PLAYER_COUNT - 2);
+        Assertions.assertEquals(4003, game.call(game.host, "/leave", null).path("code").asInt(), "房主不能离开，只能解散");
+    }
+
+    @Test
+    void hostRemovesAPlayerWhoCannotComeBack() throws Exception {
+        Game game = lobbyGame();
+        String one = game.players.get(0);
+        String two = game.players.get(1);
+        Assertions.assertEquals(4003, game.call(one, "/remove", "{\"seatNo\":2}").path("code").asInt(), "只有房主能请人离开");
+        JsonNode removed = game.call(game.host, "/remove", "{\"seatNo\":2}");
+        Assertions.assertEquals(0, removed.path("code").asInt(), removed.toString());
+        JsonNode gone = raw(game, two);
+        Assertions.assertEquals(4003, gone.path("code").asInt(), gone.toString());
+        Assertions.assertEquals("你已被房主请离这个房间", gone.path("msg").asText());
+        Assertions.assertEquals(4003, game.call(two, "/join", null).path("code").asInt(), "被请离的人不能再进这个房间");
+        Assertions.assertFalse(recentRoomIds(two).contains(game.roomId));
+        Assertions.assertEquals(4002, game.call(game.host, "/remove", "{\"seatNo\":2}").path("code").asInt(), "空座位");
+        Assertions.assertEquals(4000, game.call(game.host, "/remove", "{\"seatNo\":99}").path("code").asInt());
+        Assertions.assertEquals(0, game.call(login("judge-newcomer-" + SEQUENCE.incrementAndGet()), "/join", null).path("code").asInt(), "空位别人能坐");
+
+        Game joined = lobbyGame("{\"boardId\":" + BOARD_ID + ",\"judgeMode\":\"joined\",\"autoJudge\":true}", 2);
+        int hostSeat = seatOf(joined, joined.host);
+        Assertions.assertEquals(4000, joined.call(joined.host, "/remove", "{\"seatNo\":" + hostSeat + "}").path("code").asInt(), "不能请自己离开");
+    }
+
     // ---- helpers ----
 
     /** 种子板子 2「预女猎白」：12 人，4 狼、预言家、女巫、猎人、白痴、4 平民；夜间顺序 狼人 → 女巫 → 预言家 → 猎人。 */

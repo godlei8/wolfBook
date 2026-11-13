@@ -13,12 +13,12 @@ public final class JudgeStateKeys {
      * pending 出局待办列表；pendingDeaths / nightDeaths 待公布的死者；knifeDecided / knifeSeat 狼人那一步定下的刀口；
      * wolfFullDeadline 狼人全员确定后原来的总时长；resumeDeadline / resumePhase 待办处理完回到哪；pausedAt 暂停时刻；
      * speech 发言顺序和当前发言人；sheriffOrder 警长定的发言方向；pkSeats / resolvedFrom 平票 PK；
-     * nightNext / nightAfterPending 自爆后直接天黑；verdictReason 胜负原因；swapRequests 大厅换座申请。
+     * nightNext / nightAfterPending 自爆后直接天黑；verdictReason 胜负原因；swapRequests 大厅换座申请；removedPlayers 大厅里被房主请离的人（用户 id，不能再进这个房间）。
      */
     public static final Set<String> PHASE_DATA = Set.of(
             "pending", "pendingDeaths", "nightDeaths", "knifeDecided", "knifeSeat", "wolfFullDeadline",
             "resumeDeadline", "resumePhase", "pausedAt", "speech", "sheriffOrder", "pkSeats", "resolvedFrom",
-            "nightNext", "nightAfterPending", "verdictReason", "swapRequests");
+            "nightNext", "nightAfterPending", "verdictReason", "swapRequests", "removedPlayers");
 
     /**
      * 座位 status_json：antidote / poison 女巫的药；lastGuardSeat 上一夜守的人（守卫、学到守卫的机械狼）；

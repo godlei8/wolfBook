@@ -340,6 +340,19 @@ export default {
       await request({ url: `/api/judge/rooms/${roomId}/sheriff`, method: 'POST', data: payload, header: createAuthHeader() }),
     )
   },
+  async dissolveJudgeRoom(roomId) {
+    return request({ url: `/api/judge/rooms/${roomId}/dissolve`, method: 'POST', header: createAuthHeader() })
+  },
+  async leaveJudgeRoom(roomId) {
+    return normalizeJudgeRoomSnapshot(
+      await request({ url: `/api/judge/rooms/${roomId}/leave`, method: 'POST', header: createAuthHeader() }),
+    )
+  },
+  async removeJudgePlayer(roomId, seatNo) {
+    return normalizeJudgeRoomSnapshot(
+      await request({ url: `/api/judge/rooms/${roomId}/remove`, method: 'POST', data: { seatNo }, header: createAuthHeader() }),
+    )
+  },
   async changeJudgeSeat(roomId, payload) {
     return normalizeJudgeRoomSnapshot(
       await request({ url: `/api/judge/rooms/${roomId}/seat`, method: 'POST', data: payload, header: createAuthHeader() }),

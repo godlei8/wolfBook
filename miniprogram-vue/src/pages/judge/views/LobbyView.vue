@@ -3,7 +3,7 @@
 // 视图里不嵌任何自定义组件；提交都 emit('act') 交给房间页（统一处理 4002 和报错）。
 // 规则只显示快照里的值，房主改了等接口返回新快照再变，失败自然就是原值。
 import { computed } from 'vue'
-import { lobbyAction, lobbySeats, rulesRows, seatTap, swapBanner } from '../../../utils/judge/lobby.js'
+import { exitAction, lobbyAction, lobbySeats, rulesRows, seatTap, swapBanner } from '../../../utils/judge/lobby.js'
 import { stepRule } from '../../../utils/judge/create-room.js'
 
 const props = defineProps({
@@ -18,6 +18,7 @@ const seats = computed(() => lobbySeats(props.snapshot))
 const action = computed(() => lobbyAction(props.snapshot))
 const rows = computed(() => rulesRows(props.snapshot))
 const banner = computed(() => swapBanner(props.snapshot, props.now))
+const exit = computed(() => exitAction(props.snapshot))
 const modeText = computed(() => {
   if (props.snapshot.judgeMode === 'joined') return props.snapshot.host ? '无法官 · 你也拿牌，手机当法官' : '无法官 · 房主手机当法官'
   return props.snapshot.judgeViewer ? '有法官 · 你是法官，不入座' : '有法官 · 法官不入座'
@@ -52,22 +53,63 @@ function tapMain() {
   emit('act', { kind: action.value.kind })
 }
 
-// 点座位：空位直接入座；有人的座位确认后申请换座；申请过的再点是撤回
+const TAP_TEXT = {
+  request: { title: '申请换座', confirmText: '申请' },
+  cancel: { title: '撤回申请', confirmText: '撤回' },
+  remove: { title: '请他离开', confirmText: '请离' },
+}
+
+function sendTap(tap) {
+  if (tap.action === 'remove') {
+    emit('act', { kind: 'remove', seatNo: tap.seatNo })
+    return
+  }
+  emit('act', { kind: 'seat', payload: { action: tap.action, seatNo: tap.seatNo } })
+}
+
+function confirmTap(tap) {
+  if (!tap.confirm) {
+    sendTap(tap)
+    return
+  }
+  const text = TAP_TEXT[tap.action] || TAP_TEXT.request
+  uni.showModal({
+    title: text.title,
+    content: tap.confirm,
+    confirmText: text.confirmText,
+    success: (result) => {
+      if (result.confirm) sendTap(tap)
+    },
+  })
+}
+
+// 点座位：空位直接入座；有人的座位确认后申请换座；申请过的再点是撤回；房主还可以请人离开
 function tapSeat(seat) {
   if (props.busy) return
   const tap = seatTap(props.snapshot, seat.seatNo)
   if (!tap) return
-  const send = () => emit('act', { kind: 'seat', payload: { action: tap.action, seatNo: tap.seatNo } })
-  if (!tap.confirm) {
-    send()
+  if (!tap.choices) {
+    confirmTap(tap)
     return
   }
-  uni.showModal({
-    title: tap.action === 'cancel' ? '撤回申请' : '申请换座',
-    content: tap.confirm,
-    confirmText: tap.action === 'cancel' ? '撤回' : '申请',
+  uni.showActionSheet({
+    itemList: tap.choices.map((choice) => choice.label),
     success: (result) => {
-      if (result.confirm) send()
+      const choice = tap.choices[result.tapIndex]
+      if (choice) confirmTap(choice)
+    },
+  })
+}
+
+function tapExit() {
+  if (!exit.value || props.busy) return
+  const item = exit.value
+  uni.showModal({
+    title: item.title,
+    content: item.confirm,
+    confirmText: item.kind === 'dissolve' ? '解散' : '离开',
+    success: (result) => {
+      if (result.confirm) emit('act', { kind: item.kind })
     },
   })
 }
@@ -179,11 +221,14 @@ function copyRoomCode() {
       </view>
 
       <text v-if="snapshot.selfPlayer && snapshot.selfPlayer.seatNo" class="nt-meta jl-seat-hint">点空位直接换过去，点有人的座位申请换座；换过座要重新准备</text>
+      <text v-if="snapshot.host" class="nt-meta jl-seat-hint">点有人的座位可以请他离开</text>
 
       <view class="jr-tip">
         <text class="jr-tip__icon">◉</text>
         <text class="jr-tip__text">开局后系统按顺序叫每个角色，大家闭眼用自己的手机操作；夜里所有手机画面一样，记得调成静音。</text>
       </view>
+
+      <view v-if="exit" class="jl-exit" :class="{ 'jl-exit--disabled': busy }" @tap="tapExit">{{ exit.label }}</view>
     </view>
 
     <view class="nt-bar">
@@ -384,6 +429,18 @@ function copyRoomCode() {
 .jl-seat-hint {
   display: block;
   margin-top: 12rpx;
+}
+.jl-exit {
+  margin: 36rpx auto 8rpx;
+  padding: 16rpx 32rpx;
+  width: fit-content;
+  font-size: 26rpx;
+  color: var(--text-3);
+  text-decoration: underline;
+  text-underline-offset: 6rpx;
+}
+.jl-exit--disabled {
+  opacity: 0.5;
 }
 
 .jr-seat--empty {

@@ -80,6 +80,35 @@ public class ApiJudgeController {
         return ApiResponse.success(judgeService.changeSeat(authorization, roomId, request));
     }
 
+    /** 房主解散房间（只在大厅）：房间、座位、事件全部删掉。 */
+    @PostMapping("/rooms/{roomId}/dissolve")
+    public ApiResponse<Void> dissolveRoom(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable String roomId
+    ) {
+        judgeService.dissolveRoom(authorization, roomId);
+        return ApiResponse.success();
+    }
+
+    /** 玩家在大厅里离开房间。 */
+    @PostMapping("/rooms/{roomId}/leave")
+    public ApiResponse<WolfbookDtos.JudgeRoomSnapshotView> leaveRoom(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable String roomId
+    ) {
+        return ApiResponse.success(judgeService.leaveRoom(authorization, roomId));
+    }
+
+    /** 房主在大厅里请人离开（{seatNo}）。 */
+    @PostMapping("/rooms/{roomId}/remove")
+    public ApiResponse<WolfbookDtos.JudgeRoomSnapshotView> removePlayer(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable String roomId,
+            @RequestBody WolfbookDtos.JudgeSeatRequest request
+    ) {
+        return ApiResponse.success(judgeService.removePlayer(authorization, roomId, request));
+    }
+
     @PutMapping("/rooms/{roomId}/rules")
     public ApiResponse<WolfbookDtos.JudgeRoomSnapshotView> updateRules(
             @RequestHeader("Authorization") String authorization,

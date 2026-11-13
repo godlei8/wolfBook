@@ -211,6 +211,7 @@ public class JudgeLobbyService {
             throw new ApiException(4002, "对局已经开始，当前不能加入");
         }
 
+        support.requireNotRemoved(room, user.openid());
         JudgeRoomPlayerEntity existing = support.findPlayer(roomId, user.openid());
         if (existing != null) {
             return assembler.buildSnapshot(user.openid(), roomId);
@@ -335,6 +336,85 @@ public class JudgeLobbyService {
         room.setUpdateTime(now);
         judgeRoomMapper.updateById(room);
         return assembler.buildSnapshot(openid, roomId);
+    }
+
+    /** 房主解散房间（用户给定：只在大厅里）：房间、座位、事件全部删掉，系统里不再有这个房间。 */
+    @Transactional
+    public void dissolveRoom(String authorization, String roomId) {
+        roomId = support.resolveRoomId(roomId);
+        String openid = support.requireOpenid(authorization);
+        support.lockRoom(roomId);
+        JudgeRoomEntity room = support.requireHost(roomId, openid);
+        if (!ROOM_STATUS_LOBBY.equals(room.getRoomStatus())) {
+            throw new ApiException(4002, "对局已经开始，不能解散房间");
+        }
+        support.deleteRoom(roomId);
+    }
+
+    /** 玩家在大厅里自己离开（用户给定）：座位空出来，可以再进；房主不能离开，只能解散。 */
+    @Transactional
+    public WolfbookDtos.JudgeRoomSnapshotView leaveRoom(String authorization, String roomId) {
+        roomId = support.resolveRoomId(roomId);
+        String openid = support.requireOpenid(authorization);
+        support.lockRoom(roomId);
+        JudgeRoomEntity room = support.getRoom(roomId);
+        if (!ROOM_STATUS_LOBBY.equals(room.getRoomStatus())) {
+            throw new ApiException(4002, "对局已经开始，不能离开房间");
+        }
+        if (openid.equals(room.getOwnerUserId())) {
+            throw new ApiException(4003, "房主不能离开房间，可以解散房间");
+        }
+        JudgeRoomPlayerEntity me = support.requirePlayingPlayer(roomId, openid);
+        removeSeat(room, me, me.getNickname() + " 离开了房间", null, LocalDateTime.now(APP_ZONE));
+        return assembler.buildSnapshot(openid, roomId);
+    }
+
+    /** 房主在大厅里请人离开（用户给定）：座位空出来，被请离的人不能再进这个房间。 */
+    @Transactional
+    public WolfbookDtos.JudgeRoomSnapshotView removePlayer(String authorization, String roomId, WolfbookDtos.JudgeSeatRequest request) {
+        roomId = support.resolveRoomId(roomId);
+        String openid = support.requireOpenid(authorization);
+        support.lockRoom(roomId);
+        JudgeRoomEntity room = support.requireHost(roomId, openid);
+        if (!ROOM_STATUS_LOBBY.equals(room.getRoomStatus())) {
+            throw new ApiException(4002, "对局已经开始，不能请人离开");
+        }
+        Integer seatNo = request == null ? null : request.seatNo();
+        if (seatNo == null || seatNo < 1 || seatNo > room.getPlayerCount()) {
+            throw new ApiException(4000, "没有这个座位");
+        }
+        JudgeRoomPlayerEntity target = support.findSeatPlayer(support.loadPlayers(roomId), seatNo);
+        if (target == null) {
+            throw new ApiException(4002, "这个座位没人");
+        }
+        if (openid.equals(target.getUserId())) {
+            throw new ApiException(4000, "不能请自己离开");
+        }
+        removeSeat(room, target, seatNo + " 号 " + target.getNickname() + " 被房主请离了房间", target.getUserId(), LocalDateTime.now(APP_ZONE));
+        return assembler.buildSnapshot(openid, roomId);
+    }
+
+    /** 把这个人从座位上拿掉：他相关的换座申请作废；被请离的记进 removedPlayers。 */
+    private void removeSeat(JudgeRoomEntity room, JudgeRoomPlayerEntity player, String announcement, String removedUserId, LocalDateTime now) {
+        List<Map<String, Object>> requests = support.liveSwapRequests(room, now);
+        dropSwapRequests(requests, player.getPlayerId());
+        Map<String, Object> phaseData = new LinkedHashMap<>(support.readMap(room.getPhaseData()));
+        phaseData.put(SWAP_REQUESTS, requests);
+        if (removedUserId != null) {
+            List<String> removed = support.removedPlayers(room);
+            if (!removed.contains(removedUserId)) {
+                removed.add(removedUserId);
+            }
+            phaseData.put(REMOVED_PLAYERS, removed);
+        }
+        judgeRoomPlayerMapper.deleteById(player.getPlayerId());
+        room.setPhaseData(support.writeJson(phaseData));
+        room.setLatestAnnouncement(announcement);
+        room.setUpdateTime(now);
+        judgeRoomMapper.updateById(room);
+        support.addEvent(room.getRoomId(), room.getCurrentDay(), room.getCurrentPhase(), null, List.of(), EVENT_PLAYER_LEFT,
+                support.mapOf("seatNo", player.getSeatNo(), "nickname", player.getNickname(), "removed", removedUserId != null),
+                support.mapOf("announcement", announcement), VISIBILITY_SYSTEM, now);
     }
 
     /** 换了座位的人：他发出和收到的申请都作废（申请是冲着那个座位去的）。 */
