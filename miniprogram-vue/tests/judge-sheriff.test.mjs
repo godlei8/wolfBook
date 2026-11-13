@@ -84,3 +84,28 @@ test('otherCandidatesVoteInTheSheriffPk', () => {
   assert.equal(pk(3, false).reason, '你在 PK，不能投票')
   assert.equal(sheriffPanel(room('sheriff_vote', me(2), { sheriffCandidates: [2, 3, 5], dayInfo: { canVote: false } })).canVote, false, '第一轮警上的人不能投')
 })
+
+test('signupShowsWhatIChose', () => {
+  // 实测问题 2：没选、选了不上警、上警三种要分得开
+  const undecided = sheriffPanel(room('sheriff_signup', me(2), { dayInfo: { sheriffCandidate: null } }))
+  assert.equal(undecided.choice, null)
+  assert.equal(undecided.choiceText, '报名只有你自己看得到，到点自动截止。')
+  const declined = sheriffPanel(room('sheriff_signup', me(2), { dayInfo: { sheriffCandidate: false } }))
+  assert.equal(declined.choice, 'down')
+  assert.equal(declined.choiceText, '你选了不上警，截止前还能改')
+  const up = sheriffPanel(room('sheriff_signup', me(2), { dayInfo: { sheriffCandidate: true } }))
+  assert.equal(up.choice, 'up')
+  assert.equal(up.choiceText, '你报名上警了，截止前还能改')
+})
+
+test('announceShowsTheChosenSpeechOrder', () => {
+  // 实测问题 3：警长选完，别人看到「警长选了警右」，警长自己看到所选高亮
+  const round = { dayNo: 1, nightDeaths: [] }
+  const other = announcePanel(room('day_announce', me(4), { sheriffSeatNo: 2, rounds: [round], sheriffOrder: 'right' }))
+  assert.equal(other.chosenOrderText, '警长选了警右')
+  const waiting = announcePanel(room('day_announce', me(4), { sheriffSeatNo: 2, rounds: [round], sheriffOrder: null }))
+  assert.equal(waiting.chosenOrderText, '等警长选择')
+  const sheriff = announcePanel(room('day_announce', me(2), { sheriffSeatNo: 2, rounds: [round], sheriffOrder: 'left' }))
+  assert.equal(sheriff.chosenOrder, 'left')
+  assert.equal(sheriff.chosenOrderText, '你选了警左，开始发言前还能改')
+})

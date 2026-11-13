@@ -26,29 +26,34 @@ class NightResolverTests {
     private static final Random RANDOM = new Random(1);
 
     @Test
-    void unanimousKnifeStands() {
-        // 选了的狼都指同一个人才算；没交的狼不在列表里，不算（控刀）
-        assertEquals(3, NightResolver.tallyKnife(List.of(3, 3)));
-        assertEquals(3, NightResolver.tallyKnife(List.of(3)));
+    void majorityKnifeWins() {
+        // 2026-11-12 用户改定：按多数；没交的狼不在列表里，不计票（控刀）
+        assertEquals(3, NightResolver.tallyKnife(List.of(3, 3, 7), RANDOM));
+        assertEquals(3, NightResolver.tallyKnife(List.of(3), RANDOM));
     }
 
     @Test
-    void disagreementMeansNoKnife() {
-        // 没统一算空刀：多数也不算、平票也不算
-        assertNull(NightResolver.tallyKnife(List.of(3, 3, 7)));
-        assertNull(NightResolver.tallyKnife(List.of(3, 7)));
+    void tiedKnifeIsRandomAmongTheLeaders() {
+        java.util.Set<Integer> seen = new java.util.HashSet<>();
+        Random random = new Random(7);
+        for (int i = 0; i < 40; i++) {
+            Integer knife = NightResolver.tallyKnife(List.of(3, 7, 3, 7, 5), random);
+            assertTrue(knife == 3 || knife == 7, "只在并列最多的人里抽：" + knife);
+            seen.add(knife);
+        }
+        assertEquals(java.util.Set.of(3, 7), seen, "两个都可能抽到");
     }
 
     @Test
-    void explicitNoKillBreaksUnanimity() {
-        // 一只狼明确空刀、另一只刀人：不统一，空刀；都空刀也是空刀
-        assertNull(NightResolver.tallyKnife(Arrays.asList(3, null)));
-        assertNull(NightResolver.tallyKnife(Arrays.asList(null, null)));
+    void explicitNoKillDoesNotCount() {
+        // 点「空刀」的狼不计票；一个目标都没有才是空刀
+        assertEquals(3, NightResolver.tallyKnife(Arrays.asList(3, null), RANDOM));
+        assertNull(NightResolver.tallyKnife(Arrays.asList(null, null), RANDOM));
     }
 
     @Test
     void noPicksMeansNoKnife() {
-        assertNull(NightResolver.tallyKnife(List.of()));
+        assertNull(NightResolver.tallyKnife(List.of(), RANDOM));
         NightResolver.Outcome outcome = NightResolver.resolve(List.of(), seats(), RULES, 1, RANDOM);
         assertNull(outcome.knifeSeat());
         assertTrue(outcome.deadSeats().isEmpty());
@@ -60,6 +65,30 @@ class NightResolverTests {
                 kill(5, 7), kill(6, 7), guard(4, 7), save(2, 7)
         ), seats(), RULES, 1, RANDOM);
         assertEquals(List.of(7), outcome.deadSeats());
+    }
+
+    @Test
+    void outcomeSaysHowEachSeatDied() {
+        // 对局记录要写死因：被刀、同守同救、被毒；一个人可以同时有两个死因
+        assertEquals(Map.of(7, List.of("knife")),
+                NightResolver.resolve(List.of(kill(5, 7)), seats(), RULES, 1, RANDOM).causes());
+        assertEquals(Map.of(7, List.of("guard_save")),
+                NightResolver.resolve(List.of(kill(5, 7), guard(4, 7), save(2, 7)), seats(), RULES, 1, RANDOM).causes());
+        assertEquals(Map.of(7, List.of("knife"), 8, List.of("poison")),
+                NightResolver.resolve(List.of(kill(5, 7), poison(2, 8)), seats(), RULES, 2, RANDOM).causes());
+        assertEquals(Map.of(7, List.of("knife", "poison")),
+                NightResolver.resolve(List.of(kill(5, 7), poison(2, 7)), seats(), RULES, 2, RANDOM).causes());
+        assertTrue(NightResolver.resolve(List.of(kill(5, 7), guard(4, 7)), seats(), RULES, 1, RANDOM).causes().isEmpty());
+    }
+
+    @Test
+    void mechWolfDeathCauses() {
+        assertEquals(Map.of(7, List.of("pierce")), NightResolver.resolve(List.of(mechAct("kill_pierce", 7), guard(4, 7)),
+                seats08(Mechanic.WOLF, "狼人", 1, false), RULES, 2, RANDOM).causes());
+        assertEquals(Map.of(7, List.of("mech_poison")), NightResolver.resolve(List.of(mechAct("poison", 7)),
+                seats08(Mechanic.WITCH, "女巫", 1, true), RULES, 2, RANDOM).causes());
+        assertEquals(Map.of(2, List.of("bounce")), NightResolver.resolve(List.of(mechAct("guard", 7), poison(2, 7)),
+                seats08(Mechanic.GUARD, "守卫", 1, true), BOUNCE, 2, RANDOM).causes());
     }
 
     @Test

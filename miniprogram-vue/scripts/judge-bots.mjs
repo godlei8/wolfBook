@@ -80,8 +80,20 @@ while (true) {
         const mates = s.nightInfo?.teammateSeats || []
         const target = others.find((seat) => !mates.includes(seat))
         await act(bot, '/night-action', { actionType: 'kill', targetSeatNo: target }, '刀人')
-      } else if (panel.kind === 'witch' || panel.kind === 'mech_wolf') {
-        await act(bot, '/night-action', { actionType: 'none', targetSeatNo: null }, '不行动')
+      } else if (panel.kind === 'witch') {
+        // 看得到刀口、手里还有解药就救人，否则不用药
+        const save = panel.buttons.find((b) => b.action === 'save' && !b.disabled)
+        if (save) await act(bot, '/night-action', { actionType: 'save', targetSeatNo: save.target }, '救人')
+        else await act(bot, '/night-action', { actionType: 'none', targetSeatNo: null }, '不用药')
+      } else if (panel.kind === 'mech_wolf') {
+        // 机械狼：没学就随机学一个人；学过就按面板用学到的技能（查验 / 毒 / 守 / 破盾刀），没得用就不行动
+        const action = panel.buttons.find((b) => b.action !== 'none')?.action
+        const target = action === 'guard' ? alive.find((seat) => seat !== s.nightInfo?.lastGuardSeat) : pick
+        const button = action ? nightPanel(s, target).buttons.find((b) => b.action === action && !b.disabled) : null
+        if (button) await act(bot, '/night-action', { actionType: button.action, targetSeatNo: button.target }, `机械狼 ${button.action}`)
+        else await act(bot, '/night-action', { actionType: 'none', targetSeatNo: null }, '不行动')
+      } else if (panel.kind === 'psychic') {
+        await act(bot, '/night-action', { actionType: 'check', targetSeatNo: pick }, '通灵')
       } else if (panel.kind === 'seer') {
         await act(bot, '/night-action', { actionType: 'check', targetSeatNo: pick }, '查验')
       } else if (panel.kind === 'guard') {
@@ -105,7 +117,7 @@ while (true) {
       }
     } else if (view === 'announce') {
       const panel = announcePanel(s)
-      if (panel.canChooseOrder && !s.speech) await act(bot, '/sheriff', { speechOrder: 'right' }, '定发言顺序')
+      if (panel.canChooseOrder && !panel.chosenOrder && !s.speech) await act(bot, '/sheriff', { speechOrder: 'right' }, '定发言顺序')
     } else if (view === 'vote') {
       const panel = votePanel(s)
       if (panel.canVote && !panel.voted && panel.targets.length) {

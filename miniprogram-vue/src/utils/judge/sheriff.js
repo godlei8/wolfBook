@@ -23,10 +23,15 @@ export function sheriffPanel(snapshot) {
   const alive = seated(snapshot)
   const voting = stage === 'vote' || stage === 'pk'
   const targets = stage === 'pk' ? snapshot?.pkSeats || [] : voting ? candidates : []
+  // 报名：null 是还没选，false 是选了不上警（实测问题 2）
+  const choice = info.sheriffCandidate === true ? 'up' : info.sheriffCandidate === false ? 'down' : null
   return {
     stage,
     canSignUp: stage === 'signup' && alive,
     candidate: Boolean(info.sheriffCandidate),
+    choice,
+    choiceText: choice === 'up' ? '你报名上警了，截止前还能改'
+      : choice === 'down' ? '你选了不上警，截止前还能改' : '报名只有你自己看得到，到点自动截止。',
     canWithdraw: stage === 'speech' && alive && candidates.includes(selfSeat),
     // 第一轮只有警下投；PK 时还在警上、不在 PK 的人也能投（后端 dayInfo.canVote 已经算好，这里只挡掉 PK 的人）
     canVote: voting && alive && Boolean(info.canVote) && !(stage === 'pk' ? targets : candidates).includes(selfSeat),
@@ -61,6 +66,12 @@ export function announcePanel(snapshot) {
   if (deaths.length) {
     orderOptions.push({ value: 'dead_left', label: '死左' }, { value: 'dead_right', label: '死右' })
   }
+  // 警长选了哪边（实测问题 3）：快照 sheriffOrder 全场可见
+  const chosenOrder = snapshot?.sheriffOrder || null
+  const chosenLabel = [...orderOptions, { value: 'dead_left', label: '死左' }, { value: 'dead_right', label: '死右' }]
+    .find((option) => option.value === chosenOrder)?.label || ''
+  const chosenOrderText = !chosenOrder ? (canChooseOrder ? '选好后房主点「开始发言」' : '等警长选择')
+    : canChooseOrder ? `你选了${chosenLabel}，开始发言前还能改` : `警长选了${chosenLabel}`
   return {
     deaths,
     text: deaths.length ? `昨晚 ${deaths.join('、')} 号出局` : '昨晚是平安夜',
@@ -68,6 +79,8 @@ export function announcePanel(snapshot) {
     sheriffSeat,
     canChooseOrder,
     orderOptions,
+    chosenOrder,
+    chosenOrderText,
     // 警上有人自爆的那天公布完死讯直接天黑
     hint: snapshot?.nightNext ? '有遗言的玩家发表遗言，房主点「天黑」进入黑夜。' : '房主点「开始发言」进入白天发言。',
   }

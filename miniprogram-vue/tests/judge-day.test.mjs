@@ -14,7 +14,7 @@ test('onlyTheSpeakerEndsTheirSpeech', () => {
   const speaker = speechPanel(room('day_speech', me(4), { speech }))
   assert.equal(speaker.speakerSeat, 4)
   assert.equal(speaker.isSpeaker, true)
-  assert.deepEqual(speaker.sequence.map((item) => item.state), ['done', 'current', 'next', 'next', 'next'])
+  assert.equal(speaker.nextSeat, 5)
   assert.equal(speechPanel(room('day_speech', me(5), { speech })).isSpeaker, false)
   assert.equal(speechPanel(room('day_speech', me(4, false), { speech })).isSpeaker, false)
   assert.equal(speechPanel(room('day_speech', me(4))).speakerSeat, null)
@@ -100,4 +100,16 @@ test('explodedDayAnnounceOnlyOffersNight', () => {
   assert.deepEqual(host({ nightNext: true }), ['start_night'])
   assert.deepEqual(host({ nightNext: true, judgeMode: 'joined' }), ['start_night', 'finish'])
   assert.deepEqual(host({ nightNext: false }), ['start_speech'])
+})
+
+test('speechOnlyTellsTheDirection', () => {
+  // 用户给定：游戏中不列整个发言顺序，只提示警左 / 警右（死左 / 死右，随机时说从几号开始）
+  const panel = (direction, order = [3, 4, 5]) => speechPanel(room('day_speech', me(4), { speech: { order, index: 0, direction } }))
+  assert.equal(panel('left').directionText, '警左')
+  assert.equal(panel('right').directionText, '警右')
+  assert.equal(panel('dead_left').directionText, '死左')
+  assert.equal(panel('dead_right').directionText, '死右')
+  assert.equal(panel(null).directionText, '从 3 号开始')
+  assert.equal(panel(null, []).directionText, '')
+  assert.equal('sequence' in panel('left'), false)
 })

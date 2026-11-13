@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.TreeMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
@@ -68,27 +69,35 @@ public final class NightResolver {
      */
     public record Outcome(Integer knifeSeat, List<Integer> deadSeats, Map<Integer, String> feedback, Set<Integer> cannotShoot,
                           Set<Integer> antidoteUsedBy, Set<Integer> poisonUsedBy, Map<Integer, Learned> learnedTonight,
-                          Set<Integer> mechPoisonUsedBy) {
+                          Set<Integer> mechPoisonUsedBy, Map<Integer, List<String>> causes) {
     }
+
+    /** 死因（对局记录用，只在结束后公开）：被刀、同守同救、破盾刀、被毒、弹毒（反弹给女巫）、机械狼的毒。 */
+    public static final String CAUSE_KNIFE = "knife";
+    public static final String CAUSE_GUARD_SAVE = "guard_save";
+    public static final String CAUSE_PIERCE = "pierce";
+    public static final String CAUSE_POISON = "poison";
+    public static final String CAUSE_BOUNCE = "bounce";
+    public static final String CAUSE_MECH_POISON = "mech_poison";
 
     private NightResolver() {
     }
 
     /**
-     * 狼队刀口（通用流程 3.2）：选了的狼都指同一个人才算数，没统一就是空刀（null）。
-     * 列表里只有交了的狼：没交的不算（控刀）；明确空刀的是一个 null，和别人的目标不一致，也算没统一。
+     * 狼队刀口（通用流程 3.2，2026-11-12 用户改定）：按选了目标的狼取多数，票数并列就在并列的人里随机一个，
+     * 一个目标都没有就是空刀（null）。列表里只有交了的狼（没交的不算，控刀）；点「空刀」的是 null，不计票。
      */
-    public static Integer tallyKnife(List<Integer> picks) {
-        if (picks == null || picks.isEmpty()) {
+    public static Integer tallyKnife(List<Integer> picks, Random random) {
+        Map<Integer, Integer> counts = new java.util.LinkedHashMap<>();
+        if (picks != null) {
+            picks.stream().filter(Objects::nonNull).forEach(seat -> counts.merge(seat, 1, Integer::sum));
+        }
+        if (counts.isEmpty()) {
             return null;
         }
-        Integer first = picks.get(0);
-        for (Integer pick : picks) {
-            if (!Objects.equals(first, pick)) {
-                return null;
-            }
-        }
-        return first;
+        int top = counts.values().stream().mapToInt(Integer::intValue).max().orElse(0);
+        List<Integer> leaders = counts.entrySet().stream().filter(entry -> entry.getValue() == top).map(Map.Entry::getKey).sorted().toList();
+        return leaders.size() == 1 ? leaders.get(0) : leaders.get(random.nextInt(leaders.size()));
     }
 
     /** 机械狼学到的技能今晚能不能用：学的那一晚不能，之后都能。 */
@@ -203,7 +212,7 @@ public final class NightResolver {
                 }
             }
         }
-        Integer knife = !wolfPicks.isEmpty() ? tallyKnife(wolfPicks) : mechKill;
+        Integer knife = !wolfPicks.isEmpty() ? tallyKnife(wolfPicks, random) : mechKill;
 
         Integer saved = null;
         Integer poisoned = null;
@@ -234,30 +243,37 @@ public final class NightResolver {
         // 2. 谁死
         Set<Integer> dead = new TreeSet<>();
         Set<Integer> poisonDead = new TreeSet<>();
+        Map<Integer, List<String>> causes = new TreeMap<>();
         if (knife != null) {
             boolean shielded = Objects.equals(knife, guarded) || Objects.equals(knife, mechGuarded);
-            if (shielded == Objects.equals(knife, saved)) {
+            boolean rescued = Objects.equals(knife, saved);
+            if (shielded == rescued) {
                 dead.add(knife);
+                addCause(causes, knife, shielded ? CAUSE_GUARD_SAVE : CAUSE_KNIFE);
             }
         }
         if (pierce != null) {
             dead.add(pierce);
+            addCause(causes, pierce, CAUSE_PIERCE);
         }
         if (poisoned != null) {
             if (Objects.equals(poisoned, mechGuarded)) {
                 if (bounce && poisoner != null) {
                     dead.add(poisoner);
                     poisonDead.add(poisoner);
+                    addCause(causes, poisoner, CAUSE_BOUNCE);
                 }
             } else {
                 // 守卫只挡狼刀，挡不住毒（2026-11-12 用户改定）
                 dead.add(poisoned);
                 poisonDead.add(poisoned);
+                addCause(causes, poisoned, CAUSE_POISON);
             }
         }
         if (mechPoisoned != null) {
             dead.add(mechPoisoned);
             poisonDead.add(mechPoisoned);
+            addCause(causes, mechPoisoned, CAUSE_MECH_POISON);
         }
 
         // 3. 不能开枪：被毒死的开枪角色
@@ -300,7 +316,16 @@ public final class NightResolver {
         }
 
         return new Outcome(knife, List.copyOf(dead), Map.copyOf(feedback), Set.copyOf(cannotShoot),
-                Set.copyOf(antidoteUsedBy), Set.copyOf(poisonUsedBy), Map.copyOf(learnedTonight), Set.copyOf(mechPoisonUsedBy));
+                Set.copyOf(antidoteUsedBy), Set.copyOf(poisonUsedBy), Map.copyOf(learnedTonight), Set.copyOf(mechPoisonUsedBy),
+                Map.copyOf(causes));
+    }
+
+    private static void addCause(Map<Integer, List<String>> causes, int seat, String cause) {
+        List<String> list = new ArrayList<>(causes.getOrDefault(seat, List.of()));
+        if (!list.contains(cause)) {
+            list.add(cause);
+        }
+        causes.put(seat, List.copyOf(list));
     }
 
     /** 同下，不知道全场座位（只用于不涉及机械狼带刀的校验）。 */

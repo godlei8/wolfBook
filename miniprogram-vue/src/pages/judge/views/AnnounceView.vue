@@ -88,12 +88,12 @@ function choose(option) {
             <view
               v-for="option in panel.orderOptions"
               :key="option.value"
-              class="nt-btn nt-btn--ghost ja-order__button"
-              :class="{ 'nt-btn--disabled': busy }"
+              class="nt-btn ja-order__button"
+              :class="[panel.chosenOrder === option.value ? 'nt-btn--gold' : 'nt-btn--ghost', { 'nt-btn--disabled': busy }]"
               @tap="choose(option)"
             >{{ option.label }}</view>
           </view>
-          <text v-else class="nt-game__hint">等警长选择</text>
+          <text class="nt-game__hint">{{ panel.chosenOrderText }}</text>
         </block>
         <block v-else>
           <text class="nt-game__lead">天亮了</text>

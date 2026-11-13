@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { isStepHolder, nightArt, nightPanel, seatBadges, witchSelfSaveText } from '../src/utils/judge/night-panel.js'
+import { isStepHolder, nightArt, nightPanel, seatBadges } from '../src/utils/judge/night-panel.js'
 import { stageLayout } from '../src/utils/judge/stage.js'
 import { countdown, phaseTitle } from '../src/utils/judge/room-view.js'
 
@@ -30,7 +30,7 @@ test('wolfPanelShowsPicksAndTheKnife', () => {
   }
   const panel = nightPanel(night('wolf', '狼人', me(1), { line: '狼人请睁眼', nightInfo: info }), 5)
   assert.equal(panel.kind, 'wolf')
-  assert.equal(panel.knife.text, '没统一 · 空刀', '3 号明确空刀，和 7 号不一致')
+  assert.equal(panel.knife.text, '7 号 · 2 票', '按多数；3 号点了空刀不计票')
   assert.deepEqual(panel.rows.map((row) => row.text), ['7 号', '7 号', '空刀', '还没选'])
   assert.equal(panel.rows[0].me, true)
   assert.deepEqual(panel.buttons.map((button) => [button.action, button.label, button.target]),
@@ -39,7 +39,7 @@ test('wolfPanelShowsPicksAndTheKnife', () => {
     line: 'x',
     nightInfo: { teammateSeats: [2], wolfPicks: [{ seatNo: 1, targetSeatNo: 5, decided: true }, { seatNo: 2, targetSeatNo: 6, decided: true }] },
   }))
-  assert.equal(tie.knife.text, '没统一 · 空刀')
+  assert.equal(tie.knife.text, '平票 · 随机')
   assert.equal(tie.knife.seat, null)
   const partial = nightPanel(night('wolf', '狼人', me(1), {
     line: 'x',
@@ -50,7 +50,7 @@ test('wolfPanelShowsPicksAndTheKnife', () => {
     line: 'x',
     nightInfo: { teammateSeats: [2], wolfPicks: [{ seatNo: 1, targetSeatNo: 5, decided: true }, { seatNo: 2, targetSeatNo: null, decided: true }] },
   }))
-  assert.equal(mixed.knife.text, '没统一 · 空刀', '明确空刀和刀人也算没统一')
+  assert.equal(mixed.knife.text, '5 号 · 1 票', '点空刀的狼不计票')
   assert.equal(tie.buttons[1].disabled, true, '没选座位不能刀')
   const empty = nightPanel(night('wolf', '狼人', me(1), { line: 'x', nightInfo: { teammateSeats: [], wolfPicks: [{ seatNo: 1, targetSeatNo: null, decided: true }] } }))
   assert.equal(empty.knife.text, '空刀')
@@ -95,12 +95,6 @@ test('witchNeverSavesHerself', () => {
   // 刀口不是自己时照样能救
   const other = nightPanel(night('witch', '女巫', me(3), { line: 'x', nightInfo: { knifeSeat: 7, antidote: true, poison: true }, extra: { rules: {} } }))
   assert.equal(other.buttons.some((button) => button.action === 'save'), true)
-})
-
-test('witchSelfSaveTextForTheLegacyJudgeDesk', () => {
-  assert.equal(witchSelfSaveText({ rules: { witchSelfSave: 'first_night' }, currentDay: 1 }), '全程不能自救')
-  assert.equal(witchSelfSaveText({ rules: { witchSelfSave: 'never' }, currentDay: 1 }), '全程不能自救')
-  assert.equal(witchSelfSaveText({ currentDay: 1 }), '全程不能自救')
 })
 
 test('seerPanelShowsTheResultAfterChecking', () => {
@@ -274,4 +268,35 @@ test('wolfKingMayPickHimself', () => {
   const kill = panel.buttons.find((button) => button.action === 'kill')
   assert.equal(kill.disabled, false)
   assert.equal(kill.label, '刀 1 号')
+})
+
+test('panelsReflectWhatIJustDidTonight', () => {
+  // 实测问题 1：机械狼刚学完，不能还写「还没学习」
+  const learned = nightPanel(mech({ armed: false, learned: null, myAction: 'learn', myTarget: 3, checkedSeat: 3, identityResult: '女巫' }), 0)
+  assert.equal(learned.learnedText, '今晚学了 3 号（女巫），下一晚生效')
+  // 实测问题 4：女巫刚救完，解药不能还显示 1
+  const saved = nightPanel(night('witch', '女巫', me(5), { line: 'x', nightInfo: { knifeSeat: 2, antidote: true, poison: true, myAction: 'save', myTarget: 2 } }))
+  assert.deepEqual([saved.antidote.left, saved.poison.left], [0, 1])
+  const poisoned = nightPanel(night('witch', '女巫', me(5), { line: 'x', nightInfo: { knifeSeat: 2, antidote: true, poison: true, myAction: 'poison', myTarget: 7 } }))
+  assert.deepEqual([poisoned.antidote.left, poisoned.poison.left], [1, 0])
+})
+
+test('passingSaysWhatWasPassed', () => {
+  // 实测问题 5：空守 / 不用药 / 不行动交完不能只写「已确认」
+  assert.equal(nightPanel(night('guard', '守卫', me(5), { line: 'x', nightInfo: { myAction: 'none' } })).done, '今晚空守')
+  assert.equal(nightPanel(night('witch', '女巫', me(5), { line: 'x', nightInfo: { antidote: true, poison: true, myAction: 'none' } })).done, '今晚不用药')
+  assert.equal(nightPanel(mech({ armed: false, learned: null, myAction: 'none' })).done, '今晚不行动')
+  assert.equal(nightPanel(night('hunter', '猎人', me(5), { line: 'x', nightInfo: { myAction: 'confirm' } })).done, '已确认')
+})
+
+test('hunterIsToldWhetherHeCanShootTonight', () => {
+  const ok = nightPanel(night('hunter', '猎人', me(6), { line: 'x', nightInfo: { canShoot: true } }))
+  assert.equal(ok.shootText, '今晚能开枪')
+  assert.equal(ok.canShoot, true)
+  assert.deepEqual(ok.buttons.map((button) => button.label), ['知道了'])
+  const poisoned = nightPanel(night('hunter', '猎人', me(6), { line: 'x', nightInfo: { canShoot: false } }))
+  assert.equal(poisoned.shootText, '被毒，今晚不能开枪')
+  assert.equal(poisoned.canShoot, false)
+  // 旧后端没下发开枪状态：不乱说
+  assert.equal(nightPanel(night('hunter', '猎人', me(6), { line: 'x' })).shootText, '')
 })

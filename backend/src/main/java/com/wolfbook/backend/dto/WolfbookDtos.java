@@ -675,7 +675,9 @@ public final class WolfbookDtos {
             /** 大厅里本人的换座申请（发出的、收到的）；不在大厅或没有申请时为 null。 */
             JudgeSeatSwapView seatSwap,
             /** 服务器当前时间（北京时间）：手机按它校正倒计时，不看自己的时钟。 */
-            LocalDateTime serverNow
+            LocalDateTime serverNow,
+            /** 天亮公布时警长选的发言方向（left / right / dead_left / dead_right），还没选为 null；全场可见。 */
+            String sheriffOrder
     ) {
     }
 
@@ -708,7 +710,9 @@ public final class WolfbookDtos {
                                      Boolean armed, String learned, String learnedRole, Boolean learnedEffective, Boolean mechPoison,
                                      List<JudgeNightActionItem> myActions,
                                      /** 狼人那一步本人点没点确定（这一步交过的人才有，其他时候为 null）。 */
-                                     Boolean myConfirmed) {
+                                     Boolean myConfirmed,
+                                     /** 猎人那一步告诉猎人本人：按今晚的行动预演，出局时能不能开枪（被毒不能开）；其他人、其他时候为 null。 */
+                                     Boolean canShoot) {
     }
 
     /** decided：这只狼今晚交过刀人或空刀；targetSeatNo 为 null 且 decided 为 true 即空刀，decided 为 false 是还没选。confirmed：点了确定。 */
@@ -732,7 +736,8 @@ public final class WolfbookDtos {
     }
 
     /** 白天发言顺序和当前发言人下标。 */
-    public record JudgeSpeechView(List<Integer> order, int index) {
+    /** direction：实际用的发言方向（left 警左 / right 警右 / dead_left 死左 / dead_right 死右），随机起点为 null。 */
+    public record JudgeSpeechView(List<Integer> order, int index, String direction) {
     }
 
     /** 上警：candidate 报名 / 取消（报名阶段）；withdraw 退水（警上发言阶段）；targetSeatNo 警长投票；speechOrder 警长定发言顺序（left / right / dead_left / dead_right）。 */
@@ -746,7 +751,9 @@ public final class WolfbookDtos {
             JudgeSheriffRoundView sheriff,
             JudgeSpeechOrderView speechOrder,
             List<JudgeExileRoundView> exile,
-            List<JudgeSkillRecordView> skills
+            List<JudgeSkillRecordView> skills,
+            /** 夜里出局者的死因（座位号 → knife / guard_save / pierce / poison / bounce / mech_poison）：对局中只给法官，结束后全场可见，其他时候为空。 */
+            Map<Integer, List<String>> deathCauses
     ) {
     }
 

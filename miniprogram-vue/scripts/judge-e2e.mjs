@@ -12,7 +12,8 @@ import { pendingPanel } from '../src/utils/judge/pending.js'
 import { announcePanel, sheriffPanel } from '../src/utils/judge/sheriff.js'
 import { hostActions, votePanel } from '../src/utils/judge/day.js'
 import { voiceCue } from '../src/utils/judge/voice-cue.js'
-import { roundRows, verdictText } from '../src/utils/judge/rounds.js'
+import { verdictText } from '../src/utils/judge/rounds.js'
+import { gameLog } from '../src/utils/judge/game-log.js'
 import { godSeats, tonightRows } from '../src/utils/judge/judge-bar.js'
 import { identityCard } from '../src/utils/judge/identity.js'
 
@@ -58,6 +59,8 @@ async function findBoard(keyword) {
 
 function checkNightScreens(snaps, judgeIndex) {
   const players = snaps.filter((s, i) => s && i !== judgeIndex)
+  // 这一轮所有人的快照都跨了步骤（被过滤成 null）就跳过
+  if (!players.length) return
   // 同一个时刻算所有人的倒计时（逐个取 Date.now() 跨秒时会差 1 秒，误报不一致）
   const now = Date.now()
   const shared = (s) => JSON.stringify({
@@ -95,7 +98,7 @@ async function runGame({ mode, keyword, count, explode = false }) {
   })
   if (created.code !== 0) throw new Error(`建房失败 ${created.msg}`)
   const roomId = created.data.roomId
-  console.log(`房号 ${created.data.roomCode}，autoJudge=${created.data.autoJudge}`)
+  console.log(`房号 ${created.data.roomCode}，房主登录 code e2e-${run}-host`)
   if (created.data.autoJudge !== true) fail('建房后快照 autoJudge 不是 true')
   const tokens = mode === 'joined' ? [host] : []
   const seatCount = mode === 'joined' ? count - 1 : count
@@ -140,12 +143,14 @@ async function runGame({ mode, keyword, count, explode = false }) {
     if (voiceCue(hostSnap)) narrations += 1
     if (view === 'result') {
       const verdict = verdictText(hostSnap)
-      const rows = roundRows(hostSnap)
-      console.log(`结束：${verdict.title} · ${verdict.reason}；记录 ${rows.length} 天，第 1 天夜里 ${rows[0]?.nightActions.length || 0} 条行动`)
+      const log = gameLog(hostSnap)
+      const rows = log.days
+      console.log(`结束：${verdict.title} · ${verdict.reason}；记录 ${rows.length} 天，第 1 天夜里 ${rows[0]?.night.actions.length || 0} 条行动`)
       if (!rows.length) fail('结束后没有对局记录')
-      if (!rows.some((row) => row.nightActions.length)) fail('结束后对局记录没有夜间行动')
-      if (explode && explosions < 2) fail(`自爆局只爆了 ${explosions} 次`)
-      if (explode && !rows.some((row) => row.skills.some((text) => text.includes('自爆')))) fail('对局记录里没有自爆')
+      if (!rows.some((row) => row.night.actions.length)) fail('结束后对局记录没有夜间行动')
+      if (!rows.some((row) => row.night.deaths.some((death) => death.cause))) fail('结束后对局记录没有死因')
+      if (log.people.some((row) => !row.role)) fail('结束后按人看有人没身份')
+      if (explode && !rows.some((row) => row.day?.events.some((event) => event.tag === '自爆'))) fail('对局记录里没有自爆')
       return
     }
     if (hostSnap.judgeViewer) {

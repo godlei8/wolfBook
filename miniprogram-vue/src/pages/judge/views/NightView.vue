@@ -153,6 +153,12 @@ function buttonClass(button) {
             <text class="jn-panel__value">{{ panel.lastText || '点一个座位，再点守护' }}</text>
           </view>
         </block>
+        <block v-else-if="panel.kind === 'hunter' && panel.shootText">
+          <view class="jn-panel__row">
+            <text class="jn-panel__label">开枪</text>
+            <text class="jn-panel__value" :class="panel.canShoot ? 'jn-panel__value--ok' : 'jn-panel__value--wolf'">{{ panel.shootText }}</text>
+          </view>
+        </block>
         <block v-else>
           <view class="jn-panel__row">
             <text class="jn-panel__value">{{ snapshot.currentStep ? snapshot.currentStep.line : '' }}</text>
@@ -250,6 +256,9 @@ function buttonClass(button) {
   font-weight: 700;
 }
 
+.jn-panel__value--ok {
+  color: var(--camp-villager);
+}
 .jn-panel__value--wolf {
   color: var(--camp-wolf);
 }

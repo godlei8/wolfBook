@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildNightSteps, checkResult, isWolfTeam, stepHolders, witchPotions } from '../src/utils/judge/night-order.js'
+import { buildNightSteps, isWolfTeam } from '../src/utils/judge/night-order.js'
 
 const roles = [
   { roleId: 1, name: '预言家', faction: '好人' },
@@ -38,24 +38,13 @@ test('a configured night order is kept, with later wolf steps folded into the wo
   assert.equal(steps[1].kind, 'seer')
 })
 
-test('wolf team holders include every wolf except solo wolves', () => {
+test('wolf team includes every wolf except solo wolves', () => {
   const players = [
     { seatNo: 1, roleId: 4, roleName: '狼人', faction: '狼人' },
     { seatNo: 2, roleId: 5, roleName: '白狼王', faction: '狼人' },
     { seatNo: 3, roleId: 7, roleName: '石像鬼', faction: '狼人' },
     { seatNo: 4, roleId: 2, roleName: '女巫', faction: '好人' },
   ]
-  const [wolfStep] = buildNightSteps({ roles, ruleDetail: { nightOrder: [] } })
-  assert.deepEqual(stepHolders(wolfStep, players).map((player) => player.seatNo), [1, 2])
+  assert.deepEqual(players.filter(isWolfTeam).map((player) => player.seatNo), [1, 2])
   assert.equal(isWolfTeam(players[2]), false)
-})
-
-test('witch potions are spent once used on any night', () => {
-  assert.deepEqual(witchPotions([], [5]), { antidote: 1, poison: 1 })
-  assert.deepEqual(witchPotions([{ actorSeatNo: 5, actionType: '解药' }, { actorSeatNo: 2, actionType: '毒药' }], [5]), { antidote: 0, poison: 1 })
-})
-
-test('seer check result follows the faction', () => {
-  assert.equal(checkResult({ faction: '狼人' }), '狼人（查杀）')
-  assert.equal(checkResult({ faction: '好人' }), '好人（金水）')
 })

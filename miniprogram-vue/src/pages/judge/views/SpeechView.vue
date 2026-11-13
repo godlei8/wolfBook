@@ -1,5 +1,5 @@
 <script setup>
-// 白天发言：中间是当前发言人，两侧座位亮出发言的人；下面是发言顺序和这一位的倒计时（到点只提示，不强制换人），
+// 白天发言：中间是当前发言人，两侧座位亮出发言的人；下面只提示警左 / 警右（不列整个顺序）和这一位的倒计时（到点只提示，不强制换人），
 // 发言者本人有「结束发言」。房主的「跳过这位 / 发起投票」在房间页底部的操作栏。
 import { computed } from 'vue'
 import { countdown, phaseTitle } from '../../../utils/judge/room-view.js'
@@ -23,7 +23,7 @@ const title = computed(() => phaseTitle(props.snapshot))
 const clock = computed(() => countdown(props.snapshot.phaseDeadline, props.now, props.snapshot.paused))
 const speaker = computed(() => (props.snapshot.players || []).find((player) => player.seatNo && player.seatNo === panel.value.speakerSeat) || null)
 const overtime = computed(() => Boolean(props.snapshot.phaseDeadline) && clock.value.seconds === 0 && !props.snapshot.paused)
-const nextSeat = computed(() => panel.value.order[panel.value.index + 1] || null)
+const nextSeat = computed(() => panel.value.nextSeat)
 useStageFit(props, emit, () => layout.value.cardHeight)
 
 function seatClass(seat) {
@@ -90,14 +90,9 @@ function endSpeech() {
 
     <view class="nt-gutter nt-game__area" :style="gameAreaStyle(bar)">
       <view class="nt-panel nt-game__panel">
-        <text class="nt-game__label">发言顺序</text>
-        <view class="js-order">
-          <text
-            v-for="item in panel.sequence"
-            :key="item.seatNo"
-            class="js-order__seat"
-            :class="`js-order__seat--${item.state}`"
-          >{{ item.seatNo }}</text>
+        <view v-if="panel.directionText" class="js-direction">
+          <text class="nt-game__label">发言</text>
+          <text class="js-direction__text serif">{{ panel.directionText }}</text>
         </view>
         <view v-if="panel.isSpeaker" class="nt-game__buttons">
           <view class="nt-btn nt-btn--gold nt-game__button" :class="{ 'nt-btn--disabled': busy }" @tap="endSpeech">结束发言</view>
@@ -114,30 +109,15 @@ function endSpeech() {
   color: var(--camp-wolf);
 }
 
-.js-order {
+.js-direction {
   display: flex;
-  flex-wrap: wrap;
-  gap: 14rpx;
+  align-items: baseline;
+  gap: 20rpx;
 }
 
-.js-order__seat {
-  width: 60rpx;
-  height: 60rpx;
-  border-radius: 30rpx;
-  background: var(--panel-raised);
-  color: var(--text-2);
-  font-size: 26rpx;
+.js-direction__text {
+  font-size: 44rpx;
   font-weight: 700;
-  line-height: 60rpx;
-  text-align: center;
-}
-
-.js-order__seat--done {
-  opacity: 0.4;
-}
-
-.js-order__seat--current {
-  background: var(--gold);
-  color: var(--ink);
+  color: var(--gold);
 }
 </style>

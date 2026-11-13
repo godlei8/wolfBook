@@ -96,26 +96,3 @@ export function buildNightSteps(board) {
     action: step.action || DEFAULT_ACTIONS[stepKind(step)] || `${step.roleName}请睁眼，请行动。`,
   }))
 }
-
-/** 这一步该谁睁眼：狼队那步是全部狼队座位，其他按角色。 */
-export function stepHolders(step, players) {
-  if (!step) return []
-  const list = Array.isArray(players) ? players : []
-  if (step.team === 'wolf') return list.filter((player) => isWolfTeam(player))
-  return list.filter((player) => player.roleId === step.roleId)
-}
-
-/** 女巫剩余的药：之前任一夜用过（含今晚已记录）就没了。 */
-export function witchPotions(history, witchSeats) {
-  const used = (Array.isArray(history) ? history : []).filter((item) => witchSeats.includes(item.actorSeatNo))
-  return {
-    antidote: used.some((item) => item.actionType === '解药') ? 0 : 1,
-    poison: used.some((item) => item.actionType === '毒药') ? 0 : 1,
-  }
-}
-
-/** 查验结果：狼队（含单独睁眼的狼）是查杀，其余是金水。 */
-export function checkResult(player) {
-  if (!player) return ''
-  return player.faction === '狼人' ? '狼人（查杀）' : '好人（金水）'
-}

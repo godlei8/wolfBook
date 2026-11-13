@@ -7,18 +7,21 @@ function aliveSelf(snapshot) {
   return Boolean(!snapshot?.judgeViewer && self?.seatNo && self.alive !== false)
 }
 
+const DIRECTION_TEXT = { left: '警左', right: '警右', dead_left: '死左', dead_right: '死右' }
+
+/** 白天发言：不列整个顺序（用户给定），只提示方向；后端随机起点时（direction 为空）说从几号开始。 */
 export function speechPanel(snapshot) {
   const order = snapshot?.speech?.order || []
   const index = snapshot?.speech?.index || 0
   const speakerSeat = speakerOf(snapshot)
+  const direction = snapshot?.speech?.direction
   return {
-    order,
-    index,
     speakerSeat,
+    nextSeat: order[index + 1] || null,
+    directionText: DIRECTION_TEXT[direction] || (order.length ? `从 ${order[0]} 号开始` : ''),
     isSpeaker: Boolean(speakerSeat) && aliveSelf(snapshot) && snapshot.selfPlayer.seatNo === speakerSeat,
     // 发言时长只有 30 秒时一开始就剩 30 秒，那就只在最后 10 秒变红
     warnAt: Number(snapshot?.rules?.speechSeconds || 120) > 30 ? 30 : 10,
-    sequence: order.map((seatNo, i) => ({ seatNo, state: i < index ? 'done' : i === index ? 'current' : 'next' })),
   }
 }
 

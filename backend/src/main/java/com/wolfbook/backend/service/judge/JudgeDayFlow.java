@@ -33,11 +33,7 @@ public final class JudgeDayFlow {
             return List.of();
         }
         Integer firstDeath = nightDeaths == null || nightDeaths.isEmpty() ? null : nightDeaths.get(0);
-        String mode = choice;
-        if (mode == null || ((LEFT.equals(mode) || RIGHT.equals(mode)) && sheriffSeat == null)
-                || ((DEAD_LEFT.equals(mode) || DEAD_RIGHT.equals(mode)) && firstDeath == null)) {
-            mode = firstDeath != null ? DEAD_LEFT : null;
-        }
+        String mode = speechMode(choice, sheriffSeat, nightDeaths);
         int anchor;
         boolean clockwise;
         Integer last = null;
@@ -67,6 +63,17 @@ public final class JudgeDayFlow {
             }
         }
         return walk(aliveSeats, playerCount, anchor, clockwise, false, last);
+    }
+
+    /** 实际用的发言方向：选的方向用不了（没警长选警左 / 警右、没死者选死左 / 死右）时有死者按死左，否则随机（null）。 */
+    public static String speechMode(String choice, Integer sheriffSeat, List<Integer> nightDeaths) {
+        boolean hasDeath = nightDeaths != null && !nightDeaths.isEmpty();
+        if (choice == null || ((LEFT.equals(choice) || RIGHT.equals(choice)) && sheriffSeat == null)
+                || ((DEAD_LEFT.equals(choice) || DEAD_RIGHT.equals(choice)) && !hasDeath)
+                || !List.of(LEFT, RIGHT, DEAD_LEFT, DEAD_RIGHT).contains(choice)) {
+            return hasDeath ? DEAD_LEFT : null;
+        }
+        return choice;
     }
 
     /** 法官直接指定从谁开始（含他自己），按方向绕一圈。 */
@@ -100,6 +107,17 @@ public final class JudgeDayFlow {
             RoundBuilder round = byDay.computeIfAbsent(event.dayNo(), RoundBuilder::new);
             switch (event.type()) {
                 case "night_resolved" -> round.nightDeaths = ints(event.payload().get("deadSeatNos"));
+                case "night_causes" -> {
+                    // 只有法官或对局结束后才会传进来（JudgeSnapshotAssembler 过滤）
+                    if (event.payload().get("causes") instanceof Map<?, ?> causes) {
+                        causes.forEach((seat, list) -> {
+                            Integer seatNo = integer(seat);
+                            if (seatNo != null && list instanceof List<?> items) {
+                                round.deathCauses.put(seatNo, items.stream().map(String::valueOf).toList());
+                            }
+                        });
+                    }
+                }
                 case "sheriff_signup_closed" -> round.sheriffCandidates = ints(event.payload().get("candidates"));
                 case "sheriff_withdraw" -> {
                     Integer seat = integer(event.payload().get("seatNo"));
@@ -159,6 +177,7 @@ public final class JudgeDayFlow {
         private WolfbookDtos.JudgeSpeechOrderView speechOrder;
         private final List<WolfbookDtos.JudgeExileRoundView> exile = new ArrayList<>();
         private final List<WolfbookDtos.JudgeSkillRecordView> skills = new ArrayList<>();
+        private final Map<Integer, List<String>> deathCauses = new java.util.TreeMap<>();
 
         private RoundBuilder(int dayNo) {
             this.dayNo = dayNo;
@@ -175,7 +194,8 @@ public final class JudgeDayFlow {
                     hasSheriff ? new WolfbookDtos.JudgeSheriffRoundView(sheriffCandidates, List.copyOf(sheriffWithdrew), sheriffTallies, sheriffElected, sheriffLost) : null,
                     speechOrder,
                     List.copyOf(exile),
-                    List.copyOf(skills)
+                    List.copyOf(skills),
+                    Map.copyOf(deathCauses)
             );
         }
     }

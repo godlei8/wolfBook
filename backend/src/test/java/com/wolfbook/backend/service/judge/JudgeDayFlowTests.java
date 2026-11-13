@@ -6,10 +6,22 @@ import java.util.List;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class JudgeDayFlowTests {
 
     private static final List<Integer> ALIVE = List.of(1, 2, 3, 5, 6, 7, 8, 9);
+
+    @Test
+    void speechModeIsTheDirectionActuallyUsed() {
+        assertEquals("right", JudgeDayFlow.speechMode("right", 6, List.of(4)));
+        // 没警长选不了警左 / 警右，有死者退回死左；没死者也没警长是随机（null）
+        assertEquals("dead_left", JudgeDayFlow.speechMode("left", null, List.of(4)));
+        assertEquals("dead_left", JudgeDayFlow.speechMode(null, null, List.of(4)));
+        assertEquals("dead_right", JudgeDayFlow.speechMode("dead_right", 6, List.of(4)));
+        assertNull(JudgeDayFlow.speechMode("dead_left", 6, List.of()));
+        assertNull(JudgeDayFlow.speechMode(null, null, List.of()));
+    }
 
     @Test
     void deadLeftStartsClockwiseAfterTheFirstDeath() {

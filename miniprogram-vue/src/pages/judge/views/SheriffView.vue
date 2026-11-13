@@ -115,13 +115,13 @@ function vote() {
       <view class="nt-panel nt-game__panel">
         <block v-if="panel.stage === 'signup'">
           <text class="nt-game__lead">要上警竞选警长吗？</text>
-          <text class="nt-game__hint">报名只有你自己看得到，到点自动截止。</text>
+          <text class="nt-game__hint">{{ panel.choiceText }}</text>
           <view v-if="panel.canSignUp" class="nt-game__buttons">
-            <view class="nt-btn nt-game__button" :class="[panel.candidate ? 'nt-btn--gold' : 'nt-btn--ghost', { 'nt-btn--disabled': busy }]" @tap="send({ candidate: true })">
-              {{ panel.candidate ? '已上警' : '上警' }}
+            <view class="nt-btn nt-game__button" :class="[panel.choice === 'up' ? 'nt-btn--gold' : 'nt-btn--ghost', { 'nt-btn--disabled': busy }]" @tap="send({ candidate: true })">
+              {{ panel.choice === 'up' ? '已上警' : '上警' }}
             </view>
-            <view class="nt-btn nt-game__button" :class="[panel.candidate ? 'nt-btn--ghost' : 'nt-btn--gold', { 'nt-btn--disabled': busy }]" @tap="send({ candidate: false })">
-              {{ panel.candidate ? '不上警了' : '不上警' }}
+            <view class="nt-btn nt-game__button" :class="[panel.choice === 'down' ? 'nt-btn--gold' : 'nt-btn--ghost', { 'nt-btn--disabled': busy }]" @tap="send({ candidate: false })">
+              {{ panel.choice === 'down' ? '已选不上警' : '不上警' }}
             </view>
           </view>
         </block>

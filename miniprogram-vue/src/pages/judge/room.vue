@@ -90,15 +90,17 @@ function redirectInviteToLogin() {
   setTimeout(() => goToUserTab(), 240)
 }
 
+// 旧版小程序建的房间（旧流程）已经不再支持：提示一次，回到开局页
 function goLegacy() {
   if (redirected) return
   redirected = true
   stopPolling()
-  const query = Object.entries({ ...loadOptions.value, roomId: roomId.value })
-    .filter(([, value]) => value !== undefined && value !== '')
-    .map(([key, value]) => `${key}=${encodeURIComponent(safeDecode(String(value)))}`)
-    .join('&')
-  uni.redirectTo({ url: `/pages/judge/room-legacy?${query}` })
+  uni.showModal({
+    title: '房间已失效',
+    content: '这个房间是旧版小程序建的，新版不再支持，请重新建房。',
+    showCancel: false,
+    success: () => uni.switchTab({ url: '/pages/judge/index' }),
+  })
 }
 
 function applySnapshot(data) {

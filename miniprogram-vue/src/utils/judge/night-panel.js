@@ -19,15 +19,19 @@ function seatText(seat) {
   return `${seat} 号`
 }
 
-/** 狼队刀口，规则同后端：选了的狼都指同一个人才算，没统一是空刀；没选的狼不算（控刀）。 */
+/** 狼队刀口，规则同后端（2026-11-12 用户改定）：按选了目标的狼取多数，平票随机，一个目标都没有是空刀；没选和点「空刀」的不计票。 */
 function knifeOf(picks) {
   const chosen = picks.filter((pick) => pick.decided)
   if (!chosen.length) return { seat: null, text: '还没选' }
-  const targets = new Set(chosen.map((pick) => pick.targetSeatNo || null))
-  if (targets.size > 1) return { seat: null, text: '没统一 · 空刀' }
-  const seat = chosen[0].targetSeatNo || null
-  if (!seat) return { seat: null, text: '空刀' }
-  return { seat, text: `${seatText(seat)} · ${chosen.length} 票` }
+  const counts = new Map()
+  for (const pick of chosen) {
+    if (pick.targetSeatNo) counts.set(pick.targetSeatNo, (counts.get(pick.targetSeatNo) || 0) + 1)
+  }
+  if (!counts.size) return { seat: null, text: '空刀' }
+  const top = Math.max(...counts.values())
+  const leaders = [...counts.entries()].filter(([, count]) => count === top).map(([seat]) => seat)
+  if (leaders.length > 1) return { seat: null, text: '平票 · 随机' }
+  return { seat: leaders[0], text: `${seatText(leaders[0])} · ${top} 票` }
 }
 
 function targetButton(action, verb, selection, extra = {}) {
@@ -52,7 +56,11 @@ const DONE_TEXT = {
   confirm: () => '已确认',
 }
 
-function doneText(info) {
+// 「不行动」按角色说清楚做了什么（实测问题 5）
+const PASS_TEXT = { guard: '今晚空守', witch: '今晚不用药', mech_wolf: '今晚不行动' }
+
+function doneText(info, kind) {
+  if (info?.myAction === 'none' && PASS_TEXT[kind]) return PASS_TEXT[kind]
   const make = info?.myAction ? DONE_TEXT[info.myAction] : null
   return make ? make(info.myTarget) : ''
 }
@@ -85,11 +93,15 @@ function mechWolfPanel(snapshot, selection) {
   const info = snapshot.nightInfo || {}
   const day = snapshot.currentDay || 1
   const armedText = day > 1 ? (info.armed ? '能开刀：刀口到狼人那一步再选' : '还不能开刀（狼人还在）') : ''
+  // 今晚刚学的要等天亮才记进 learned，这里按本人今晚的提交先显示（实测问题 1）
+  const learnedTonight = !info.learned && info.myAction === 'learn' && info.myTarget
   const learnedText = info.learned
     ? `已学到 ${info.learnedRole || ''}${info.learnedEffective ? '' : '（下一晚生效）'}`
-    : '还没学习，本局可以学一次'
+    : learnedTonight
+      ? `今晚学了 ${seatText(info.myTarget)}${info.identityResult ? `（${info.identityResult}）` : ''}，下一晚生效`
+      : '还没学习，本局可以学一次'
   const result = info.checkedSeat && info.identityResult ? `${seatText(info.checkedSeat)}是${info.identityResult}` : ''
-  const done = doneText(info)
+  const done = doneText(info, 'mech_wolf')
   if (done) return { kind: 'mech_wolf', armedText, learnedText, result, done, buttons: [] }
   const buttons = mechActions(info).map((action) => {
     if (action === 'guard' && selection && selection === info.lastGuardSeat) {
@@ -152,7 +164,7 @@ export function nightPanel(snapshot, selection = 0) {
   const kind = snapshot.currentStep.kind
   const info = snapshot.nightInfo || {}
   const self = snapshot.selfPlayer
-  const done = doneText(info)
+  const done = doneText(info, kind)
 
   if (kind === 'wolf') return wolfPanel(snapshot, selection)
 
@@ -169,8 +181,9 @@ export function nightPanel(snapshot, selection = 0) {
 
   if (kind === 'witch') {
     const knifeSeat = info.knifeSeat || null
-    const antidote = info.antidote !== false
-    const poison = info.poison !== false
+    // 今晚刚用的药要等天亮才扣，这里按本人今晚的提交先扣掉（实测问题 4）
+    const antidote = info.antidote !== false && info.myAction !== 'save'
+    const poison = info.poison !== false && info.myAction !== 'poison'
     const canSave = antidote && Boolean(knifeSeat) && (knifeSeat !== self.seatNo || witchSelfSaveAllowed(snapshot))
     const buttons = []
     if (!done) {
@@ -213,11 +226,23 @@ export function nightPanel(snapshot, selection = 0) {
     }
   }
 
-  // 猎人（开枪状态由出局时后端决定，这里只确认）和系统还不会结算的角色（只播报）
+  if (kind === 'hunter') {
+    // 后端按今晚的行动预演：被毒不能开枪（旧后端不下发 canShoot，就不说）
+    const canShoot = typeof info.canShoot === 'boolean' ? info.canShoot : null
+    return {
+      kind,
+      canShoot,
+      shootText: canShoot === true ? '今晚能开枪' : canShoot === false ? '被毒，今晚不能开枪' : '',
+      done,
+      buttons: done ? [] : [{ action: 'confirm', label: '知道了', target: null, disabled: false }],
+    }
+  }
+
+  // 系统还不会结算的角色（只播报）
   return {
-    kind: kind === 'hunter' ? 'hunter' : 'generic',
+    kind: 'generic',
     done,
-    buttons: done ? [] : [{ action: 'confirm', label: kind === 'hunter' ? '确认' : '我知道了', target: null, disabled: false }],
+    buttons: done ? [] : [{ action: 'confirm', label: '我知道了', target: null, disabled: false }],
   }
 }
 
@@ -254,9 +279,4 @@ export function seatBadges(snapshot, selection = 0) {
 /** 女巫今晚能不能救自己：roles/女巫.md 全程不可自救，旧房间 rules 里存的 first_night 也不算。 */
 export function witchSelfSaveAllowed(_snapshot) {
   return false
-}
-
-/** 旧主持台女巫那一步的小标签。 */
-export function witchSelfSaveText(_snapshot) {
-  return '全程不能自救'
 }

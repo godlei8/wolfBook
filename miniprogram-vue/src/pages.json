@@ -69,12 +69,6 @@
       }
     },
     {
-      "path": "pages/judge/room-legacy",
-      "style": {
-        "navigationBarTitleText": "法官房间"
-      }
-    },
-    {
       "path": "pages/community/detail",
       "style": {
         "navigationBarTitleText": "帖子详情"
