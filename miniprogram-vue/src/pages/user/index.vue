@@ -671,7 +671,8 @@ onShow(() => {
 
 .me-sheet {
   width: 100%;
-  padding: 24rpx 40rpx calc(40rpx + env(safe-area-inset-bottom));
+  /* 「我的」是 tab 页，自定义底部导航永远盖在页面上：底部留出导航的高度，按钮才不会被挡住 */
+  padding: 24rpx 40rpx calc(var(--tabbar-space) + 24rpx);
   border-radius: 40rpx 40rpx 0 0;
   background: var(--panel);
   border-top: 4rpx solid var(--ink);
