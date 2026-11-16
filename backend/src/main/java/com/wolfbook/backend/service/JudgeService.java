@@ -1518,7 +1518,7 @@ public class JudgeService {
     }
 
     /**
-     * 警上发言时一只狼出局（自爆，或被骑士决斗出）：第一次 → 竞选推迟到明天；延期的那次竞选里再出现 → 警徽流失。
+     * 警上发言时一只狼自爆出局：第一次 → 竞选推迟到明天；延期的那次竞选里再爆 → 警徽流失。
      * 先公布昨夜死讯（死者照常处理技能、遗言），停在公布死讯，到点天黑。second 要在记这次事件之前算。
      */
     private void outOnStage(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players, int seat, boolean second, String line,
@@ -1544,28 +1544,23 @@ public class JudgeService {
         room.setStepDeadline(null);
         enterDayAnnounce(room, players, prefix, now, true);
         if (ROOM_STATUS_PLAYING.equals(room.getRoomStatus())) {
-            // 出局的狼的遗言（自爆 60 秒、被决斗 120 秒），和昨夜死者的待办排在同一条队列里（技能 → 遗言随机 → 警徽）
+            // 自爆的狼 60 秒遗言，和昨夜死者的待办排在同一条队列里（技能 → 遗言随机 → 警徽）
             startPending(room, players, List.of(seat), cause, now);
         }
     }
 
-    /** 竞选延到了今天：有过警上自爆（或警上被骑士决斗出的狼）、还没有竞选结果（当选或流失）。 */
+    /** 竞选延到了今天：有过警上自爆、还没有竞选结果（当选或流失）。 */
     private boolean sheriffDeferred(String roomId) {
         List<JudgeActionEventEntity> events = support.loadEvents(roomId);
-        boolean explodedOnStage = events.stream().anyMatch(event -> {
-            Map<String, Object> payload = support.readMap(event.getPayloadJson());
-            boolean onStage = Boolean.TRUE.equals(payload.get("duringSheriff"));
-            return onStage && (EVENT_SELF_DESTRUCT.equals(event.getActionType())
-                    || (EVENT_DUEL.equals(event.getActionType()) && "wolf".equals(payload.get("result"))));
-        });
+        boolean explodedOnStage = events.stream().anyMatch(event -> EVENT_SELF_DESTRUCT.equals(event.getActionType())
+                && Boolean.TRUE.equals(support.readMap(event.getPayloadJson()).get("duringSheriff")));
         boolean resolved = events.stream().anyMatch(event -> EVENT_SHERIFF_RESOLVED.equals(event.getActionType()));
         return explodedOnStage && !resolved;
     }
 
     /**
-     * 骑士决斗（roles/骑士.md）：整局一次，警上发言或白天发言时。全场只知道对方是狼人还是好人，不翻牌。
-     * 对方是狼人：他出局（有遗言），直接天黑；在警上则和警上自爆一样（竞选推迟到明天，延期的那次里再出现就警徽流失）。
-     * 被决斗死的狼美人不殉情。对方是好人：骑士出局（有遗言），白天接着走。
+     * 骑士决斗（roles/骑士.md）：整局一次，白天发言时（警长竞选环节不能）。全场只知道对方是狼人还是好人，不翻牌。
+     * 对方是狼人：他出局（有遗言），直接天黑；被决斗死的狼美人不殉情。对方是好人：骑士出局（有遗言），白天接着走。
      */
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public WolfbookDtos.JudgeRoomSnapshotView duel(String authorization, String roomId, WolfbookDtos.JudgeDuelRequest request) {
@@ -1591,37 +1586,31 @@ public class JudgeService {
         int knightSeat = knight.getSeatNo();
         int targetSeat = target.getSeatNo();
         boolean wolf = "狼人".equals(target.getFaction());
-        boolean onStage = PHASE_SHERIFF_SPEECH.equals(phase);
-        boolean second = onStage && wolf && sheriffDeferred(roomId);
         Map<String, Object> status = new LinkedHashMap<>(support.readMap(knight.getStatusJson()));
         status.put("duelUsed", true);
         knight.setStatusJson(support.writeJson(status));
         knight.setUpdateTime(now);
         judgeRoomPlayerMapper.updateById(knight);
         support.addEvent(roomId, dayNo, phase, knight.getPlayerId(), List.of(target.getPlayerId()), EVENT_DUEL,
-                support.mapOf("actorSeatNo", knightSeat, "targetSeatNo", targetSeat, "result", wolf ? "wolf" : "good", "duringSheriff", onStage),
+                support.mapOf("actorSeatNo", knightSeat, "targetSeatNo", targetSeat, "result", wolf ? "wolf" : "good"),
                 Map.of(), VISIBILITY_PUBLIC, now);
         String line = knightSeat + "号决斗" + targetSeat + "号，" + targetSeat + "号是" + (wolf ? "狼人" : "好人");
-        if (wolf && onStage) {
-            outOnStage(room, players, targetSeat, second, line, JudgeLastWords.Cause.DUEL, now);
+        int outSeat = wolf ? targetSeat : knightSeat;
+        markPlayersDead(players, List.of(outSeat), dayNo, phase, now);
+        String announcement = line + "，" + outSeat + "号出局";
+        Optional<WinJudge.Verdict> verdict = verdictOf(room, players, null);
+        if (verdict.isPresent()) {
+            finishByVerdict(room, verdict.get(), announcement + "。" + verdict.get().reason(), now);
         } else {
-            int outSeat = wolf ? targetSeat : knightSeat;
-            markPlayersDead(players, List.of(outSeat), dayNo, phase, now);
-            String announcement = line + "，" + outSeat + "号出局";
-            Optional<WinJudge.Verdict> verdict = verdictOf(room, players, null);
-            if (verdict.isPresent()) {
-                finishByVerdict(room, verdict.get(), announcement + "。" + verdict.get().reason(), now);
+            if (wolf) {
+                // 遗言（是警长再移交警徽）处理完直接天黑
+                room.setStepDeadline(null);
+                room.setPhaseData(support.writeJson(support.mapOf("nightAfterPending", true)));
             } else {
-                if (wolf) {
-                    // 和白天自爆一样：遗言（是警长再移交警徽）处理完直接天黑
-                    room.setStepDeadline(null);
-                    room.setPhaseData(support.writeJson(support.mapOf("nightAfterPending", true)));
-                } else {
-                    dropSpeaker(room, knightSeat, now);
-                }
-                room.setLatestAnnouncement(announcement);
-                startPending(room, players, List.of(outSeat), JudgeLastWords.Cause.DUEL, now);
+                dropSpeaker(room, knightSeat, now);
             }
+            room.setLatestAnnouncement(announcement);
+            startPending(room, players, List.of(outSeat), JudgeLastWords.Cause.DUEL, now);
         }
         room.setUpdateTime(now);
         support.updateRoomGuarded(room, ROOM_STATUS_PLAYING, phase);
@@ -1629,7 +1618,7 @@ public class JudgeService {
     }
 
     /**
-     * 发言时骑士决斗输了出局：还没轮到他就从发言顺序里拿掉，PK 名单里也拿掉；昨夜死讯还没公布（第一天警上）时不再算他昨夜死。
+     * 发言时骑士决斗输了出局：还没轮到他就从发言顺序里拿掉，PK 名单里也拿掉。
      * 正在发言的是他：待办处理完从下一位接着说（截止时间设成现在）；别人在发言：待办处理完这一位重新计时（截止时间清空）。
      */
     private void dropSpeaker(JudgeRoomEntity room, int seat, LocalDateTime now) {
@@ -1646,11 +1635,6 @@ public class JudgeService {
         List<Integer> pk = new ArrayList<>(support.asIntegerList(phaseData.get("pkSeats")));
         if (pk.remove(Integer.valueOf(seat))) {
             phaseData.put("pkSeats", pk);
-        }
-        if (phaseData.containsKey("pendingDeaths")) {
-            List<Integer> pendingDeaths = new ArrayList<>(support.asIntegerList(phaseData.get("pendingDeaths")));
-            pendingDeaths.remove(Integer.valueOf(seat));
-            phaseData.put("pendingDeaths", pendingDeaths);
         }
         room.setPhaseData(support.writeJson(phaseData));
         room.setStepDeadline(position >= 0 && position == index ? now : null);

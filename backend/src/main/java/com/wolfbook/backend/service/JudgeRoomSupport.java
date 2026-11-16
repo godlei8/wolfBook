@@ -127,7 +127,7 @@ public class JudgeRoomSupport {
     static final String EVENT_JUDGE_PAUSED = "judge_paused";
     static final String EVENT_JUDGE_RESUMED = "judge_resumed";
     static final String EVENT_SELF_DESTRUCT = "self_destruct";
-    /** 骑士决斗（公开）：谁决斗谁、对方是狼人（wolf）还是好人（good）、是不是在警上。 */
+    /** 骑士决斗（公开）：谁决斗谁、对方是狼人（wolf）还是好人（good）。 */
     static final String EVENT_DUEL = "duel";
     /** 白天狼美人出局，被她魅惑的人殉情（公开）。夜里殉情的在 night_causes 里记成 martyr。 */
     static final String EVENT_MARTYR = "martyr";
@@ -395,14 +395,14 @@ public class JudgeRoomSupport {
                 && !isPaused(room);
     }
 
-    /** 骑士现在能不能决斗：活着、在警上发言或白天发言、没暂停、整局还没决斗过（roles/骑士.md）。 */
+    /** 骑士现在能不能决斗：活着、白天发言时（警长竞选环节不能）、没暂停、整局还没决斗过（roles/骑士.md）。 */
     boolean canDuel(JudgeRoomEntity room, JudgeRoomPlayerEntity self) {
         return self != null
                 && ROOM_STATUS_PLAYING.equals(room.getRoomStatus())
                 && Boolean.TRUE.equals(self.getPlaying()) && self.getSeatNo() != null && Boolean.TRUE.equals(self.getAlive())
                 && mechanicOf(self).map(Mechanic::canDuel).orElse(false)
                 && !Boolean.TRUE.equals(readMap(self.getStatusJson()).get("duelUsed"))
-                && SELF_DESTRUCT_PHASES.contains(safeText(room.getCurrentPhase(), ""))
+                && PHASE_DAY_SPEECH.equals(room.getCurrentPhase())
                 && !isPaused(room);
     }
 

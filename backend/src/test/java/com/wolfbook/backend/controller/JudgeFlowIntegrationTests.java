@@ -2751,7 +2751,8 @@ class JudgeFlowIntegrationTests {
     }
 
     @Test
-    void aKnightWhoFindsAWolfOnStagePostponesTheElection() throws Exception {
+    void theKnightCannotDuelDuringTheSheriffElection() throws Exception {
+        // roles/骑士.md：警长竞选环节不能决斗，只在白天发言时（放逐投票前）
         Game game = beautyGame(true);
         Map<String, List<Integer>> seats = game.seatsByRole();
         int knight = seats.get("骑士").get(0);
@@ -2760,14 +2761,12 @@ class JudgeFlowIntegrationTests {
         game.sheriff(knight, "{\"candidate\":true}");
         game.sheriff(wolf, "{\"candidate\":true}");
         untilPhase(game, "sheriff_speech");
+        Assertions.assertFalse(game.snapshot(game.players.get(knight - 1)).path("dayInfo").path("canDuel").asBoolean(), "警上没有决斗按钮");
         JsonNode response = duel(game, knight, wolf);
-        Assertions.assertEquals(0, response.path("code").asInt(), response.toString());
-        Assertions.assertTrue(response.path("data").path("latestAnnouncement").asText().contains("警长竞选推迟到明天")
-                        || "skill_pending".equals(response.path("data").path("currentPhase").asText()),
-                "警上决斗出狼和警上自爆一样，竞选推迟：" + response);
-        Assertions.assertFalse(aliveInDb(game, wolf));
-        JsonNode night = toNextNight(game);
-        Assertions.assertEquals(2, night.path("currentDay").asInt(), night.toString());
+        Assertions.assertEquals(4003, response.path("code").asInt(), response.toString());
+        Assertions.assertTrue(aliveInDb(game, wolf));
+        untilPhase(game, "day_speech");
+        Assertions.assertTrue(game.snapshot(game.players.get(knight - 1)).path("dayInfo").path("canDuel").asBoolean(), "白天发言时能决斗");
     }
 
     @Test
@@ -3002,7 +3001,9 @@ class JudgeFlowIntegrationTests {
         Assertions.assertFalse(recentRoomIds(player).contains(game.roomId), "玩家的最近房间里也没有了");
         String byCode = mockMvc.perform(get("/api/judge/rooms/" + code).header("Authorization", "Bearer " + player))
                 .andReturn().getResponse().getContentAsString();
-        Assertions.assertEquals(4004, objectMapper.readTree(byCode).path("code").asInt(), "短房号也找不到了");
+        // 短房号空出来了：测试库里房间多，偶尔正好有别的没结束的房间用着同一个号（那就是 4003 不是房主的房），总之不再指向这个房间
+        int byCodeStatus = objectMapper.readTree(byCode).path("code").asInt();
+        Assertions.assertTrue(byCodeStatus == 4004 || byCodeStatus == 4003, "短房号也找不到这个房间了：" + byCode);
         for (String table : List.of("judge_rooms", "judge_room_players", "judge_action_events")) {
             Assertions.assertEquals(0, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + table + " WHERE room_id = ?", Integer.class, game.roomId),
                     "系统里不再有这个房间：" + table);
