@@ -13,6 +13,8 @@ const insets = getNavInsets()
 
 const user = ref(null)
 const profileEditorVisible = ref(false)
+// 「关于与致谢」面板（音乐署名在这里）
+const aboutVisible = ref(false)
 const loginLoading = ref(false)
 const profileSaving = ref(false)
 
@@ -361,13 +363,26 @@ onShow(() => {
           <text class="me-row__label">我的帖子</text>
           <text class="nt-arrow">›</text>
         </view>
+        <view class="me-row" @tap="aboutVisible = true">
+          <view class="me-row__icon"><text class="me-ico-note">♪</text></view>
+          <text class="me-row__label">关于与致谢</text>
+          <text class="nt-arrow">›</text>
+        </view>
       </view>
+    </view>
 
-      <!-- 授权要求的署名：夜晚背景音乐是 CC BY 4.0 -->
-      <view class="me-credits">
-        <text class="me-credits__line">夜晚背景音乐："Myst on the Moor" Kevin MacLeod (incompetech.com)</text>
-        <text class="me-credits__line">Licensed under Creative Commons: By Attribution 4.0</text>
-        <text class="me-credits__line">http://creativecommons.org/licenses/by/4.0/</text>
+    <!-- 关于与致谢：授权要求的署名（夜晚背景音乐是 CC BY 4.0） -->
+    <view v-if="aboutVisible" class="me-mask" @tap="aboutVisible = false">
+      <view class="me-sheet" @tap.stop>
+        <view class="me-sheet__handle" />
+        <text class="nt-h2">关于与致谢</text>
+        <view class="me-credit">
+          <text class="me-credit__label">夜晚背景音乐</text>
+          <text class="me-credit__line">"Myst on the Moor" Kevin MacLeod (incompetech.com)</text>
+          <text class="me-credit__line">Licensed under Creative Commons: By Attribution 4.0</text>
+          <text class="me-credit__line">http://creativecommons.org/licenses/by/4.0/</text>
+        </view>
+        <view class="nt-btn nt-btn--ghost" @tap="aboutVisible = false">知道了</view>
       </view>
     </view>
 
@@ -728,19 +743,32 @@ onShow(() => {
   flex: 1;
 }
 
-.me-credits {
-  margin-top: 40rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4rpx;
+.me-ico-note {
+  font-size: 34rpx;
+  line-height: 1;
+  color: var(--gold);
 }
 
-.me-credits__line {
-  font-size: 20rpx;
+.me-credit {
+  padding: 24rpx 28rpx;
+  border-radius: 28rpx;
+  background: var(--panel-sunk);
+  border: 2rpx solid var(--panel-line);
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.me-credit__label {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.me-credit__line {
+  font-size: 24rpx;
   line-height: 1.5;
-  color: var(--text-2);
-  opacity: 0.7;
-  text-align: center;
+  color: var(--text-soft);
+  overflow-wrap: break-word;
 }
 </style>
