@@ -41,7 +41,7 @@ function clearData() {
         <text class="nt-meta">版本：V3 夜镇卡牌</text>
       </view>
 
-      <view class="nt-row" @tap="clearData">
+      <view class="nt-panel st-action" @tap="clearData">
         <view class="st-row">
           <text class="st-row__title">清理本地数据</text>
           <text class="nt-meta">清除登录态、缓存和本地记录。未登录时本地笔记和收藏没有云端备份，清理前请先登录同步。</text>
@@ -67,13 +67,18 @@ function clearData() {
   font-weight: 900;
 }
 
+.st-action {
+  flex-direction: row;
+  align-items: center;
+  gap: 20rpx;
+}
+
 .st-row {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 8rpx;
-  padding: 12rpx 0;
 }
 
 .st-row__title {

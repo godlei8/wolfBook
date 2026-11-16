@@ -71,3 +71,48 @@ export function boardConfigRows(board) {
   if (steps.length) rows.push({ label: '夜间顺序', value: steps.join(' → ') })
   return rows
 }
+
+/**
+ * 建房第二步「板子规则」：板子自己的规则介绍，来自板子的规则详情（规则文件生成进库，见 scripts/judge-rules-sql.py）。
+ * 每个角色第一条常显，其余点开看；通用规则（警长、发言、投票、遗言、自爆）按章节折叠。
+ */
+export function boardRuleIntro(board) {
+  const detail = board?.ruleDetail || {}
+  const overview = typeof detail.overview === 'string' ? detail.overview.trim() : ''
+  const roles = (detail.roleRules || [])
+    .filter((note) => note?.roleId && (note.items || []).length)
+    .map((note) => ({
+      roleId: note.roleId,
+      name: note.roleName || '',
+      portrait: note.portrait || '',
+      accent: note.accent || '',
+      campColor: note.campColor || '',
+      lead: note.items[0],
+      more: note.items.slice(1),
+      moreLabel: note.items.length > 1 ? `还有 ${note.items.length - 1} 条` : '',
+    }))
+  // 角色规则按阵容的顺序排，和上面的头像一致
+  const lineupOrder = new Map((board?.roles || []).map((role, index) => [role?.roleId, index]))
+  const rank = (role) => (lineupOrder.has(role.roleId) ? lineupOrder.get(role.roleId) : lineupOrder.size)
+  roles.sort((a, b) => rank(a) - rank(b))
+  const configRows = boardConfigRows(board)
+  const win = configRows.find((row) => row.label === '胜负')
+  const sections = (detail.sections || [])
+    .filter((section) => section?.title && (section.items || []).length)
+    .map((section) => ({ title: section.title, value: section.title === '胜负' && win ? win.value : '', items: section.items }))
+  // 有「胜负」章节时，胜负并进章节标题（屠边 + 点开看怎么算），不再单独占一行
+  const rows = sections.some((section) => section.title === '胜负') ? configRows.filter((row) => row.label !== '胜负') : configRows
+  return { overview, rows, roles, sections, hasContent: Boolean(overview || roles.length || sections.length) }
+}
+
+/** 法官模式收成一行：两个小按钮 + 一句说明（选中那个模式是什么；无法官不能选时写原因）。 */
+export function judgeModeRow(board, mode) {
+  const joinedAllowed = canChooseJoined(board)
+  const options = [
+    { value: 'observer', label: '有法官', on: mode !== 'joined', disabled: false },
+    { value: 'joined', label: '无法官', on: mode === 'joined', disabled: Boolean(board) && !joinedAllowed },
+  ]
+  let hint = mode === 'joined' ? '你也拿牌，系统当法官；建议连蓝牙音箱' : '你当法官，不拿牌；能看全场、暂停和点杀'
+  if (mode !== 'joined' && board && !joinedAllowed) hint = '你当法官，不拿牌；这个板子有系统还不会结算的角色，只能开有法官'
+  return { options, hint }
+}

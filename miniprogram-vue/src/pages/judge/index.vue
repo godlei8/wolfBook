@@ -155,7 +155,7 @@ onShow(() => {
 
     <view class="nt-gutter ji-head">
       <text class="nt-title">开一局</text>
-      <text class="nt-meta">你当法官，大家各拿手机翻自己的身份牌。</text>
+      <text class="nt-meta">有法官、无法官都能开，每人用自己的手机看身份。</text>
     </view>
 
     <view class="nt-gutter nt-stack ji-body">
@@ -169,8 +169,8 @@ onShow(() => {
         </view>
         <view class="ji-hero__plate">
           <view class="ji-hero__copy">
-            <text class="ji-hero__eyebrow">法官不入座 · 手机发身份</text>
-            <text class="ji-hero__title serif">建房当法官</text>
+            <text class="ji-hero__eyebrow">有法官 · 无法官 · 手机发身份</text>
+            <text class="ji-hero__title serif">建房开一局</text>
           </view>
           <view class="nt-btn nt-btn--gold nt-btn--small">{{ hasAuth ? '选板子建房' : '先登录' }}</view>
         </view>

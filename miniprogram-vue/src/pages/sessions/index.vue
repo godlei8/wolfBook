@@ -79,7 +79,7 @@ onShow(() => {
     </view>
 
     <view class="nt-gutter nt-stack sx-body">
-      <text class="nt-meta">把发言、票型和夜间信息收进一条时间线，局后复盘更清楚。</text>
+      <text class="nt-meta">发言、票型和夜间信息记成一条时间线，方便复盘。</text>
 
       <view v-if="!sessions.length" class="nt-empty">还没有对局笔记。点右上方的「记一局」开始。</view>
 

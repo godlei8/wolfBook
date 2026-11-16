@@ -117,6 +117,9 @@ test('byPlayerTellsEachPersonsGame', () => {
   assert.equal(bySeat.get(1).story, '刀 5 号 · 投 6 号')
   assert.equal(bySeat.get(1).fate, '存活')
   assert.equal(bySeat.get(2).story, '当选警长 · 验 1 号 · 投 4 号 · 撕掉警徽')
+  // 画面上一项一段：折行只折在两项之间，不会把「4 号」拆成两行
+  assert.deepEqual(bySeat.get(2).storyParts, ['当选警长', '验 1 号', '投 4 号', '撕掉警徽'])
+  assert.deepEqual(bySeat.get(5).storyParts, ['第 1 夜被刀'])
   assert.equal(bySeat.get(3).story, '上警后退水 · 投 4 号')
   assert.equal(bySeat.get(4).story, '带走 7 号 · 第 1 天被放逐')
   assert.equal(bySeat.get(4).fate, '第 1 天')

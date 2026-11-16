@@ -3,11 +3,13 @@
 import { computed, ref } from 'vue'
 import { onLoad, onShareAppMessage } from '@dcloudio/uni-app'
 import NavBar from '../../components/NavBar.vue'
+import RuleSheet from '../../components/RuleSheet.vue'
 import api from '../../services/api'
 import userData from '../../services/user-data'
 import { openAssistant } from '../../utils/assistant-entry'
 import { getNavInsets, rpxToPx } from '../../utils/nav'
 import { buildNightSteps } from '../../utils/judge/night-order.js'
+import { commonRules, commonRulesSummary } from '../../utils/judge/common-rules.js'
 
 const JUDGE_SUPPORT_SHORT = { manual_only: '手动', partial: '半自动', full: '全自动' }
 
@@ -25,6 +27,10 @@ const board = ref(null)
 const favorite = ref(false)
 const openSections = ref({})
 const openFaqs = ref({ 0: true })
+// 通用规则（所有板子一样）不占页面：一行入口，点开弹窗看；板子自己的规则直接摆在页面上
+const commonSections = commonRules()
+const commonSummary = commonRulesSummary()
+const commonOpen = ref(false)
 let boardId = 0
 
 const rules = computed(() => board.value?.ruleDetail || { hasContent: false, overview: '', nightOrder: [], roleRules: [], sections: [] })
@@ -206,7 +212,7 @@ onShareAppMessage(() => ({
         <view v-if="nightOrder.length" class="nt-panel">
           <view class="nt-panel__head">
             <text class="nt-h2">夜间行动顺序</text>
-            <text class="nt-meta">{{ nightOrderConfigured ? '法官台照此引导' : '通用顺序 · 法官台照此引导' }}</text>
+            <text class="nt-meta">{{ nightOrderConfigured ? '电子法官按这个顺序叫' : '通用顺序 · 电子法官按这个顺序叫' }}</text>
           </view>
           <view class="bd-night">
             <view
@@ -243,6 +249,14 @@ onShareAppMessage(() => ({
               </view>
             </view>
           </view>
+        </view>
+
+        <view class="nt-panel bd-common" @tap="commonOpen = true">
+          <view class="bd-common__text">
+            <text class="nt-h2">通用规则</text>
+            <text class="bd-common__sub">{{ commonSummary }}</text>
+          </view>
+          <text class="bd-common__go">查看 ›</text>
         </view>
 
         <view v-if="rules.sections.length || extraRules.length" class="nt-panel nt-panel--tight">
@@ -288,6 +302,7 @@ onShareAppMessage(() => ({
       <view class="nt-btn nt-btn--gold bd-start" @tap="startJudge">☾ 用这个板子开局</view>
       <view class="nt-btn nt-btn--ghost" @tap="recordSession">记一局</view>
     </view>
+    <RuleSheet :visible="commonOpen" title="通用规则" hint="所有板子都一样" :sections="commonSections" @close="commonOpen = false" />
   </view>
 </template>
 
@@ -509,6 +524,34 @@ onShareAppMessage(() => ({
 .bd-note__role {
   font-size: 30rpx;
   font-weight: 700;
+}
+
+.bd-common {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+}
+
+.bd-common__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.bd-common__sub {
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.bd-common__go {
+  flex-shrink: 0;
+  font-size: 26rpx;
+  font-weight: 700;
+  color: var(--moon);
 }
 
 .bd-sections__title {

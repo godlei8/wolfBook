@@ -108,7 +108,7 @@ function nightRanking(snapshot, board) {
   return { orderOf: (role) => ranks.get(role) || 99, current: ranks.get(currentName) || 0 }
 }
 
-/** 今晚每个角色做了什么：「1→5 2→? · 刀口 5 号」「救 5 号」「还没轮到」。 */
+/** 今晚每个角色做了什么：「刀口 5 号 · 1→5 2→?」（刀口在前，折行只折在刀的人之间）「救 5 号」「还没轮到」。 */
 export function tonightRows(snapshot, board = null) {
   if (!snapshot?.judgeViewer) return []
   const bySeat = latestBySeat(tonight(snapshot))
@@ -124,7 +124,7 @@ export function tonightRows(snapshot, board = null) {
       if (!action) return `${seat}→?`
       return actionCode(action) === 'kill' && action.targetSeatNo ? `${seat}→${action.targetSeatNo}` : `${seat}→空刀`
     })
-    rows.push({ role: '狼人', seats: wolves, state: `${picks.join(' ')} · 刀口 ${knifeText(bySeat, wolves)}` })
+    rows.push({ role: '狼人', seats: wolves, state: `刀口 ${knifeText(bySeat, wolves)} · ${picks.join(' ')}` })
   }
 
   const byRole = new Map()

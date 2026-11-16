@@ -289,7 +289,7 @@ onShow(() => {
       </view>
       <view class="me-head__text">
         <text class="me-name serif">{{ user ? user.nickname || '微信用户' : '还没登录' }}</text>
-        <text class="nt-meta">{{ user ? (avatarRole ? `头像：${avatarRole.name}${avatarRole.alias ? ` · ${avatarRole.alias}` : ''}` : viewState.profileStatusText) : '登录后同步收藏、笔记和对局' }}</text>
+        <text class="nt-meta me-head__sub">{{ user ? (avatarRole ? `头像：${avatarRole.name}${avatarRole.alias ? ` · ${avatarRole.alias}` : ''}` : viewState.profileStatusText) : '登录后同步收藏、笔记和对局' }}</text>
       </view>
       <view class="nt-iconbtn me-gear" @tap="openSettings">⚙</view>
     </view>
@@ -446,6 +446,13 @@ onShow(() => {
   display: flex;
   flex-direction: column;
   gap: 8rpx;
+}
+
+.me-head__sub {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .me-name {

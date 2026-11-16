@@ -213,8 +213,7 @@ onReachBottom(() => loadBoards({ append: true }))
                 <text class="home-feature__name serif">{{ item.name }}</text>
               </view>
               <view class="home-feature__right">
-                <text>{{ item.playerCount }} 人 · {{ item.difficulty }}</text>
-                <text>{{ item.winCondition || item.tags?.[0] || '' }}</text>
+                <text>{{ item.playerCount }} 人 · {{ item.difficulty }}{{ (item.winCondition || item.tags?.[0]) ? ` · ${item.winCondition || item.tags[0]}` : '' }}</text>
               </view>
             </view>
           </view>
@@ -514,6 +513,7 @@ onReachBottom(() => loadBoards({ append: true }))
   font-size: 26rpx;
   line-height: 1.5;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .home-chips {

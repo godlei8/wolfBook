@@ -8,6 +8,7 @@ import storage from '../../services/storage'
 import { formatDateTime } from '../../utils/format'
 import { showModal } from '../../utils/dialog.js'
 import NtDialogHost from '../../components/NtDialogHost.vue'
+import { postTitle } from '../../utils/post.js'
 
 const post = ref(null)
 const commentText = ref('')
@@ -147,7 +148,7 @@ onShareAppMessage(() => ({
           </view>
           <text v-if="post.category" class="nt-tag">{{ post.category }}</text>
         </view>
-        <text v-if="post.title" class="cd-title serif">{{ post.title }}</text>
+        <text v-if="postTitle(post)" class="cd-title serif">{{ postTitle(post) }}</text>
         <text class="cd-text">{{ post.content }}</text>
         <view v-if="post.images && post.images.length" class="cd-images">
           <view v-for="image in post.images" :key="image" class="cd-image" @tap="previewImage(image)">

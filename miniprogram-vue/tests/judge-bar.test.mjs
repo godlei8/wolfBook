@@ -40,12 +40,12 @@ test('tonightRowsSummariseTheNight', () => {
   const rows = tonightRows(room())
   const wolves = rows.find((row) => row.role === '狼人')
   assert.deepEqual(wolves.seats, [1, 2])
-  assert.equal(wolves.state, '1→5 2→5 · 刀口 5 号')
+  assert.equal(wolves.state, '刀口 5 号 · 1→5 2→5')
   assert.equal(rows.find((row) => row.role === '女巫').state, '救 5 号')
   assert.equal(rows.find((row) => row.role === '预言家').state, '还没轮到')
   assert.equal(rows.some((row) => row.role === '平民'), false)
   const undecided = tonightRows(room({ nightActions: [{ actorSeatNo: 1, targetSeatNo: null, actionType: 'none', dayNo: 1 }], currentStep: { index: 0, kind: 'wolf', roleName: '狼人' } }))
-  assert.equal(undecided.find((row) => row.role === '狼人').state, '1→空刀 2→? · 刀口 空刀')
+  assert.equal(undecided.find((row) => row.role === '狼人').state, '刀口 空刀 · 1→空刀 2→?')
   assert.equal(undecided.find((row) => row.role === '女巫').state, '还没轮到')
   assert.deepEqual(tonightRows(room({ judgeViewer: false })), [])
 })
@@ -74,7 +74,7 @@ test('everyoneGetsTheSamePauseOverlay', () => {
 
 test('judgeSummaryBeforeWolvesChoose', () => {
   const rows = tonightRows(room({ nightActions: [], currentStep: { index: 0, kind: 'wolf', roleName: '狼人' } }))
-  assert.equal(rows.find((row) => row.role === '狼人').state, '1→? 2→? · 刀口 还没定')
+  assert.equal(rows.find((row) => row.role === '狼人').state, '刀口 还没定 · 1→? 2→?')
 })
 
 test('tonightRowsFollowTheBoardNightOrder', () => {

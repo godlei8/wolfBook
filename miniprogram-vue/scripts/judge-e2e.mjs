@@ -331,6 +331,7 @@ if (MODE === 'both' || MODE === 'joined') games.push({ mode: 'joined', keyword: 
 if (MODE === 'both' || MODE === 'wolfking') games.push({ mode: 'joined', keyword: '狼王守卫', count: 12 })
 if (MODE === 'both' || MODE === 'explode') games.push({ mode: 'joined', keyword: '预女猎白', count: 12, explode: true })
 if (MODE === 'both' || MODE === 'mechwolf') games.push({ mode: 'joined', keyword: '机械狼通灵师', count: 12 })
+if (MODE === 'both' || MODE === 'guard9') games.push({ mode: 'joined', keyword: '守卫九人局', count: 9 })
 for (const game of games) await runGame(game)
 console.log(`\n走过的视图：${[...seen].join(' ')}；房主播报台词出现 ${narrations} 次`)
 console.log(problems.length ? `\n${problems.length} 个问题` : '\n没有发现问题')

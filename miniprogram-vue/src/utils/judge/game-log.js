@@ -253,6 +253,7 @@ function peopleOf(snapshot, rounds, history, bySeat, person) {
       role: player.roleName || '',
       camp: campKey(player),
       story: parts.join(' · ') || '还没有记录',
+      storyParts: parts.length ? parts : ['还没有记录'],
       fate: dead ? fate || '出局' : '存活',
       dead,
       me: Boolean(player.self),

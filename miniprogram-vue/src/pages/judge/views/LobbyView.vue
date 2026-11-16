@@ -21,7 +21,7 @@ const rows = computed(() => rulesRows(props.snapshot))
 const banner = computed(() => swapBanner(props.snapshot, props.now))
 const exit = computed(() => exitAction(props.snapshot))
 const modeText = computed(() => {
-  if (props.snapshot.judgeMode === 'joined') return props.snapshot.host ? '无法官 · 你也拿牌，手机当法官' : '无法官 · 房主手机当法官'
+  if (props.snapshot.judgeMode === 'joined') return props.snapshot.host ? '无法官 · 你也拿牌' : '无法官 · 系统当法官'
   return props.snapshot.judgeViewer ? '有法官 · 你是法官，不入座' : '有法官 · 法官不入座'
 })
 

@@ -55,6 +55,12 @@ onShareAppMessage(() => ({
   title: world.value?.tagline ? `夜镇编年史 · ${world.value.tagline}` : '夜镇编年史',
   path: '/pages/world/index',
 }))
+
+// 文档里的小节标题写成「【月亮在睡】」，画成金色小标题，不带括号
+function isHeading(line) {
+  const text = String(line || '').trim()
+  return text.startsWith('【') && text.endsWith('】') && text.length <= 20
+}
 </script>
 
 <template>
@@ -79,7 +85,12 @@ onShareAppMessage(() => ({
     <view v-else-if="world" class="nt-gutter nt-stack wd-body">
       <view v-if="world.introParagraphs.length" class="nt-panel">
         <text class="nt-label">小镇</text>
-        <text v-for="(line, index) in world.introParagraphs" :key="index" class="wd-intro serif">{{ line }}</text>
+        <text
+          v-for="(line, index) in world.introParagraphs"
+          :key="index"
+          class="wd-intro serif"
+          :class="{ 'wd-intro--heading': isHeading(line) }"
+        >{{ isHeading(line) ? line.trim().slice(1, -1) : line }}</text>
       </view>
 
       <view v-if="world.factions.length" class="wd-section">
@@ -194,6 +205,14 @@ onShareAppMessage(() => ({
 
 .wd-body {
   margin-top: 36rpx;
+}
+
+.wd-intro.wd-intro--heading {
+  margin-top: 12rpx;
+  color: var(--gold);
+  font-size: 30rpx;
+  font-weight: 900;
+  letter-spacing: 2rpx;
 }
 
 .wd-intro {

@@ -606,6 +606,7 @@ page {
 
 .nt-placeholder {
   color: var(--text-3);
+  font-weight: 400;
 }
 
 /* ---------- 底部固定操作栏 ---------- */
@@ -837,6 +838,13 @@ page {
   align-items: baseline;
   gap: 20rpx;
   padding: 36rpx var(--page-gutter) 20rpx;
+}
+
+/* 标题行一样高：有没有倒计时（天亮公布没有）牌桌都量出同一个高度，座位不挪 */
+.nt-game__title,
+.nt-game__clock,
+.nt-game__step {
+  line-height: 56rpx;
 }
 
 .nt-game__title {

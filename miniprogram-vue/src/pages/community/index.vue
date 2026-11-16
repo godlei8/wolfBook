@@ -8,6 +8,7 @@ import storage from '../../services/storage'
 import { fromNow } from '../../utils/format'
 import { getNavInsets, rpxToPx } from '../../utils/nav'
 import { syncTabBar } from '../../utils/tabbar'
+import { postTitle } from '../../utils/post.js'
 
 const PAGE_SIZE = 20
 const TABS = [
@@ -164,7 +165,7 @@ onReachBottom(() => loadPosts({ append: true }))
           <text v-if="item.boardName" class="nt-tag cm-post__board" @tap.stop="openBoard(item.boardId)">{{ item.boardName }}</text>
           <text v-else-if="item.category" class="nt-tag">{{ item.category }}</text>
         </view>
-        <text v-if="item.title" class="cm-post__title serif">{{ item.title }}</text>
+        <text v-if="postTitle(item)" class="cm-post__title serif">{{ postTitle(item) }}</text>
         <text class="cm-post__text">{{ item.content }}</text>
         <view v-if="item.images && item.images.length" class="cm-post__images">
           <view v-for="image in item.images.slice(0, 3)" :key="image" class="cm-post__image">
@@ -173,7 +174,10 @@ onReachBottom(() => loadPosts({ append: true }))
         </view>
         <view class="cm-post__actions">
           <text class="cm-post__act" :class="{ 'cm-post__act--on': item.liked }" @tap.stop="toggleLike(item)">{{ item.liked ? '♥' : '♡' }} {{ item.likeCount }}</text>
-          <text class="cm-post__act">◌ {{ item.commentCount }}</text>
+          <view class="cm-post__act cm-post__act--comment">
+            <image class="cm-post__icon" src="/static/icons/comment.svg" mode="aspectFit" />
+            <text>{{ item.commentCount }}</text>
+          </view>
         </view>
       </view>
 
@@ -359,5 +363,15 @@ onReachBottom(() => loadPosts({ append: true }))
 
 .cm-post__act--on {
   color: var(--gold);
+}
+.cm-post__act--comment {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.cm-post__icon {
+  width: 28rpx;
+  height: 28rpx;
 }
 </style>

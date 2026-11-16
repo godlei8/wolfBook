@@ -60,10 +60,10 @@ const log = computed(() => gameLog(props.snapshot))
                 <view v-for="(act, index) in day.night.actions" :key="`a${index}`" class="jl-act">
                   <view class="jl-stack jl-stack--actors">
                     <view
-                      v-for="actor in act.actors"
+                      v-for="(actor, actorIndex) in act.actors"
                       :key="actor.seatNo"
                       class="jl-av jl-av--s jl-stack__item"
-                      :style="{ backgroundColor: actor.color }"
+                      :style="{ backgroundColor: actor.color, zIndex: act.actors.length - actorIndex }"
                     >
                       <image v-if="actor.avatar" class="jl-av__img" :src="actor.avatar" mode="aspectFill" />
                       <text v-else class="jl-av__ch">{{ actor.initial }}</text>
@@ -199,7 +199,9 @@ const log = computed(() => gameLog(props.snapshot))
                   <text class="jl-person__name">{{ row.person.nickname || `${row.person.seatNo} 号` }}{{ row.me ? '（我）' : '' }}</text>
                   <text v-if="row.role" class="jl-person__role" :class="row.camp ? `jl-camp--${row.camp}` : ''">{{ row.role }}</text>
                 </view>
-                <text class="jl-person__story">{{ row.story }}</text>
+                <view class="jl-person__story">
+                  <text v-for="(part, index) in row.storyParts" :key="index" class="jl-person__part">{{ index < row.storyParts.length - 1 ? `${part} ·` : part }}</text>
+                </view>
               </view>
               <text class="jl-fate" :class="{ 'jl-fate--dead': row.dead }">{{ row.fate }}</text>
             </view>
@@ -551,9 +553,19 @@ const log = computed(() => gameLog(props.snapshot))
   flex-shrink: 0;
 }
 
+/* 行动的人叠着排（狼队四五只也是一行），前面的压在后面上，座位号角标露在外面 */
 .jl-stack--actors {
   flex: none;
-  max-width: 260rpx;
+  flex-wrap: nowrap;
+  gap: 0;
+}
+
+.jl-stack--actors .jl-stack__item {
+  position: relative;
+}
+
+.jl-stack--actors .jl-stack__item + .jl-stack__item {
+  margin-left: -14rpx;
 }
 
 /* 夜里：出局者 */
@@ -808,9 +820,17 @@ const log = computed(() => gameLog(props.snapshot))
 }
 
 .jl-person__story {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 12rpx;
   font-size: 24rpx;
   line-height: 1.5;
   color: var(--text-2);
+}
+
+/* 一项不拆行（「把警徽交给 3 号」不会把「号」甩到下一行），折行只在两项之间 */
+.jl-person__part {
+  white-space: nowrap;
 }
 
 .jl-fate {
