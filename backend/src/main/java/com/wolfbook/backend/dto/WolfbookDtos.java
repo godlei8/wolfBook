@@ -689,7 +689,9 @@ public final class WolfbookDtos {
     public record JudgeDayInfoView(Boolean sheriffCandidate, boolean canVote, boolean voted, Integer myVote,
                                    int votedCount, int voterCount,
                                    /** 本人现在能不能自爆（只给本人）。 */
-                                   boolean canSelfDestruct) {
+                                   boolean canSelfDestruct,
+                                   /** 本人现在能不能决斗（骑士，整局一次；只给本人）。 */
+                                   boolean canDuel) {
     }
 
     /**
@@ -712,7 +714,9 @@ public final class WolfbookDtos {
                                      /** 狼人那一步本人点没点确定（这一步交过的人才有，其他时候为 null）。 */
                                      Boolean myConfirmed,
                                      /** 猎人那一步告诉猎人本人：按今晚的行动预演，出局时能不能开枪（被毒不能开）；其他人、其他时候为 null。 */
-                                     Boolean canShoot) {
+                                     Boolean canShoot,
+                                     /** 狼美人本人：上一夜魅惑的人（不能连续两晚魅惑同一人）；其他人为 null。 */
+                                     Integer lastCharmSeat) {
     }
 
     /** decided：这只狼今晚交过刀人或空刀；targetSeatNo 为 null 且 decided 为 true 即空刀，decided 为 false 是还没选。confirmed：点了确定。 */
@@ -725,6 +729,10 @@ public final class WolfbookDtos {
 
     /** decision：use 发动 / skip 不发动；开枪和移交警徽要带 targetSeatNo。 */
     public record JudgeSkillRequest(String decision, Integer targetSeatNo) {
+    }
+
+    /** 骑士决斗：对方的座位号。 */
+    public record JudgeDuelRequest(Integer targetSeatNo) {
     }
 
     /** 夜里当前这一步。line 只给这一步的持有者和法官，其他人是空串（零场外：别人的屏幕上不出现「轮到你」的差别）。 */
@@ -774,6 +782,7 @@ public final class WolfbookDtos {
     }
 
     /** 出局技能、翻牌、点杀这类公开记录。 */
-    public record JudgeSkillRecordView(String kind, Integer actorSeatNo, Integer targetSeatNo) {
+    /** result 只有骑士决斗有：wolf（对方是狼人）/ good（对方是好人）。 */
+    public record JudgeSkillRecordView(String kind, Integer actorSeatNo, Integer targetSeatNo, String result) {
     }
 }

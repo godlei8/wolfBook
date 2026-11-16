@@ -212,10 +212,11 @@ public class JudgeSnapshotAssembler {
                     && self.getPlayerId().equals(event.getActorPlayerId())
                     && java.util.Objects.equals(event.getDayNo(), room.getCurrentDay()));
             return new WolfbookDtos.JudgeDayInfoView(decided ? Boolean.valueOf(Boolean.TRUE.equals(self.getSheriffCandidate())) : null,
-                    false, false, null, 0, 0, false);
+                    false, false, null, 0, 0, false, false);
         }
         if (SELF_DESTRUCT_PHASES.contains(phase)) {
-            return new WolfbookDtos.JudgeDayInfoView(null, false, false, null, 0, 0, support.canSelfDestruct(room, self));
+            return new WolfbookDtos.JudgeDayInfoView(null, false, false, null, 0, 0, support.canSelfDestruct(room, self),
+                    support.canDuel(room, self));
         }
         if (!Set.of(PHASE_EXILE_VOTE, PHASE_VOTE_PK, PHASE_SHERIFF_VOTE, PHASE_SHERIFF_PK).contains(phase)) {
             return null;
@@ -232,7 +233,7 @@ public class JudgeSnapshotAssembler {
                 .orElse(null);
         int votedCount = (int) voted.stream().filter(eligible::contains).count();
         return new WolfbookDtos.JudgeDayInfoView(null, selfSeat != null && eligible.contains(selfSeat),
-                selfSeat != null && voted.contains(selfSeat), myVote, votedCount, eligible.size(), false);
+                selfSeat != null && voted.contains(selfSeat), myVote, votedCount, eligible.size(), false, false);
     }
 
     /** 查看者本人的夜间私密信息（只在新流程房间）。法官有 nightActions 全量，不给。 */
@@ -271,6 +272,7 @@ public class JudgeSnapshotAssembler {
         List<WolfbookDtos.JudgeNightActionItem> myActions = null;
         Boolean myConfirmed = null;
         Boolean canShoot = null;
+        Integer lastCharmSeat = null;
         boolean night = ROOM_STATUS_PLAYING.equals(room.getRoomStatus()) && PHASE_NIGHT_ACTION.equals(room.getCurrentPhase())
                 && room.getNightStep() != null;
         if (night && alive) {
@@ -281,6 +283,10 @@ public class JudgeSnapshotAssembler {
             }
             if (mechanic == Mechanic.GUARD) {
                 lastGuardSeat = support.asPositiveInteger(status.get("lastGuardSeat"));
+            }
+            if (mechanic != null && mechanic.charms()) {
+                // 狼美人：上一夜魅惑的人（今晚结算后才换成今晚的）
+                lastCharmSeat = support.asPositiveInteger(status.get("charmSeat"));
             }
             List<NightPlan.NightStep> steps = support.nightSteps(room, support.safeInt(room.getCurrentDay(), 1));
             NightPlan.NightStep step = room.getNightStep() < steps.size() ? steps.get(room.getNightStep()) : null;
@@ -372,12 +378,13 @@ public class JudgeSnapshotAssembler {
             }
         }
         if (teammates.isEmpty() && picks.isEmpty() && knifeSeat == null && checkedSeat == null
-                && antidote == null && lastGuardSeat == null && myAction == null && armed == null && canShoot == null) {
+                && antidote == null && lastGuardSeat == null && myAction == null && armed == null && canShoot == null
+                && lastCharmSeat == null) {
             return null;
         }
         return new WolfbookDtos.JudgeNightInfoView(teammates, picks, knifeSeat, checkedSeat, checkResult,
                 antidote, poison, lastGuardSeat, myAction, myTarget, identityResult, armed, learned, learnedRole,
-                learnedEffective, mechPoison, myActions, myConfirmed, canShoot);
+                learnedEffective, mechPoison, myActions, myConfirmed, canShoot, lastCharmSeat);
     }
 
     WolfbookDtos.JudgeSpeechView speechView(JudgeRoomEntity room) {

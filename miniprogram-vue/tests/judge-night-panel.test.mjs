@@ -300,3 +300,20 @@ test('hunterIsToldWhetherHeCanShootTonight', () => {
   // 旧后端没下发开枪状态：不乱说
   assert.equal(nightPanel(night('hunter', '猎人', me(6), { line: 'x' })).shootText, '')
 })
+
+test('theBeautyCharmsAnyoneButHerselfOrLastNightsPick', () => {
+  // roles/狼美人.md：除自己外谁都能魅惑，不能连续两晚魅惑同一人
+  const info = { lastCharmSeat: 5 }
+  const panel = (selection) => nightPanel(night('charm', '狼美人', me(2), { line: 'x', nightInfo: info }), selection)
+  assert.equal(panel(6).buttons[0].label, '魅惑 6 号')
+  assert.equal(panel(6).buttons[0].action, 'charm')
+  assert.equal(panel(5).buttons[0].disabled, true)
+  assert.equal(panel(5).buttons[0].label, '不能连续魅惑 5 号')
+  assert.equal(panel(2).buttons[0].disabled, true)
+  assert.equal(panel(2).buttons[0].label, '不能魅惑自己')
+  assert.equal(panel(0).lastText, '昨晚魅惑了 5 号，今晚不能再魅惑他')
+  assert.equal(panel(6).buttons.find((button) => button.action === 'none').label, '不魅惑')
+  const done = nightPanel(night('charm', '狼美人', me(2), { line: 'x', nightInfo: { myAction: 'charm', myTarget: 6 } }))
+  assert.equal(done.done, '已魅惑 6 号')
+  assert.deepEqual(done.buttons, [])
+})

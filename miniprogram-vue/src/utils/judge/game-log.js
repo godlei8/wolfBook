@@ -10,12 +10,15 @@ const AVATAR_COLORS = ['#c9b6f2', '#9fd8e0', '#f2c38f', '#a8d5a2', '#f4a6b8', '#
 // 旧版小程序交的中文名
 const LEGACY = { 刀人: 'kill', 解药: 'save', 毒药: 'poison', 查验: 'check', 守护: 'guard' }
 
-const VERBS = { kill: '刀', kill_pierce: '破盾刀', learn: '学习', save: '用解药救', poison: '毒', check: '验', guard: '守' }
+const VERBS = { kill: '刀', kill_pierce: '破盾刀', learn: '学习', save: '用解药救', poison: '毒', check: '验', guard: '守', charm: '魅惑' }
 // 按人看里的短说法
-const STORY_VERBS = { kill: '刀', kill_pierce: '破盾刀', learn: '学', save: '救', poison: '毒', check: '验', guard: '守' }
+const STORY_VERBS = { kill: '刀', kill_pierce: '破盾刀', learn: '学', save: '救', poison: '毒', check: '验', guard: '守', charm: '魅惑' }
 const PASS = { wolf: '空刀', wolf_king: '空刀', witch: '不用药', guard: '空守' }
 
-const CAUSES = { knife: '被刀', guard_save: '同守同救', pierce: '破盾刀', poison: '被毒', bounce: '毒被弹回', mech_poison: '被毒' }
+const CAUSES = { knife: '被刀', guard_save: '同守同救', pierce: '破盾刀', poison: '被毒', bounce: '毒被弹回', mech_poison: '被毒', martyr: '殉情' }
+
+// 骑士决斗谁出局：对方是狼人他出局，是好人骑士出局（只公布狼人 / 好人，不翻牌）
+const duelLoser = (skill) => (skill.result === 'wolf' ? skill.targetSeatNo : skill.actorSeatNo)
 const POISONED = new Set(['poison', 'bounce', 'mech_poison'])
 const SHOOTERS = new Set(['hunter', 'wolf_king'])
 
@@ -147,6 +150,11 @@ function eventOf(skill, person) {
       return { tag: '自爆', kind: 'wolf', a, text: '自爆', b: null }
     case 'force_out':
       return { tag: '点杀', kind: 'wolf', a: b || a, text: '被法官点杀', b: null }
+    case 'duel':
+      return { tag: '决斗', kind: skill.result === 'wolf' ? 'wolf' : 'skill', a, text: `决斗，对方是${skill.result === 'wolf' ? '狼人' : '好人'}`, b }
+    case 'martyr':
+      // 狼美人出局，被她魅惑的人跟着出局
+      return { tag: '殉情', kind: 'wolf', a: b, text: '殉情', b: null }
     default:
       return null
   }
@@ -158,9 +166,11 @@ function dayCard(round, person) {
   if (!round.sheriff && !exile.length && !skills.length) return null
   const out = exile.map((item) => item.eliminatedSeatNo).find(Boolean)
   const exploded = skills.find((skill) => skill.kind === 'self_destruct')
+  const duel = skills.find((skill) => skill.kind === 'duel')
+  const dueledOut = duel ? (duel.result === 'wolf' ? `${duel.targetSeatNo} 号被决斗出局` : `${duel.actorSeatNo} 号决斗出局`) : ''
   return {
     title: `第 ${round.dayNo} 天`,
-    result: out ? `${out} 号被放逐` : exploded ? `${exploded.actorSeatNo} 号自爆` : exile.length ? '无人出局' : '',
+    result: out ? `${out} 号被放逐` : exploded ? `${exploded.actorSeatNo} 号自爆` : dueledOut || (exile.length ? '无人出局' : ''),
     sheriff: sheriffBlock(round.sheriff, person),
     votes: exile.map((item, index) => ({
       label: index ? 'PK 投票' : '放逐投票',
@@ -219,6 +229,7 @@ function peopleOf(snapshot, rounds, history, bySeat, person) {
         else if (skill.kind === 'badge_passed' && !skill.targetSeatNo) parts.push('撕掉警徽')
         else if (skill.kind === 'badge_passed') parts.push(`把警徽交给 ${skill.targetSeatNo} 号`)
         else if (skill.kind === 'idiot_revealed') parts.push('翻牌')
+        else if (skill.kind === 'duel') parts.push(`决斗 ${skill.targetSeatNo} 号`)
       }
     }
     for (const round of rounds) {
@@ -239,6 +250,12 @@ function peopleOf(snapshot, rounds, history, bySeat, person) {
         } else if (skill.kind === 'force_out' && (skill.targetSeatNo || skill.actorSeatNo) === seat) {
           fate = `第 ${round.dayNo} 天`
           fateText = '被法官点杀'
+        } else if (skill.kind === 'duel' && duelLoser(skill) === seat) {
+          fate = `第 ${round.dayNo} 天`
+          fateText = skill.actorSeatNo === seat ? `第 ${round.dayNo} 天决斗出局` : `被 ${skill.actorSeatNo} 号决斗出局`
+        } else if (skill.kind === 'martyr' && skill.targetSeatNo === seat) {
+          fate = `第 ${round.dayNo} 天`
+          fateText = `第 ${round.dayNo} 天殉情`
         }
       }
       if (!fate && (round.exile || []).some((item) => item.eliminatedSeatNo === seat)) {

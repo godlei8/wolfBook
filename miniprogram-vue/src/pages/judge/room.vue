@@ -18,7 +18,7 @@ import api from '../../services/api'
 import storage from '../../services/storage'
 import { mergePollResult, pollInterval } from '../../utils/judge/room-poll.js'
 import { clockOffset, navTitle, pickView } from '../../utils/judge/room-view.js'
-import { identityCard } from '../../utils/judge/identity.js'
+import { duelTargets, identityCard } from '../../utils/judge/identity.js'
 import { hostMenu, judgeActions, pausedOverlay } from '../../utils/judge/judge-bar.js'
 import { judgeSeatSheet } from '../../utils/judge/judge-desk.js'
 import { hostActions } from '../../utils/judge/day.js'
@@ -350,6 +350,7 @@ function onAct(event) {
       return null
     }),
     selfDestruct: () => api.selfDestructJudge(id),
+    duel: () => api.duelJudge(id, event.targetSeatNo),
   }
   if (event?.kind === 'judgeSeat') {
     openJudgeSeat(event.seatNo)
@@ -419,6 +420,31 @@ function confirmSelfDestruct() {
       if (!result.confirm) return
       identityOpen.value = false
       onAct({ kind: 'selfDestruct' })
+    },
+  })
+}
+
+// 骑士决斗（roles/骑士.md）：选一个人，再确认一次；全场只知道对方是狼人还是好人
+function chooseDuel() {
+  const targets = duelTargets(snapshot.value)
+  if (!targets.length) return
+  showActionSheet({
+    title: '决斗',
+    content: '对方是狼人：他出局，直接天黑；是好人：你出局。整局只有一次',
+    itemList: targets.map((target) => target.label),
+    success: (result) => {
+      const target = targets[result.tapIndex]
+      if (!target) return
+      showModal({
+        title: '决斗',
+        content: `确定决斗 ${target.label}？`,
+        confirmText: '决斗',
+        success: (answer) => {
+          if (!answer.confirm) return
+          identityOpen.value = false
+          onAct({ kind: 'duel', targetSeatNo: target.seatNo })
+        },
+      })
     },
   })
 }
@@ -566,6 +592,7 @@ onUnload(() => {
         <text class="jr-identity__role serif">{{ identity.roleName }}</text>
         <text class="jr-identity__camp" :class="{ 'jr-identity__camp--wolf': identity.wolf }">{{ identity.camp }}</text>
         <view v-if="identity.canSelfDestruct" class="nt-btn jr-identity__explode" @tap="confirmSelfDestruct">自爆</view>
+        <view v-if="identity.canDuel" class="nt-btn jr-identity__explode" @tap="chooseDuel">决斗</view>
         <view class="nt-btn nt-btn--ghost jr-identity__close" @tap="identityOpen = false">盖上</view>
       </view>
     </view>

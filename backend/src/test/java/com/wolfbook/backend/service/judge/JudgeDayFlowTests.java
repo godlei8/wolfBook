@@ -3,12 +3,30 @@ package com.wolfbook.backend.service.judge;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 class JudgeDayFlowTests {
+
+    @Test
+    void duelsAndMartyrsShowUpInTheDaysSkills() {
+        // 对局记录：骑士决斗（只记狼人 / 好人）、狼美人出局后的殉情都是公开的
+        var rounds = JudgeDayFlow.buildRounds(List.of(
+                new JudgeDayFlow.EventRecord(2, "duel", Map.of("actorSeatNo", 7, "targetSeatNo", 3, "result", "wolf"), Map.of()),
+                new JudgeDayFlow.EventRecord(3, "martyr", Map.of("actorSeatNo", 4, "targetSeatNo", 9), Map.of())));
+        var duel = rounds.get(0).skills().get(0);
+        assertEquals("duel", duel.kind());
+        assertEquals(7, duel.actorSeatNo());
+        assertEquals(3, duel.targetSeatNo());
+        assertEquals("wolf", duel.result());
+        var martyr = rounds.get(1).skills().get(0);
+        assertEquals("martyr", martyr.kind());
+        assertEquals(9, martyr.targetSeatNo());
+        assertNull(martyr.result());
+    }
 
     private static final List<Integer> ALIVE = List.of(1, 2, 3, 5, 6, 7, 8, 9);
 

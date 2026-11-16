@@ -363,6 +363,11 @@ export default {
       await request({ url: `/api/judge/rooms/${roomId}/self-destruct`, method: 'POST', header: createAuthHeader() }),
     )
   },
+  async duelJudge(roomId, targetSeatNo) {
+    return normalizeJudgeRoomSnapshot(
+      await request({ url: `/api/judge/rooms/${roomId}/duel`, method: 'POST', data: { targetSeatNo }, header: createAuthHeader() }),
+    )
+  },
   async submitJudgeSkill(roomId, payload) {
     return normalizeJudgeRoomSnapshot(
       await request({ url: `/api/judge/rooms/${roomId}/skill`, method: 'POST', data: payload, header: createAuthHeader() }),

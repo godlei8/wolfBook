@@ -56,8 +56,8 @@ export function godSeats(snapshot) {
 
 // 没配夜间顺序时的通用顺序（和后端机制优先级一致）；用来判断某个角色「还没轮到」还是「没有行动」。
 const ROLE_ORDER = { 机械狼: 0.5, 守卫: 1, 狼人: 2, 女巫: 3, 预言家: 4, 通灵师: 4, 猎人: 5, 白痴: 6 }
-const KIND_ORDER = { mech_wolf: 0.5, guard: 1, wolf: 2, witch: 3, seer: 4, psychic: 4, hunter: 5, idle: 6 }
-const VERBS = { save: '救', poison: '毒', check: '查验', guard: '守', kill: '刀', kill_pierce: '破盾刀', learn: '学习' }
+const KIND_ORDER = { mech_wolf: 0.5, guard: 1, wolf: 2, charm: 2.5, witch: 3, seer: 4, psychic: 4, hunter: 5, idle: 6 }
+const VERBS = { save: '救', poison: '毒', check: '查验', guard: '守', kill: '刀', kill_pierce: '破盾刀', learn: '学习', charm: '魅惑' }
 
 /** 跟狼队一起睁眼的座位：有机制看机制（机械狼单独一步），没有按阵营。 */
 function inWolfTeam(player) {

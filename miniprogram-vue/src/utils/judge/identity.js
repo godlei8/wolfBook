@@ -13,7 +13,17 @@ export function identityCard(snapshot, board) {
     wolf: self.faction === '狼人',
     art: role?.fullIllustration || '',
     alive: self.alive !== false,
-    // 自爆按钮只放在身份弹层里：别人看不到谁的弹层多一个按钮；能不能爆只看本人快照
+    // 自爆、决斗按钮只放在身份弹层里：别人看不到谁的弹层多一个按钮；能不能用只看本人快照
     canSelfDestruct: Boolean(snapshot.dayInfo?.canSelfDestruct),
+    canDuel: Boolean(snapshot.dayInfo?.canDuel),
   }
+}
+
+/** 骑士决斗能选的人（roles/骑士.md）：除自己外活着的玩家，按座位号。 */
+export function duelTargets(snapshot) {
+  const selfSeat = snapshot?.selfPlayer?.seatNo
+  return (snapshot?.players || [])
+    .filter((player) => player?.seatNo && player.seatNo !== selfSeat && player.alive !== false)
+    .sort((a, b) => a.seatNo - b.seatNo)
+    .map((player) => ({ seatNo: player.seatNo, label: `${player.seatNo} 号${player.nickname ? ` ${player.nickname}` : ''}` }))
 }

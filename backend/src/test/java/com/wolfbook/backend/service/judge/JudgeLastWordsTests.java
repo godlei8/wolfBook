@@ -28,6 +28,8 @@ class JudgeLastWordsTests {
         assertEquals(120, JudgeLastWords.seconds(Cause.EXILE, 1));
         assertEquals(120, JudgeLastWords.seconds(Cause.EXILE, 4));
         assertEquals(120, JudgeLastWords.seconds(Cause.SHOT, 3));
+        assertEquals(120, JudgeLastWords.seconds(Cause.DUEL, 3), "被决斗的狼、决斗输了的骑士");
+        assertEquals(120, JudgeLastWords.seconds(Cause.MARTYR, 3), "白天殉情");
     }
 
     @Test

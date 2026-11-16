@@ -12,6 +12,16 @@ class NightStepRulesTests {
     private static final NightPlan.NightStep MECH_STEP = new NightPlan.NightStep(0, NightKind.MECH_WOLF, List.of(20), "机械狼", false, "机械狼请睁眼", 30);
     private static final NightPlan.NightStep GUARD_STEP = new NightPlan.NightStep(2, NightKind.GUARD, List.of(30), "守卫", false, "守卫请睁眼", 30);
 
+    private static final NightPlan.NightStep CHARM_STEP = new NightPlan.NightStep(2, NightKind.CHARM, List.of(12), "狼美人", false, "狼美人请睁眼", 30);
+
+    @Test
+    void theCharmStepTakesOnlyACharm() {
+        assertEquals(NightStepRules.Verdict.OK, NightStepRules.check(CHARM_STEP, Mechanic.WOLF_BEAUTY, "charm"));
+        assertEquals(NightStepRules.Verdict.OK, NightStepRules.check(CHARM_STEP, Mechanic.WOLF_BEAUTY, "none"));
+        assertEquals(NightStepRules.Verdict.NOT_ALLOWED, NightStepRules.check(CHARM_STEP, Mechanic.WOLF_BEAUTY, "kill"), "刀口在狼人那一步");
+        assertEquals(NightStepRules.Verdict.NOT_ALLOWED, NightStepRules.check(WOLF_STEP, Mechanic.WOLF_BEAUTY, "charm"), "魅惑在自己那一步");
+    }
+
     private static NightStepRules.Seat seat(int no, int roleId, boolean alive, Mechanic mechanic) {
         return new NightStepRules.Seat(no, roleId, alive, mechanic);
     }

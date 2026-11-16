@@ -488,6 +488,64 @@ class NightResolverTests {
         assertEquals(Set.of(6), NightResolver.resolve(List.of(mechAct("learn", 3), poison(2, 6)), seats, RULES, 1, RANDOM).cannotShoot());
     }
 
+    // ---- 24 狼美人骑士（roles/狼美人.md）：座位同上，6 号换成狼美人
+
+    private static Map<Integer, NightResolver.SeatState> seats24(Integer lastCharmSeat) {
+        Map<Integer, NightResolver.SeatState> seats = seats();
+        seats.put(6, new NightResolver.SeatState(6, "狼美人", "狼人", Mechanic.WOLF_BEAUTY, true, false, false, null,
+                null, null, null, true, lastCharmSeat));
+        return seats;
+    }
+
+    private static NightResolver.Submission charm(int target) {
+        return new NightResolver.Submission(6, NightKind.CHARM, "charm", target);
+    }
+
+    @Test
+    void theCharmedDiesWithABeautyWhoDiesTonight() {
+        // 女巫毒死狼美人：被她今晚魅惑的 7 号殉情
+        NightResolver.Outcome outcome = NightResolver.resolve(List.of(kill(5, 1), charm(7), poison(2, 6)), seats24(null), RULES, 2, RANDOM);
+        assertEquals(List.of(1, 6, 7), outcome.deadSeats());
+        assertEquals(List.of(NightResolver.CAUSE_MARTYR), outcome.causes().get(7));
+        assertEquals(Map.of(6, 7), outcome.charms(), "今晚魅惑了谁，写回狼美人的座位状态");
+    }
+
+    @Test
+    void theCharmedLivesWhileTheBeautyLives() {
+        NightResolver.Outcome outcome = NightResolver.resolve(List.of(kill(5, 1), charm(7)), seats24(null), RULES, 2, RANDOM);
+        assertEquals(List.of(1), outcome.deadSeats());
+    }
+
+    @Test
+    void aCharmedHunterCannotShoot() {
+        // 殉情的猎人不能开枪
+        NightResolver.Outcome outcome = NightResolver.resolve(List.of(charm(3), poison(2, 6)), seats24(null), RULES, 2, RANDOM);
+        assertEquals(List.of(3, 6), outcome.deadSeats());
+        assertTrue(outcome.cannotShoot().contains(3));
+    }
+
+    @Test
+    void noCharmTonightMeansNoMartyr() {
+        NightResolver.Outcome outcome = NightResolver.resolve(List.of(poison(2, 6)), seats24(7), RULES, 2, RANDOM);
+        assertEquals(List.of(6), outcome.deadSeats(), "昨晚的魅惑不算");
+        assertEquals(Map.of(), outcome.charms());
+    }
+
+    @Test
+    void wolvesCannotKnifeTheBeauty() {
+        Map<Integer, NightResolver.SeatState> seats = seats24(null);
+        assertThrows(ApiException.class, () -> NightResolver.validate(kill(5, 6), seats.get(5), seats.get(6), RULES, 1, null, seats));
+        NightResolver.validate(kill(5, 7), seats.get(5), seats.get(7), RULES, 1, null, seats);
+    }
+
+    @Test
+    void theBeautyCharmsAnyoneButHerselfAndNotTheSamePersonTwiceInARow() {
+        Map<Integer, NightResolver.SeatState> seats = seats24(7);
+        assertThrows(ApiException.class, () -> NightResolver.validate(charm(6), seats.get(6), seats.get(6), RULES, 2, null, seats), "不能魅惑自己");
+        assertThrows(ApiException.class, () -> NightResolver.validate(charm(7), seats.get(6), seats.get(7), RULES, 2, null, seats), "不能连续两晚魅惑同一人");
+        NightResolver.validate(charm(5), seats.get(6), seats.get(5), RULES, 2, null, seats);
+    }
+
     private static Mechanic mechanicOf(String roleName) {
         return RoleSkillRegistry.legacyMechanic(roleName).orElse(null);
     }

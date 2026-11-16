@@ -163,3 +163,39 @@ test('mechWolfNightActionsReadInTheRecord', () => {
   ])
   assert.equal(log.people.find((p) => p.person.seatNo === 6).story, '学 2 号 · 破盾刀 3 号')
 })
+
+// ---- 狼美人骑士
+test('aBeautysCharmAndHerMartyrReadInTheRecord', () => {
+  const log = gameLog({
+    roomStatus: 'finished',
+    players: [{ seatNo: 4, roleName: '狼美人', faction: '狼人', mechanic: 'wolf_beauty' }, { seatNo: 9, roleName: '平民', faction: '好人', alive: false }],
+    rounds: [
+      { dayNo: 1, nightDeaths: [9], deathCauses: { 9: ['martyr'] }, exile: [], skills: [] },
+      { dayNo: 2, nightDeaths: [], exile: [], skills: [{ kind: 'martyr', actorSeatNo: 4, targetSeatNo: 9 }] },
+    ],
+    nightHistory: [{ dayNo: 1, actorSeatNo: 4, actionType: 'charm', targetSeatNo: 9 }],
+  })
+  assert.deepEqual(log.days[0].night.actions.map((a) => [a.role, a.verb, a.target.seatNo]), [['狼美人', '魅惑', 9]])
+  assert.equal(log.days[0].night.deaths[0].cause, '殉情')
+  assert.deepEqual(log.days[1].day.events.map((e) => [e.tag, e.a.seatNo, e.text]), [['殉情', 9, '殉情']])
+  assert.equal(log.people.find((p) => p.person.seatNo === 4).story, '魅惑 9 号')
+})
+
+test('aKnightsDuelSaysOnlyWolfOrGood', () => {
+  const wolf = gameLog({ roomStatus: 'playing', players: [], rounds: [{ dayNo: 2, nightDeaths: [], exile: [], skills: [{ kind: 'duel', actorSeatNo: 7, targetSeatNo: 3, result: 'wolf' }] }] })
+  assert.equal(wolf.days[0].day.result, '3 号被决斗出局')
+  assert.deepEqual(wolf.days[0].day.events.map((e) => [e.tag, e.a.seatNo, e.text, e.b.seatNo]), [['决斗', 7, '决斗，对方是狼人', 3]])
+  const good = gameLog({ roomStatus: 'playing', players: [], rounds: [{ dayNo: 2, nightDeaths: [], exile: [], skills: [{ kind: 'duel', actorSeatNo: 7, targetSeatNo: 5, result: 'good' }] }] })
+  assert.equal(good.days[0].day.result, '7 号决斗出局')
+  assert.equal(good.days[0].day.events[0].text, '决斗，对方是好人')
+})
+
+test('theKnightsAndTheDueledsStories', () => {
+  const log = gameLog({
+    roomStatus: 'finished',
+    players: [{ seatNo: 7, roleName: '骑士', faction: '好人', alive: true }, { seatNo: 3, roleName: '狼人', faction: '狼人', alive: false }],
+    rounds: [{ dayNo: 2, nightDeaths: [], exile: [], skills: [{ kind: 'duel', actorSeatNo: 7, targetSeatNo: 3, result: 'wolf' }] }],
+  })
+  assert.equal(log.people.find((p) => p.person.seatNo === 7).story, '决斗 3 号')
+  assert.equal(log.people.find((p) => p.person.seatNo === 3).story, '被 7 号决斗出局')
+})

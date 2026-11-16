@@ -86,9 +86,10 @@ function aliveWolfSeats(snaps) {
     .map((p) => p.seatNo)
 }
 
-async function runGame({ mode, keyword, count, explode = false }) {
-  console.log(`\n=== ${mode === 'observer' ? '有法官' : '无法官'} · ${keyword} · ${count} 人${explode ? ' · 自爆' : ''} ===`)
+async function runGame({ mode, keyword, count, explode = false, duel = false }) {
+  console.log(`\n=== ${mode === 'observer' ? '有法官' : '无法官'} · ${keyword} · ${count} 人${explode ? ' · 自爆' : ''}${duel ? ' · 决斗' : ''} ===`)
   let explosions = 0
+  let dueled = false
   const run = Date.now().toString(36)
   const board = await findBoard(keyword)
   const host = await login(`e2e-${run}-host`)
@@ -151,6 +152,7 @@ async function runGame({ mode, keyword, count, explode = false }) {
       if (!rows.some((row) => row.night.deaths.some((death) => death.cause))) fail('结束后对局记录没有死因')
       if (log.people.some((row) => !row.role)) fail('结束后按人看有人没身份')
       if (explode && !rows.some((row) => row.day?.events.some((event) => event.tag === '自爆'))) fail('对局记录里没有自爆')
+      if (duel && !rows.some((row) => row.day?.events.some((event) => event.tag === '决斗'))) fail('对局记录里没有决斗')
       return
     }
     if (hostSnap.judgeViewer) {
@@ -184,6 +186,10 @@ async function runGame({ mode, keyword, count, explode = false }) {
         else if (panel.kind === 'seer' || panel.kind === 'psychic') button = nightPanel(s, alive.find((seat) => seat !== s.selfPlayer.seatNo)).buttons[0]
         else if (panel.kind === 'guard') {
           const pick = alive.find((seat) => seat !== s.nightInfo?.lastGuardSeat)
+          button = nightPanel(s, pick).buttons.find((b) => !b.disabled)
+        } else if (panel.kind === 'charm') {
+          // 狼美人：魅惑一个好人（不能是自己，也不能是昨晚那个）
+          const pick = nonWolf.find((seat) => seat !== s.nightInfo?.lastCharmSeat)
           button = nightPanel(s, pick).buttons.find((b) => !b.disabled)
         } else button = panel.buttons[0]
         if (button && !button.disabled) {
@@ -248,6 +254,17 @@ async function runGame({ mode, keyword, count, explode = false }) {
       }
       await advanceOrWait(host, roomId, hostSnap, hostSnap.nightNext ? 'start_night' : 'start_speech')
     } else if (view === 'speech') {
+      // 决斗局：骑士白天决斗一只狼（只报狼人 / 好人，出狼直接天黑）
+      const knight = duel && !dueled ? snaps.findIndex((s) => identityCard(s, board)?.canDuel) : -1
+      if (knight >= 0 && wolves.length) {
+        const result = await act(everyone[knight], `/api/judge/rooms/${roomId}/duel`, { targetSeatNo: wolves[0] }, 'duel')
+        dueled = true
+        const text = result.data?.latestAnnouncement || ''
+        if (!text.includes(`${wolves[0]}号是狼人`)) fail(`决斗出狼的公告不对：${text}`)
+        if ((result.data?.players || []).some((p) => p.seatNo === wolves[0] && p.roleName)) fail('决斗翻了对方的牌')
+        console.log(`  ${snaps[knight].selfPlayer.seatNo} 号决斗：${text}`)
+        continue
+      }
       // 发言人自己点「结束发言」；最后一位说完自动进投票
       await endSpeech(everyone, snaps, roomId, (s) => speechPanel(s).isSpeaker)
     } else if (view === 'vote') {
@@ -332,6 +349,7 @@ if (MODE === 'both' || MODE === 'wolfking') games.push({ mode: 'joined', keyword
 if (MODE === 'both' || MODE === 'explode') games.push({ mode: 'joined', keyword: '预女猎白', count: 12, explode: true })
 if (MODE === 'both' || MODE === 'mechwolf') games.push({ mode: 'joined', keyword: '机械狼通灵师', count: 12 })
 if (MODE === 'both' || MODE === 'guard9') games.push({ mode: 'joined', keyword: '守卫九人局', count: 9 })
+if (MODE === 'both' || MODE === 'beauty') games.push({ mode: 'joined', keyword: '狼美人骑士', count: 12, duel: true })
 for (const game of games) await runGame(game)
 console.log(`\n走过的视图：${[...seen].join(' ')}；房主播报台词出现 ${narrations} 次`)
 console.log(problems.length ? `\n${problems.length} 个问题` : '\n没有发现问题')

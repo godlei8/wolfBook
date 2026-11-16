@@ -9,7 +9,7 @@ import java.util.Random;
  * 出局待办（通用流程 9、12「遗言」）：纯逻辑，读写库在 JudgeService。
  * <ul>
  *   <li>每个出局者一条技能询问（自爆的不问）；选了发动再插一条开枪。</li>
- *   <li>遗言：第一夜死的 120 秒，之后夜里死的没有；白天被放逐、被开枪带走 120 秒；自爆的狼 60 秒；被法官点杀的没有。</li>
+ *   <li>遗言：第一夜死的 120 秒，之后夜里死的没有；白天被放逐、被开枪带走、决斗出局、殉情 120 秒；自爆的狼 60 秒；被法官点杀的没有。</li>
  *   <li>出局的警长一条移交警徽。</li>
  * </ul>
  * 整条队列始终是三段：技能（询问、开枪）→ 遗言（多人随机先后）→ 移交警徽。连锁出局的技能询问排在技能段最前面，
@@ -39,7 +39,11 @@ public final class JudgeLastWords {
         /** 狼人自爆。 */
         SELF_DESTRUCT,
         /** 被法官点杀。 */
-        FORCE_OUT
+        FORCE_OUT,
+        /** 被骑士决斗出局的狼，或决斗输了的骑士。 */
+        DUEL,
+        /** 白天狼美人出局，被她魅惑的人殉情（夜里殉情的按 NIGHT 算）。 */
+        MARTYR
     }
 
     /** 一个出局者：座位、出局方式、是不是警长。 */
@@ -57,7 +61,7 @@ public final class JudgeLastWords {
     public static int seconds(Cause cause, int dayNo) {
         return switch (cause) {
             case NIGHT -> dayNo <= 1 ? LAST_WORDS_SECONDS : 0;
-            case EXILE, SHOT -> LAST_WORDS_SECONDS;
+            case EXILE, SHOT, DUEL, MARTYR -> LAST_WORDS_SECONDS;
             case SELF_DESTRUCT -> SELF_DESTRUCT_LAST_WORDS_SECONDS;
             case FORCE_OUT -> 0;
         };

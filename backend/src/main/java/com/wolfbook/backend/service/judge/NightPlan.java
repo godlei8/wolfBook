@@ -17,8 +17,8 @@ import java.util.Set;
 
 /**
  * 夜里按什么顺序叫谁：板子配了 ruleDetail.nightOrder 就按它走，没配按角色技能机制的优先级排
- * （机械狼 → 守卫 → 狼队 → 女巫 → 预言家 / 通灵师 → 猎人 → 白痴空步），没有机制的角色排在最后、只播报不结算。
- * 狼队合并成一步（机械狼不在里面）；没有夜间行动的角色（平民）和阵容里没有的角色都不叫。
+ * （机械狼 → 守卫 → 狼队 → 女巫 → 预言家 / 通灵师 → 猎人 → 白痴 / 骑士空步），没有机制的角色排在最后、只播报不结算。
+ * 狼队合并成一步（机械狼不在里面），狼队里有狼美人时紧跟一步她单独的魅惑；没有夜间行动的角色（平民）和阵容里没有的角色都不叫。
  * 小程序 utils/judge/night-order.js 是同一套规则，板子详情页还在用它展示顺序。
  */
 public final class NightPlan {
@@ -96,6 +96,13 @@ public final class NightPlan {
                 }
                 wolvesDone = true;
                 steps.add(step(steps.size(), NightKind.WOLF, wolfTeamIds, "狼人", true, dayNo, timing));
+                // 狼美人：和狼队一起刀完，紧接着单独睁眼魅惑（roles/狼美人.md）
+                for (Integer wolfId : wolfTeamIds) {
+                    RoleEntity wolfRole = rolesById.get(wolfId);
+                    if (wolfRole != null && Mechanic.fromCode(wolfRole.getMechanic()).map(Mechanic::charms).orElse(false)) {
+                        steps.add(step(steps.size(), NightKind.CHARM, List.of(wolfId), wolfRole.getName(), false, dayNo, timing));
+                    }
+                }
                 continue;
             }
             NightKind kind = Mechanic.fromCode(role.getMechanic())
@@ -152,6 +159,7 @@ public final class NightPlan {
             case WOLF -> "请确认同伴，选择今晚要击杀的目标。";
             case WITCH -> "今晚他倒下了，你要用解药吗？你要用毒药吗？";
             case SEER, PSYCHIC -> "你要查验谁？";
+            case CHARM -> "你今晚要魅惑谁？";
             case MECH_WOLF -> "请决定今晚的行动。";
             case IDLE -> "请稍候。";
             case HUNTER -> "确认你今晚的开枪状态。";
@@ -162,7 +170,7 @@ public final class NightPlan {
     private static int duration(NightKind kind, int dayNo, JudgeRules timing) {
         return switch (kind) {
             case WOLF -> timing.wolfSeconds() + (dayNo <= 1 ? WOLF_FIRST_NIGHT_EXTRA_SECONDS : 0);
-            case GUARD, WITCH, SEER, PSYCHIC, MECH_WOLF -> timing.roleSeconds();
+            case GUARD, WITCH, SEER, PSYCHIC, MECH_WOLF, CHARM -> timing.roleSeconds();
             case HUNTER -> HUNTER_SECONDS;
             case IDLE -> IDLE_SECONDS;
             default -> GENERIC_SECONDS;

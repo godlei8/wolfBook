@@ -161,6 +161,12 @@ function buttonClass(button) {
             <text class="jn-panel__value">{{ panel.lastText || '点一个座位，再点守护' }}</text>
           </view>
         </block>
+        <block v-else-if="panel.kind === 'charm'">
+          <view class="jn-panel__row">
+            <text class="jn-panel__label">魅惑</text>
+            <text class="jn-panel__value">{{ panel.lastText || '点一个座位，再点魅惑' }}</text>
+          </view>
+        </block>
         <block v-else-if="panel.kind === 'hunter' && panel.shootText">
           <view class="jn-panel__row">
             <text class="jn-panel__label">开枪</text>

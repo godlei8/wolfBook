@@ -161,6 +161,15 @@ public class ApiJudgeController {
         return ApiResponse.success(judgeService.selfDestruct(authorization, roomId));
     }
 
+    @PostMapping("/rooms/{roomId}/duel")
+    public ApiResponse<WolfbookDtos.JudgeRoomSnapshotView> duel(
+            @RequestHeader("Authorization") String authorization,
+            @PathVariable String roomId,
+            @RequestBody WolfbookDtos.JudgeDuelRequest request
+    ) {
+        return ApiResponse.success(judgeService.duel(authorization, roomId, request));
+    }
+
     @PostMapping("/rooms/{roomId}/skill")
     public ApiResponse<WolfbookDtos.JudgeRoomSnapshotView> skill(
             @RequestHeader("Authorization") String authorization,

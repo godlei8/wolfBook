@@ -15,6 +15,7 @@ const NIGHT_HINTS = {
   hunter: '请确认你的开枪状态',
   psychic: '请选择要查验的人',
   mech_wolf: '请决定今晚的行动',
+  charm: '请选择今晚要魅惑的人',
   idle: '请稍候',
 }
 

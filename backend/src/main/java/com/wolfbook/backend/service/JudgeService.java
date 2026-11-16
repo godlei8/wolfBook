@@ -614,12 +614,14 @@ public class JudgeService {
         if (eliminatedSeatNo != null) {
             markPlayersDead(players, List.of(eliminatedSeatNo), room.getCurrentDay(), PHASE_EXILE_VOTE, now);
         }
+        List<Integer> martyrs = eliminatedSeatNo == null ? List.of() : martyrsOf(room, players, List.of(eliminatedSeatNo), PHASE_EXILE_VOTE, now);
 
         Optional<WinJudge.Verdict> verdict = verdictOf(room, players, request.winnerCamp());
         boolean finished = verdict.isPresent();
         String announcement = StringUtils.hasText(request.announcement())
                 ? request.announcement().trim()
                 : (idiotRevealed ? eliminatedSeatNo + "号是白痴，被放逐出局" : buildVoteAnnouncement(eliminatedSeatNo, tallies))
+                + martyrText(martyrs)
                 + verdict.map(value -> "。" + value.reason()).orElse("");
 
         int resolvedDay = support.safeInt(room.getCurrentDay(), 1);
@@ -638,6 +640,7 @@ public class JudgeService {
             room.setPhaseData(support.writeJson(support.mapOf("pkSeats", nextPk, "resolvedFrom", votePhase)));
             if (eliminatedSeatNo != null) {
                 startPending(room, players, List.of(eliminatedSeatNo), JudgeLastWords.Cause.EXILE, now);
+                startPending(room, players, martyrs, JudgeLastWords.Cause.MARTYR, now);
             }
         }
         room.setUpdateTime(now);
@@ -755,6 +758,11 @@ public class JudgeService {
                 status.put("lastGuardSeat", guarded);
                 changed = true;
             }
+            if (support.mechanicOf(player).map(Mechanic::charms).orElse(false)) {
+                // 狼美人：记下今晚魅惑了谁（没魅惑为空），白天她出局时这个人殉情，明晚不能再魅惑他
+                status.put("charmSeat", outcome.charms().get(seat));
+                changed = true;
+            }
             if (changed) {
                 player.setStatusJson(support.writeJson(status));
                 player.setUpdateTime(now);
@@ -769,7 +777,7 @@ public class JudgeService {
      */
     private void validateNightAction(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players, JudgeRoomPlayerEntity actor,
                                      JudgeRoomPlayerEntity target, String action) {
-        NightKind kind = support.nightKindOf(actor);
+        NightKind kind = NightResolver.CHARM.equals(action) ? NightKind.CHARM : support.nightKindOf(actor);
         int dayNo = support.safeInt(room.getCurrentDay(), 1);
         if (room.getNightStep() != null) {
             List<NightPlan.NightStep> steps = support.nightSteps(room, dayNo);
@@ -1382,8 +1390,9 @@ public class JudgeService {
             markPlayersDead(players, List.of(target.getSeatNo()), dayNo, PHASE_SKILL_PENDING, now);
             support.addEvent(roomId, dayNo, PHASE_SKILL_PENDING, actor.getPlayerId(), List.of(target.getPlayerId()), EVENT_HUNTER_SHOT,
                     support.mapOf("actorSeatNo", seat, "targetSeatNo", target.getSeatNo()), Map.of(), VISIBILITY_PUBLIC, now);
+            List<Integer> martyrs = martyrsOf(room, players, List.of(target.getSeatNo()), PHASE_SKILL_PENDING, now);
             // 猎人、狼王同一句公告：场上只能从发言判断是谁开的枪
-            room.setLatestAnnouncement(seat + "号发动技能，带走了" + target.getSeatNo() + "号");
+            room.setLatestAnnouncement(seat + "号发动技能，带走了" + target.getSeatNo() + "号" + martyrText(martyrs));
             Optional<WinJudge.Verdict> verdict = verdictOf(room, players, null);
             if (verdict.isPresent()) {
                 finishByVerdict(room, verdict.get(), room.getLatestAnnouncement() + "。" + verdict.get().reason(), now);
@@ -1393,6 +1402,9 @@ public class JudgeService {
             }
             // 被带走的人：技能询问排在技能段最前面（连锁），白天被带走有遗言，是警长最后移交警徽
             pending = arrangePending(pending, 0, players, List.of(target.getSeatNo()), JudgeLastWords.Cause.SHOT, room);
+            if (!martyrs.isEmpty()) {
+                pending = arrangePending(pending, 0, players, martyrs, JudgeLastWords.Cause.MARTYR, room);
+            }
         } else if (PENDING_LAST_WORDS.equals(kind)) {
             // 本人点「结束遗言」、房主跳过或到点：公告恢复成遗言开始前的那句
             String before = support.asString(current.get("announcementBefore"));
@@ -1428,7 +1440,13 @@ public class JudgeService {
             } else if (PHASE_VOTE_RESULT.equals(resume)) {
                 setPhaseClock(room, JudgeDayClock.RESULT_SECONDS, now);
             } else {
-                room.setStepDeadline(support.parseDeadline(Map.of("deadline", support.safeText(support.asString(phaseData.get("resumeDeadline")), ""))));
+                LocalDateTime resumeAt = support.parseDeadline(Map.of("deadline", support.safeText(support.asString(phaseData.get("resumeDeadline")), "")));
+                if (resumeAt == null && (PHASE_DAY_SPEECH.equals(resume) || PHASE_SHERIFF_SPEECH.equals(resume))) {
+                    // 发言时有人出局（决斗输了的骑士）：当前这一位重新计时
+                    restartSpeaker(room, players, resume, now);
+                } else {
+                    room.setStepDeadline(resumeAt);
+                }
             }
             phaseData.remove("pending");
             phaseData.remove("resumePhase");
@@ -1494,18 +1512,28 @@ public class JudgeService {
         int dayNo = support.safeInt(room.getCurrentDay(), 1);
         int seat = actor.getSeatNo();
         boolean second = sheriffDeferred(room.getRoomId());
-        markPlayersDead(players, List.of(seat), dayNo, PHASE_SHERIFF_SPEECH, now);
         support.addEvent(room.getRoomId(), dayNo, PHASE_SHERIFF_SPEECH, actor.getPlayerId(), List.of(), EVENT_SELF_DESTRUCT,
                 support.mapOf("actorSeatNo", seat, "duringSheriff", true), Map.of(), VISIBILITY_PUBLIC, now);
+        outOnStage(room, players, seat, second, seat + "号自爆", JudgeLastWords.Cause.SELF_DESTRUCT, now);
+    }
+
+    /**
+     * 警上发言时一只狼出局（自爆，或被骑士决斗出）：第一次 → 竞选推迟到明天；延期的那次竞选里再出现 → 警徽流失。
+     * 先公布昨夜死讯（死者照常处理技能、遗言），停在公布死讯，到点天黑。second 要在记这次事件之前算。
+     */
+    private void outOnStage(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players, int seat, boolean second, String line,
+                            JudgeLastWords.Cause cause, LocalDateTime now) {
+        int dayNo = support.safeInt(room.getCurrentDay(), 1);
+        markPlayersDead(players, List.of(seat), dayNo, PHASE_SHERIFF_SPEECH, now);
         String prefix;
         if (second) {
             support.addEvent(room.getRoomId(), dayNo, PHASE_DAY_ANNOUNCE, null, List.of(), EVENT_SHERIFF_RESOLVED,
                     support.mapOf("candidates", support.onStage(players)),
                     support.mapOf("tallies", List.of(), "electedSeatNo", null, "lost", true),
                     VISIBILITY_PUBLIC, now);
-            prefix = seat + "号自爆，警徽流失。";
+            prefix = line + "，警徽流失。";
         } else {
-            prefix = seat + "号自爆，警长竞选推迟到明天。";
+            prefix = line + "，警长竞选推迟到明天。";
         }
         // 昨夜死讯没公布前死者在库里还活着：自爆的人要是在昨夜死者里，只算他自爆这一次出局
         Map<String, Object> phaseData = new LinkedHashMap<>(support.readMap(room.getPhaseData()));
@@ -1516,18 +1544,164 @@ public class JudgeService {
         room.setStepDeadline(null);
         enterDayAnnounce(room, players, prefix, now, true);
         if (ROOM_STATUS_PLAYING.equals(room.getRoomStatus())) {
-            // 自爆的狼 60 秒遗言，和昨夜死者的待办排在同一条队列里（技能 → 遗言随机 → 警徽）
-            startPending(room, players, List.of(seat), JudgeLastWords.Cause.SELF_DESTRUCT, now);
+            // 出局的狼的遗言（自爆 60 秒、被决斗 120 秒），和昨夜死者的待办排在同一条队列里（技能 → 遗言随机 → 警徽）
+            startPending(room, players, List.of(seat), cause, now);
         }
     }
 
-    /** 竞选延到了今天：有过警上自爆、还没有竞选结果（当选或流失）。 */
+    /** 竞选延到了今天：有过警上自爆（或警上被骑士决斗出的狼）、还没有竞选结果（当选或流失）。 */
     private boolean sheriffDeferred(String roomId) {
         List<JudgeActionEventEntity> events = support.loadEvents(roomId);
-        boolean explodedOnStage = events.stream().anyMatch(event -> EVENT_SELF_DESTRUCT.equals(event.getActionType())
-                && Boolean.TRUE.equals(support.readMap(event.getPayloadJson()).get("duringSheriff")));
+        boolean explodedOnStage = events.stream().anyMatch(event -> {
+            Map<String, Object> payload = support.readMap(event.getPayloadJson());
+            boolean onStage = Boolean.TRUE.equals(payload.get("duringSheriff"));
+            return onStage && (EVENT_SELF_DESTRUCT.equals(event.getActionType())
+                    || (EVENT_DUEL.equals(event.getActionType()) && "wolf".equals(payload.get("result"))));
+        });
         boolean resolved = events.stream().anyMatch(event -> EVENT_SHERIFF_RESOLVED.equals(event.getActionType()));
         return explodedOnStage && !resolved;
+    }
+
+    /**
+     * 骑士决斗（roles/骑士.md）：整局一次，警上发言或白天发言时。全场只知道对方是狼人还是好人，不翻牌。
+     * 对方是狼人：他出局（有遗言），直接天黑；在警上则和警上自爆一样（竞选推迟到明天，延期的那次里再出现就警徽流失）。
+     * 被决斗死的狼美人不殉情。对方是好人：骑士出局（有遗言），白天接着走。
+     */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public WolfbookDtos.JudgeRoomSnapshotView duel(String authorization, String roomId, WolfbookDtos.JudgeDuelRequest request) {
+        roomId = support.resolveRoomId(roomId);
+        String openid = support.requireOpenid(authorization);
+        tick(roomId);
+        support.lockRoom(roomId);
+        JudgeRoomEntity room = support.getRoom(roomId);
+        requireNotPaused(room);
+        JudgeRoomPlayerEntity self = support.findPlayer(roomId, openid);
+        if (!support.canDuel(room, self)) {
+            throw new ApiException(4003, "你现在不能决斗");
+        }
+        List<JudgeRoomPlayerEntity> players = support.loadPlayers(roomId);
+        JudgeRoomPlayerEntity knight = support.findSeatPlayer(players, self.getSeatNo());
+        JudgeRoomPlayerEntity target = requireAliveSeat(players, request == null ? null : request.targetSeatNo());
+        if (Objects.equals(target.getSeatNo(), knight.getSeatNo())) {
+            throw new ApiException(4000, "不能和自己决斗");
+        }
+        String phase = room.getCurrentPhase();
+        LocalDateTime now = LocalDateTime.now(APP_ZONE);
+        int dayNo = support.safeInt(room.getCurrentDay(), 1);
+        int knightSeat = knight.getSeatNo();
+        int targetSeat = target.getSeatNo();
+        boolean wolf = "狼人".equals(target.getFaction());
+        boolean onStage = PHASE_SHERIFF_SPEECH.equals(phase);
+        boolean second = onStage && wolf && sheriffDeferred(roomId);
+        Map<String, Object> status = new LinkedHashMap<>(support.readMap(knight.getStatusJson()));
+        status.put("duelUsed", true);
+        knight.setStatusJson(support.writeJson(status));
+        knight.setUpdateTime(now);
+        judgeRoomPlayerMapper.updateById(knight);
+        support.addEvent(roomId, dayNo, phase, knight.getPlayerId(), List.of(target.getPlayerId()), EVENT_DUEL,
+                support.mapOf("actorSeatNo", knightSeat, "targetSeatNo", targetSeat, "result", wolf ? "wolf" : "good", "duringSheriff", onStage),
+                Map.of(), VISIBILITY_PUBLIC, now);
+        String line = knightSeat + "号决斗" + targetSeat + "号，" + targetSeat + "号是" + (wolf ? "狼人" : "好人");
+        if (wolf && onStage) {
+            outOnStage(room, players, targetSeat, second, line, JudgeLastWords.Cause.DUEL, now);
+        } else {
+            int outSeat = wolf ? targetSeat : knightSeat;
+            markPlayersDead(players, List.of(outSeat), dayNo, phase, now);
+            String announcement = line + "，" + outSeat + "号出局";
+            Optional<WinJudge.Verdict> verdict = verdictOf(room, players, null);
+            if (verdict.isPresent()) {
+                finishByVerdict(room, verdict.get(), announcement + "。" + verdict.get().reason(), now);
+            } else {
+                if (wolf) {
+                    // 和白天自爆一样：遗言（是警长再移交警徽）处理完直接天黑
+                    room.setStepDeadline(null);
+                    room.setPhaseData(support.writeJson(support.mapOf("nightAfterPending", true)));
+                } else {
+                    dropSpeaker(room, knightSeat, now);
+                }
+                room.setLatestAnnouncement(announcement);
+                startPending(room, players, List.of(outSeat), JudgeLastWords.Cause.DUEL, now);
+            }
+        }
+        room.setUpdateTime(now);
+        support.updateRoomGuarded(room, ROOM_STATUS_PLAYING, phase);
+        return assembler.buildSnapshot(openid, roomId);
+    }
+
+    /**
+     * 发言时骑士决斗输了出局：还没轮到他就从发言顺序里拿掉，PK 名单里也拿掉；昨夜死讯还没公布（第一天警上）时不再算他昨夜死。
+     * 正在发言的是他：待办处理完从下一位接着说（截止时间设成现在）；别人在发言：待办处理完这一位重新计时（截止时间清空）。
+     */
+    private void dropSpeaker(JudgeRoomEntity room, int seat, LocalDateTime now) {
+        Map<String, Object> phaseData = new LinkedHashMap<>(support.readMap(room.getPhaseData()));
+        Map<String, Object> speech = speechOf(room);
+        List<Integer> order = new ArrayList<>(support.asIntegerList(speech.get("order")));
+        int index = support.safeInt(support.asPositiveIntegerOrZero(speech.get("index")), 0);
+        int position = order.indexOf(seat);
+        if (position > index) {
+            order.remove(position);
+            speech.put("order", order);
+            phaseData.put("speech", speech);
+        }
+        List<Integer> pk = new ArrayList<>(support.asIntegerList(phaseData.get("pkSeats")));
+        if (pk.remove(Integer.valueOf(seat))) {
+            phaseData.put("pkSeats", pk);
+        }
+        if (phaseData.containsKey("pendingDeaths")) {
+            List<Integer> pendingDeaths = new ArrayList<>(support.asIntegerList(phaseData.get("pendingDeaths")));
+            pendingDeaths.remove(Integer.valueOf(seat));
+            phaseData.put("pendingDeaths", pendingDeaths);
+        }
+        room.setPhaseData(support.writeJson(phaseData));
+        room.setStepDeadline(position >= 0 && position == index ? now : null);
+    }
+
+    /** 待办处理完回到发言：当前这一位重新计时；已经说完了就照常往下走（下一次惰性推进换人或进投票）。 */
+    private void restartSpeaker(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players, String phase, LocalDateTime now) {
+        Map<String, Object> speech = speechOf(room);
+        List<Integer> order = support.asIntegerList(speech.get("order"));
+        int index = support.safeInt(support.asPositiveIntegerOrZero(speech.get("index")), 0);
+        if (index >= order.size()) {
+            room.setStepDeadline(now);
+            return;
+        }
+        Integer sheriffSeat = players.stream()
+                .filter(player -> Boolean.TRUE.equals(player.getSheriff()) && Boolean.TRUE.equals(player.getAlive()))
+                .map(JudgeRoomPlayerEntity::getSeatNo).findFirst().orElse(null);
+        setPhaseClock(room, speechSeconds(room, phase, order.get(index), sheriffSeat), now);
+    }
+
+    /**
+     * 狼美人出局（被决斗的除外）：被她最近一夜魅惑的人殉情（roles/狼美人.md）。殉情的人当场标死、不能开枪，记一条公开事件；
+     * 返回他们的座位，调用方和出局者一起写进公告、排进待办。夜里结算时的殉情在 NightResolver。
+     */
+    private List<Integer> martyrsOf(JudgeRoomEntity room, List<JudgeRoomPlayerEntity> players, List<Integer> outSeats, String phase,
+                                    LocalDateTime now) {
+        int dayNo = support.safeInt(room.getCurrentDay(), 1);
+        List<Integer> martyrs = new ArrayList<>();
+        for (Integer seat : outSeats) {
+            JudgeRoomPlayerEntity beauty = support.findSeatPlayer(players, seat);
+            if (beauty == null || !support.mechanicOf(beauty).map(Mechanic::charms).orElse(false)) {
+                continue;
+            }
+            Integer charmed = support.asPositiveInteger(support.readMap(beauty.getStatusJson()).get("charmSeat"));
+            JudgeRoomPlayerEntity target = charmed == null ? null : support.findSeatPlayer(players, charmed);
+            if (target == null || !Boolean.TRUE.equals(target.getPlaying()) || !Boolean.TRUE.equals(target.getAlive())) {
+                continue;
+            }
+            Map<String, Object> status = new LinkedHashMap<>(support.readMap(target.getStatusJson()));
+            status.put("canShoot", false);
+            target.setStatusJson(support.writeJson(status));
+            markPlayersDead(players, List.of(charmed), dayNo, phase, now);
+            support.addEvent(room.getRoomId(), dayNo, phase, null, List.of(target.getPlayerId()), EVENT_MARTYR,
+                    support.mapOf("actorSeatNo", seat, "targetSeatNo", charmed), Map.of(), VISIBILITY_PUBLIC, now);
+            martyrs.add(charmed);
+        }
+        return martyrs;
+    }
+
+    private String martyrText(List<Integer> martyrs) {
+        return martyrs.isEmpty() ? "" : "，" + seatsText(martyrs) + "殉情";
     }
 
     private void requireNotPaused(JudgeRoomEntity room) {
@@ -1599,13 +1773,16 @@ public class JudgeService {
         markPlayersDead(players, List.of(target.getSeatNo()), dayNo, phase, now);
         support.addEvent(room.getRoomId(), dayNo, phase, null, List.of(target.getPlayerId()), EVENT_FORCE_OUT,
                 support.mapOf("targetSeatNo", target.getSeatNo()), Map.of(), VISIBILITY_PUBLIC, now);
-        String announcement = target.getSeatNo() + "号被法官判罚出局";
+        List<Integer> martyrs = martyrsOf(room, players, List.of(target.getSeatNo()), phase, now);
+        String announcement = target.getSeatNo() + "号被法官判罚出局" + martyrText(martyrs);
         room.setLatestAnnouncement(announcement);
         Optional<WinJudge.Verdict> verdict = verdictOf(room, players, null);
         if (verdict.isPresent()) {
             finishByVerdict(room, verdict.get(), announcement + "。" + verdict.get().reason(), now);
         } else {
             startPending(room, players, List.of(target.getSeatNo()), JudgeLastWords.Cause.FORCE_OUT, now);
+            startPending(room, players, martyrs,
+                    PHASE_NIGHT_ACTION.equals(phase) ? JudgeLastWords.Cause.NIGHT : JudgeLastWords.Cause.MARTYR, now);
         }
         room.setUpdateTime(now);
         support.updateRoomGuarded(room, ROOM_STATUS_PLAYING, phase);

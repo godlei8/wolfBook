@@ -61,8 +61,11 @@ class BackendApplicationTests {
         // 守卫九人局：狼人、预言家、女巫、守卫、平民都登记了 → 可以开无法官
         mockMvc.perform(get("/api/boards/3"))
                 .andExpect(jsonPath("$.data.judgeSupportLevel").value("full"));
-        // 狼美人骑士：狼美人、骑士还没有机制 → 只能有法官
+        // 狼美人骑士：狼美人、骑士有了机制 → 可以开无法官
         mockMvc.perform(get("/api/boards/1"))
+                .andExpect(jsonPath("$.data.judgeSupportLevel").value("full"));
+        // 白狼王骑士：白狼王还没有机制 → 只能有法官
+        mockMvc.perform(get("/api/boards/4"))
                 .andExpect(jsonPath("$.data.judgeSupportLevel").value("partial"));
     }
 
@@ -1167,11 +1170,11 @@ class BackendApplicationTests {
     }
 
     @Test
-    void mechanicsEndpointListsTheTenMechanics() throws Exception {
+    void mechanicsEndpointListsTheTwelveMechanics() throws Exception {
         String adminToken = loginAndGetAdminToken();
         mockMvc.perform(get("/admin/roles/mechanics").header("Authorization", "Bearer " + adminToken))
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.length()").value(10))
+                .andExpect(jsonPath("$.data.length()").value(12))
                 .andExpect(jsonPath("$.data[?(@.code == 'mech_wolf')].nightPriority").value(0))
                 .andExpect(jsonPath("$.data[?(@.code == 'mech_wolf')].wolfTeam").value(false))
                 .andExpect(jsonPath("$.data[?(@.code == 'psychic')].label").value("通灵师"))
@@ -1192,7 +1195,9 @@ class BackendApplicationTests {
                 .andExpect(jsonPath("$.data[?(@.name == '白痴')].mechanic").value("idiot"))
                 .andExpect(jsonPath("$.data[?(@.name == '机械狼')].mechanic").value("mech_wolf"))
                 .andExpect(jsonPath("$.data[?(@.name == '通灵师')].mechanic").value("psychic"))
-                .andExpect(jsonPath("$.data[?(@.name == '骑士')].mechanic").value(org.hamcrest.Matchers.contains((Object) null)));
+                .andExpect(jsonPath("$.data[?(@.name == '骑士')].mechanic").value("knight"))
+                .andExpect(jsonPath("$.data[?(@.name == '狼美人')].mechanic").value("wolf_beauty"))
+                .andExpect(jsonPath("$.data[?(@.name == '白狼王')].mechanic").value(org.hamcrest.Matchers.contains((Object) null)));
     }
 
     @Test

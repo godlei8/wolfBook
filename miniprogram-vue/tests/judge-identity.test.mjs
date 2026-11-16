@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { identityCard } from '../src/utils/judge/identity.js'
+import { duelTargets, identityCard } from '../src/utils/judge/identity.js'
 
 const board = { roles: [{ name: '猎人', faction: '好人', fullIllustration: '/hunter.png', themeColor: '#C08A2D' }] }
 const room = (self, extra = {}) => ({ roomStatus: 'playing', judgeViewer: false, selfPlayer: self, ...extra })
@@ -29,4 +29,14 @@ test('onlyTheSnapshotDecidesTheSelfDestructButton', () => {
   assert.equal(identityCard(room(wolf, { dayInfo: { canSelfDestruct: true } }), board).canSelfDestruct, true)
   assert.equal(identityCard(room(wolf, { dayInfo: { canSelfDestruct: false } }), board).canSelfDestruct, false)
   assert.equal(identityCard(room(wolf, { dayInfo: null }), board).canSelfDestruct, false)
+})
+
+test('theKnightsDuelButtonAndTargets', () => {
+  // roles/骑士.md：决斗按钮和自爆一样只放在身份弹层；对象是除自己外活着的人
+  const knight = { seatNo: 7, roleName: '骑士', faction: '好人', alive: true }
+  const players = [{ seatNo: 1, nickname: '阿岚', alive: true }, { seatNo: 3, nickname: '', alive: false }, { seatNo: 7, nickname: '我', alive: true }, { seatNo: 9, nickname: '小鱼', alive: true }]
+  const snapshot = room(knight, { dayInfo: { canDuel: true }, players })
+  assert.equal(identityCard(snapshot, board).canDuel, true)
+  assert.equal(identityCard(room(knight, { dayInfo: { canDuel: false }, players }), board).canDuel, false)
+  assert.deepEqual(duelTargets(snapshot), [{ seatNo: 1, label: '1 号 阿岚' }, { seatNo: 9, label: '9 号 小鱼' }])
 })

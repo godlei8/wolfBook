@@ -24,6 +24,7 @@ import java.util.TreeSet;
  *   <li>学到女巫的机械狼的毒：谁也挡不住，女巫看不到。</li>
  *   <li>被毒死的猎人 / 狼王 / 学到猎人的机械狼不能开枪（被刀照样能开）。</li>
  *   <li>机械狼学到的技能从下一晚起生效（学到猎人的开枪除外）。</li>
+ *   <li>狼美人：狼队不能刀她；当晚死了（被毒），被她今晚魅惑的人殉情，殉情的猎人不能开枪。白天的殉情在 JudgeService。</li>
  * </ul>
  */
 public final class NightResolver {
@@ -36,6 +37,7 @@ public final class NightResolver {
     public static final String CHECK = "check";
     public static final String LEARN = "learn";
     public static final String CONFIRM = "confirm";
+    public static final String CHARM = "charm";
     public static final String NONE = "none";
 
     private static final String FACTION_WOLF = "狼人";
@@ -50,11 +52,18 @@ public final class NightResolver {
      */
     public record SeatState(int seat, String roleName, String faction, Mechanic mechanic, boolean alive, boolean antidoteLeft,
                             boolean poisonLeft, Integer lastGuardSeat, Mechanic learned, String learnedRoleName, Integer learnedDay,
-                            boolean mechPoisonLeft) {
+                            boolean mechPoisonLeft, Integer lastCharmSeat) {
 
         public SeatState(int seat, String roleName, String faction, Mechanic mechanic, boolean alive, boolean antidoteLeft,
                          boolean poisonLeft, Integer lastGuardSeat) {
-            this(seat, roleName, faction, mechanic, alive, antidoteLeft, poisonLeft, lastGuardSeat, null, null, null, true);
+            this(seat, roleName, faction, mechanic, alive, antidoteLeft, poisonLeft, lastGuardSeat, null, null, null, true, null);
+        }
+
+        public SeatState(int seat, String roleName, String faction, Mechanic mechanic, boolean alive, boolean antidoteLeft,
+                         boolean poisonLeft, Integer lastGuardSeat, Mechanic learned, String learnedRoleName, Integer learnedDay,
+                         boolean mechPoisonLeft) {
+            this(seat, roleName, faction, mechanic, alive, antidoteLeft, poisonLeft, lastGuardSeat, learned, learnedRoleName, learnedDay,
+                    mechPoisonLeft, null);
         }
     }
 
@@ -65,11 +74,11 @@ public final class NightResolver {
     /**
      * 结算结果。knifeSeat 是普通刀口（女巫看到的那个）；deadSeats 按座位号排序；
      * feedback 是只发给本人的信息（预言家：好人 / 狼人；通灵师：角色名；女巫：刀口；机械狼学习：对方身份）；
-     * cannotShoot 是今晚死了、出局后不能开枪的座位；learnedTonight 是今晚学了技能的机械狼。
+     * cannotShoot 是今晚死了、出局后不能开枪的座位；learnedTonight 是今晚学了技能的机械狼；charms 是今晚狼美人魅惑了谁（狼美人座位 → 被魅惑的座位）。
      */
     public record Outcome(Integer knifeSeat, List<Integer> deadSeats, Map<Integer, String> feedback, Set<Integer> cannotShoot,
                           Set<Integer> antidoteUsedBy, Set<Integer> poisonUsedBy, Map<Integer, Learned> learnedTonight,
-                          Set<Integer> mechPoisonUsedBy, Map<Integer, List<String>> causes) {
+                          Set<Integer> mechPoisonUsedBy, Map<Integer, List<String>> causes, Map<Integer, Integer> charms) {
     }
 
     /** 死因（对局记录用，只在结束后公开）：被刀、同守同救、破盾刀、被毒、弹毒（反弹给女巫）、机械狼的毒。 */
@@ -79,6 +88,8 @@ public final class NightResolver {
     public static final String CAUSE_POISON = "poison";
     public static final String CAUSE_BOUNCE = "bounce";
     public static final String CAUSE_MECH_POISON = "mech_poison";
+    /** 狼美人死了，被她魅惑的人殉情。 */
+    public static final String CAUSE_MARTYR = "martyr";
 
     private NightResolver() {
     }
@@ -163,8 +174,14 @@ public final class NightResolver {
         Set<Integer> mechPoisonUsedBy = new TreeSet<>();
         Map<Integer, Learned> learnedTonight = new LinkedHashMap<>();
         Map<Integer, String> feedback = new LinkedHashMap<>();
+        Map<Integer, Integer> charms = new LinkedHashMap<>();
         for (Submission submission : submissions) {
             SeatState actor = seats.get(submission.actorSeat());
+            if (submission.kind() == NightKind.CHARM && CHARM.equals(submission.action()) && actor != null && actor.mechanic() == Mechanic.WOLF_BEAUTY
+                    && submission.targetSeat() != null && submission.targetSeat() != actor.seat()
+                    && !Objects.equals(actor.lastCharmSeat(), submission.targetSeat())) {
+                charms.put(actor.seat(), submission.targetSeat());
+            }
             if (submission.kind() == NightKind.WOLF && (KILL.equals(submission.action()) || NONE.equals(submission.action()))) {
                 // 明确空刀记成 null，和别人的目标不一致就是没统一
                 wolfPicks.add(KILL.equals(submission.action()) ? submission.targetSeat() : null);
@@ -276,8 +293,19 @@ public final class NightResolver {
             addCause(causes, mechPoisoned, CAUSE_MECH_POISON);
         }
 
-        // 3. 不能开枪：被毒死的开枪角色
-        Set<Integer> cannotShoot = new TreeSet<>();
+        // 狼美人当晚死了：被她今晚魅惑的人殉情（殉情的猎人不能开枪）
+        Set<Integer> martyrs = new TreeSet<>();
+        for (Map.Entry<Integer, Integer> charm : charms.entrySet()) {
+            SeatState charmed = seats.get(charm.getValue());
+            if (dead.contains(charm.getKey()) && charmed != null && charmed.alive() && !dead.contains(charmed.seat())) {
+                dead.add(charmed.seat());
+                martyrs.add(charmed.seat());
+                addCause(causes, charmed.seat(), CAUSE_MARTYR);
+            }
+        }
+
+        // 3. 不能开枪：被毒死的开枪角色、殉情的人
+        Set<Integer> cannotShoot = new TreeSet<>(martyrs);
         for (Integer seat : dead) {
             SeatState target = seats.get(seat);
             if (target == null) {
@@ -317,7 +345,7 @@ public final class NightResolver {
 
         return new Outcome(knife, List.copyOf(dead), Map.copyOf(feedback), Set.copyOf(cannotShoot),
                 Set.copyOf(antidoteUsedBy), Set.copyOf(poisonUsedBy), Map.copyOf(learnedTonight), Set.copyOf(mechPoisonUsedBy),
-                Map.copyOf(causes));
+                Map.copyOf(causes), Map.copyOf(charms));
     }
 
     private static void addCause(Map<Integer, List<String>> causes, int seat, String cause) {
@@ -349,6 +377,20 @@ public final class NightResolver {
             case GUARD -> {
                 if (Objects.equals(actor.lastGuardSeat(), target.seat())) {
                     throw new ApiException(4000, "不能连续两晚守护同一个人");
+                }
+            }
+            case WOLF -> {
+                // roles/狼美人.md：不能自刀（狼队不能刀狼美人）
+                if (KILL.equals(action) && target.mechanic() == Mechanic.WOLF_BEAUTY) {
+                    throw new ApiException(4000, "狼美人不能自刀");
+                }
+            }
+            case CHARM -> {
+                if (actor.seat() == target.seat()) {
+                    throw new ApiException(4000, "不能魅惑自己");
+                }
+                if (Objects.equals(actor.lastCharmSeat(), target.seat())) {
+                    throw new ApiException(4000, "不能连续两晚魅惑同一个人");
                 }
             }
             case WITCH -> {

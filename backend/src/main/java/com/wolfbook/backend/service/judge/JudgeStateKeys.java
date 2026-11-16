@@ -22,10 +22,12 @@ public final class JudgeStateKeys {
 
     /**
      * 座位 status_json：antidote / poison 女巫的药；lastGuardSeat 上一夜守的人（守卫、学到守卫的机械狼）；
-     * canShoot 出局时能不能开枪；mechLearned / mechLearnedRole / mechLearnedDay / mechPoison 机械狼学到的技能。
+     * canShoot 出局时能不能开枪；mechLearned / mechLearnedRole / mechLearnedDay / mechPoison 机械狼学到的技能；
+     * charmSeat 狼美人最近一夜魅惑的人（这一夜没魅惑为 null；当天出局时他殉情，下一夜不能再魅惑他）；duelUsed 骑士决斗过了。
      */
     public static final Set<String> SEAT_STATUS = Set.of(
-            "antidote", "poison", "lastGuardSeat", "canShoot", "mechLearned", "mechLearnedRole", "mechLearnedDay", "mechPoison");
+            "antidote", "poison", "lastGuardSeat", "canShoot", "mechLearned", "mechLearnedRole", "mechLearnedDay", "mechPoison",
+            "charmSeat", "duelUsed");
 
     private JudgeStateKeys() {
     }

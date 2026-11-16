@@ -28,6 +28,17 @@ class NightPlanTests {
             15, role(15, "织梦人", "好人", null)
     );
 
+    /** 24 狼美人骑士的阵容。 */
+    private static final Map<Integer, RoleEntity> ROLES24 = Map.of(
+            1, role(1, "预言家", "好人", "seer"),
+            2, role(2, "女巫", "好人", "witch"),
+            4, role(4, "守卫", "好人", "guard"),
+            6, role(6, "狼人", "狼人", "wolf"),
+            9, role(9, "平民", "好人", "villager"),
+            24, role(24, "狼美人", "狼人", "wolf_beauty"),
+            25, role(25, "骑士", "好人", "knight")
+    );
+
     /** 改了名字的角色：引擎只看机制。 */
     private static final Map<Integer, RoleEntity> RENAMED = Map.of(
             31, role(31, "预见者", "好人", "seer"),
@@ -57,6 +68,20 @@ class NightPlanTests {
                 List.of(new BoardRoleRef(6, 2), new BoardRoleRef(10, 1), new BoardRoleRef(1, 1)), ROLES, 1);
         assertEquals(List.of(NightKind.WOLF, NightKind.SEER), steps.stream().map(NightPlan.NightStep::kind).toList());
         assertEquals(List.of(6, 10), steps.get(0).roleIds());
+    }
+
+    @Test
+    void theBeautyKnifesWithTheWolvesThenCharmsAlone() {
+        // 24 狼美人骑士：守卫 → 狼人 + 狼美人 → 狼美人 → 女巫 → 预言家 → 骑士（空步）
+        List<NightPlan.NightStep> steps = NightPlan.build(BoardRuleDetail.empty(),
+                List.of(new BoardRoleRef(9, 4), new BoardRoleRef(1, 1), new BoardRoleRef(2, 1), new BoardRoleRef(25, 1),
+                        new BoardRoleRef(4, 1), new BoardRoleRef(6, 3), new BoardRoleRef(24, 1)), ROLES24, 1);
+        assertEquals(List.of(NightKind.GUARD, NightKind.WOLF, NightKind.CHARM, NightKind.WITCH, NightKind.SEER, NightKind.IDLE),
+                steps.stream().map(NightPlan.NightStep::kind).toList());
+        assertTrue(steps.get(1).roleIds().containsAll(List.of(6, 24)), "狼美人和狼人一起刀");
+        assertEquals(List.of(24), steps.get(2).roleIds());
+        assertEquals("狼美人", steps.get(2).roleName());
+        assertEquals("骑士", steps.get(5).roleName());
     }
 
     @Test

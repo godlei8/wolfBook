@@ -61,6 +61,23 @@ class RoleSkillRegistryTests {
     }
 
     @Test
+    void wolfBeautyKnightBoardIsFull() {
+        // 24 狼美人骑士：狼美人跟狼队一起刀、不能自爆；骑士夜里是空步、白天能决斗
+        assertEquals(JudgeSupportLevels.FULL, RoleSkillRegistry.supportLevel(List.of(
+                role("平民", "好人", "villager"), role("预言家", "好人", "seer"), role("女巫", "好人", "witch"),
+                role("骑士", "好人", "knight"), role("守卫", "好人", "guard"), role("狼人", "狼人", "wolf"),
+                role("狼美人", "狼人", "wolf_beauty"))));
+        assertTrue(Mechanic.WOLF_BEAUTY.wolfTeam());
+        assertEquals(NightKind.WOLF, Mechanic.WOLF_BEAUTY.nightKind());
+        assertFalse(Mechanic.WOLF_BEAUTY.canSelfDestruct());
+        assertTrue(Mechanic.WOLF_BEAUTY.charms());
+        assertEquals(NightKind.IDLE, Mechanic.KNIGHT.nightKind());
+        assertTrue(Mechanic.KNIGHT.canDuel());
+        assertFalse(Mechanic.WOLF.canDuel());
+        assertFalse(Mechanic.WOLF.charms());
+    }
+
+    @Test
     void onlyHunterAndWolfKingCanShoot() {
         assertTrue(Mechanic.HUNTER.canShoot());
         assertFalse(Mechanic.WOLF.canShoot());

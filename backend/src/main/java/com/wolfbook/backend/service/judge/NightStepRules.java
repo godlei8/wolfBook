@@ -20,6 +20,7 @@ public final class NightStepRules {
     }
 
     private static final Set<String> WOLF_STEP_ACTIONS = Set.of(NightResolver.KILL, NightResolver.NONE);
+    private static final Set<String> CHARM_STEP_ACTIONS = Set.of(NightResolver.CHARM, NightResolver.NONE);
 
     private NightStepRules() {
     }
@@ -40,6 +41,10 @@ public final class NightStepRules {
     public static Verdict check(NightPlan.NightStep step, Mechanic mechanic, String action) {
         if (step.kind() == NightKind.WOLF) {
             return WOLF_STEP_ACTIONS.contains(action) ? Verdict.OK : Verdict.NOT_ALLOWED;
+        }
+        if (step.kind() == NightKind.CHARM) {
+            // 狼美人自己那一步只魅惑（刀口在狼人那一步）
+            return CHARM_STEP_ACTIONS.contains(action) ? Verdict.OK : Verdict.NOT_ALLOWED;
         }
         if (mechanic == null) {
             return Verdict.OK;

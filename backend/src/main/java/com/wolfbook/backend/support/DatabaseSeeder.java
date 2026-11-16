@@ -120,11 +120,12 @@ public class DatabaseSeeder {
         saveRole(14, "通灵师", null, "好人", "神职", "可通过灵视获取额外身份信息，常见于高配板。", "信息神的一种，擅长补足预言家之外的查验链。", faq("通灵师和预言家定位一样吗？", "都偏信息位，但触发方式和信息结构通常不同。"), "https://picsum.photos/seed/spiritseer/300/300", "https://picsum.photos/seed/spiritseerfull/700/900");
     }
 
-    /** 种子角色里引擎认识的 8 个写上技能机制（骑士、狼美人这些还没有机制）。 */
+    /** 种子角色里引擎认识的写上技能机制（白狼王、石像鬼这些还没有机制）。 */
     private void seedRoleMechanics() {
         Map<String, String> mechanics = Map.ofEntries(Map.entry("守卫", "guard"), Map.entry("狼人", "wolf"), Map.entry("女巫", "witch"),
                 Map.entry("预言家", "seer"), Map.entry("猎人", "hunter"), Map.entry("白痴", "idiot"), Map.entry("平民", "villager"),
-                Map.entry("黑狼王", "wolf_king"), Map.entry("机械狼", "mech_wolf"), Map.entry("通灵师", "psychic"));
+                Map.entry("黑狼王", "wolf_king"), Map.entry("机械狼", "mech_wolf"), Map.entry("通灵师", "psychic"),
+                Map.entry("狼美人", "wolf_beauty"), Map.entry("骑士", "knight"));
         for (RoleEntity role : roleMapper.selectList(null)) {
             String mechanic = mechanics.get(role.getName());
             if (mechanic != null) {
@@ -135,7 +136,7 @@ public class DatabaseSeeder {
     }
 
     private void seedBoards() {
-        saveBoard(1, "狼美人骑士", 12, "进阶", List.of("经典", "高配"), "https://picsum.photos/seed/board1/900/600", List.of("狼美人死亡后会与被魅惑对象发生联动。", "骑士白天可翻牌决斗一名玩家。", "骑士决斗失败会直接出局。"), List.of("警上信息密度很高，优先看发言连贯性。", "骑士不要过早出刀口视角。"), faq("狼美人可以不发动技能吗？", "可以，视具体轮次收益而定。"), "屠边", "功能板", List.of(roleRef(6, 3), roleRef(7, 1), roleRef(1, 1), roleRef(2, 1), roleRef(5, 1), roleRef(4, 1), roleRef(8, 1), roleRef(9, 3)));
+        saveBoard(1, "狼美人骑士", 12, "进阶", List.of("经典", "高配"), "https://picsum.photos/seed/board1/900/600", List.of("狼美人死亡后会与被魅惑对象发生联动。", "骑士白天可翻牌决斗一名玩家。", "骑士决斗失败会直接出局。"), List.of("警上信息密度很高，优先看发言连贯性。", "骑士不要过早出刀口视角。"), faq("狼美人可以不发动技能吗？", "可以，视具体轮次收益而定。"), "屠边", "功能板", List.of(roleRef(6, 3), roleRef(7, 1), roleRef(1, 1), roleRef(2, 1), roleRef(5, 1), roleRef(4, 1), roleRef(9, 4)));
         saveBoard(2, "预女猎白", 12, "入门", List.of("经典", "教学"), "https://picsum.photos/seed/board2/900/600", List.of("标准配置，适合入门局和复盘训练。", "白痴翻牌后失去投票权。"), List.of("教学局可优先记录投票链。"), faq("首夜刀口和银水冲突怎么处理？", "优先结合女巫信息和次日发言判断。"), "屠边", "标准板", List.of(roleRef(6, 4), roleRef(1, 1), roleRef(2, 1), roleRef(3, 1), roleRef(8, 1), roleRef(9, 4)));
         saveBoard(3, "守卫九人局", 9, "入门", List.of("娱乐", "快节奏"), "https://picsum.photos/seed/board3/900/600", List.of("九人局发言轮次短，更看票型。", "守卫与女巫不可形成双药强保。"), List.of("适合移动端快速记录与复盘。"), faq("九人局需要警上发言吗？", "建议保留警上发言，信息收益更高。"), "屠边", "短局", List.of(roleRef(6, 3), roleRef(1, 1), roleRef(2, 1), roleRef(4, 1), roleRef(9, 3)));
         saveRuleDetail(2, new BoardRuleDetail(

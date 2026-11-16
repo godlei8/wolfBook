@@ -52,12 +52,13 @@ const DONE_TEXT = {
   guard: (target) => `已守 ${seatText(target)}`,
   learn: (target) => `学习 ${seatText(target)}`,
   kill_pierce: (target) => `已出破盾刀 ${seatText(target)}`,
+  charm: (target) => `已魅惑 ${seatText(target)}`,
   none: () => '已确认',
   confirm: () => '已确认',
 }
 
 // 「不行动」按角色说清楚做了什么（实测问题 5）
-const PASS_TEXT = { guard: '今晚空守', witch: '今晚不用药', mech_wolf: '今晚不行动' }
+const PASS_TEXT = { guard: '今晚空守', witch: '今晚不用药', mech_wolf: '今晚不行动', charm: '今晚不魅惑' }
 
 function doneText(info, kind) {
   if (info?.myAction === 'none' && PASS_TEXT[kind]) return PASS_TEXT[kind]
@@ -223,6 +224,22 @@ export function nightPanel(snapshot, selection = 0) {
       lastText: last ? `昨晚守了 ${seatText(last)}，今晚不能连守` : '',
       done,
       buttons: done ? [] : [guard, { action: 'none', label: '空守', target: null, disabled: false }],
+    }
+  }
+
+  if (kind === 'charm') {
+    // roles/狼美人.md：除自己外谁都能魅惑（包括狼队友），不能连续两晚魅惑同一人
+    const last = info.lastCharmSeat || null
+    const charm = selection && selection === self.seatNo
+      ? { action: 'charm', label: '不能魅惑自己', target: selection, disabled: true }
+      : selection && selection === last
+        ? { action: 'charm', label: `不能连续魅惑 ${seatText(selection)}`, target: selection, disabled: true }
+        : targetButton('charm', '魅惑', selection)
+    return {
+      kind,
+      lastText: last ? `昨晚魅惑了 ${seatText(last)}，今晚不能再魅惑他` : '',
+      done,
+      buttons: done ? [] : [charm, { action: 'none', label: '不魅惑', target: null, disabled: false }],
     }
   }
 

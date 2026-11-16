@@ -513,7 +513,7 @@ class JudgeFlowIntegrationTests {
         String created = mockMvc.perform(post("/api/judge/rooms")
                         .header("Authorization", "Bearer " + host)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"boardId\":1,\"judgeMode\":\"joined\"}"))
+                        .content("{\"boardId\":4,\"judgeMode\":\"joined\"}"))
                 .andReturn().getResponse().getContentAsString();
         Assertions.assertEquals(4000, objectMapper.readTree(created).path("code").asInt(), created);
     }
@@ -2427,7 +2427,7 @@ class JudgeFlowIntegrationTests {
 
     // ---- 零场外扫描：对局中每个玩家的快照里不能有别人的身份、只给法官或别人的记录、别人的夜间私密信息 ----
 
-    private static final java.util.Set<String> WOLF_TEAM = java.util.Set.of("狼人", "黑狼王", "狼王");
+    private static final java.util.Set<String> WOLF_TEAM = java.util.Set.of("狼人", "黑狼王", "狼王", "狼美人");
 
     /** 扫一遍所有入座玩家此刻的快照。 */
     private void assertNoLeaks(Game game) throws Exception {
@@ -2495,6 +2495,9 @@ class JudgeFlowIntegrationTests {
         if (!"猎人".equals(myRole)) {
             Assertions.assertTrue(info.path("canShoot").isNull() || info.path("canShoot").isMissingNode(), where + "看到了猎人的开枪状态");
         }
+        if (!"狼美人".equals(myRole)) {
+            Assertions.assertTrue(info.path("lastCharmSeat").isNull() || info.path("lastCharmSeat").isMissingNode(), where + "看到了狼美人魅惑的人");
+        }
         if (!"通灵师".equals(myRole) && !"机械狼".equals(myRole)) {
             Assertions.assertTrue(info.path("identityResult").isNull() || info.path("identityResult").isMissingNode(), where + "看到了验人结果");
         }
@@ -2527,6 +2530,10 @@ class JudgeFlowIntegrationTests {
                 int checker = roles.get(role).get(0);
                 game.call(game.players.get(checker - 1), "/night-action", "{\"actionType\":\"check\",\"targetSeatNo\":" + roles.get("狼人").get(0) + "}");
                 assertNoLeaks(game);
+            } else if ("charm".equals(kind)) {
+                int beauty = roles.get("狼美人").get(0);
+                game.call(game.players.get(beauty - 1), "/night-action", "{\"actionType\":\"charm\",\"targetSeatNo\":" + roles.get("平民").get(1) + "}");
+                assertNoLeaks(game);
             } else if ("mech_wolf".equals(kind)) {
                 int mech = roles.get("机械狼").get(0);
                 game.call(game.players.get(mech - 1), "/night-action", "{\"actionType\":\"learn\",\"targetSeatNo\":" + roles.get("女巫").get(0) + "}");
@@ -2535,6 +2542,237 @@ class JudgeFlowIntegrationTests {
             game.expireDeadline();
         }
         Assertions.assertTrue(maxDay >= 2, "扫描至少要走到第二天，现在只到第 " + maxDay + " 天");
+    }
+
+    // ---- 狼美人骑士（种子板子 1，docs/judge/house-rules/24-狼美人骑士.md）----
+
+    private static final int BEAUTY_BOARD_ID = 1;
+
+    private Game beautyGame(boolean sheriff) throws Exception {
+        Game game = lobbyGame("{\"boardId\":" + BEAUTY_BOARD_ID + ",\"judgeMode\":\"observer\",\"autoJudge\":true,\"sheriffEnabled\":" + sheriff + "}", 12);
+        game.readyAll();
+        game.start();
+        return game;
+    }
+
+    /** 狼队（狼人 + 狼美人）里活着的都刀 target。 */
+    private void beautyWolvesKill(Game game, int target) throws Exception {
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        JsonNode view = game.snapshot(game.host);
+        List<Integer> wolves = new ArrayList<>(seats.get("狼人"));
+        wolves.addAll(seats.get("狼美人"));
+        for (int wolf : wolves) {
+            if (game.player(view, wolf).path("alive").asBoolean()) {
+                game.act(wolf, "kill", target);
+            }
+        }
+    }
+
+    /** 一直到点，直到进入 phase（最多 30 步）。 */
+    private JsonNode untilPhase(Game game, String phase) throws Exception {
+        JsonNode view = game.snapshot(game.host);
+        for (int i = 0; i < 30 && !phase.equals(view.path("currentPhase").asText()); i++) {
+            view = game.expireDeadline();
+        }
+        Assertions.assertEquals(phase, view.path("currentPhase").asText(), view.toString());
+        return view;
+    }
+
+    private boolean aliveInDb(Game game, int seat) {
+        Boolean alive = jdbcTemplate.queryForObject("SELECT alive FROM judge_room_players WHERE room_id = ? AND seat_no = ?",
+                Boolean.class, game.roomId, seat);
+        return Boolean.TRUE.equals(alive);
+    }
+
+    private JsonNode duel(Game game, int knight, int target) throws Exception {
+        return game.call(game.players.get(knight - 1), "/duel", "{\"targetSeatNo\":" + target + "}");
+    }
+
+    @Test
+    void wolfBeautyKnightBoardIsFullAndJoinable() throws Exception {
+        String board = mockMvc.perform(get("/api/boards/" + BEAUTY_BOARD_ID)).andReturn().getResponse().getContentAsString();
+        Assertions.assertEquals("full", objectMapper.readTree(board).path("data").path("judgeSupportLevel").asText(), board);
+        Game game = joinedGame(BEAUTY_BOARD_ID, 12);
+        Assertions.assertEquals("playing", game.snapshot(game.host).path("roomStatus").asText());
+    }
+
+    @Test
+    void theBeautyKnifesWithTheWolvesAndCharmsInHerOwnStep() throws Exception {
+        Game game = beautyGame(false);
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int beauty = seats.get("狼美人").get(0);
+        int wolf = seats.get("狼人").get(0);
+        int villager = seats.get("平民").get(0);
+        untilStep(game, "wolf");
+        Assertions.assertTrue(game.snapshot(game.players.get(beauty - 1)).path("nightInfo").path("teammateSeats").toString().contains(String.valueOf(wolf)),
+                "狼美人和狼人互相认识");
+        Assertions.assertEquals(4000, game.call(game.players.get(wolf - 1), "/night-action",
+                "{\"actionType\":\"kill\",\"targetSeatNo\":" + beauty + "}").path("code").asInt(), "狼队不能刀狼美人");
+        Assertions.assertEquals(4000, game.call(game.players.get(beauty - 1), "/night-action",
+                "{\"actionType\":\"charm\",\"targetSeatNo\":" + villager + "}").path("code").asInt(), "魅惑不在狼人那一步");
+        game.act(beauty, "kill", villager);
+        untilStep(game, "charm");
+        Assertions.assertEquals(4003, game.call(game.players.get(wolf - 1), "/night-action",
+                "{\"actionType\":\"charm\",\"targetSeatNo\":" + villager + "}").path("code").asInt(), "只有狼美人这一步能动");
+        Assertions.assertEquals(4000, game.call(game.players.get(beauty - 1), "/night-action",
+                "{\"actionType\":\"charm\",\"targetSeatNo\":" + beauty + "}").path("code").asInt(), "不能魅惑自己");
+        game.act(beauty, "charm", wolf);
+        JsonNode info = game.snapshot(game.players.get(beauty - 1)).path("nightInfo");
+        Assertions.assertEquals("charm", info.path("myAction").asText(), info.toString());
+        Assertions.assertEquals(wolf, info.path("myTarget").asInt(), "可以魅惑狼队友");
+    }
+
+    @Test
+    void theCharmedDiesWithAPoisonedBeauty() throws Exception {
+        Game game = beautyGame(false);
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int beauty = seats.get("狼美人").get(0);
+        int knifed = seats.get("平民").get(0);
+        int charmed = seats.get("平民").get(1);
+        untilStep(game, "wolf");
+        beautyWolvesKill(game, knifed);
+        untilStep(game, "charm");
+        game.act(beauty, "charm", charmed);
+        untilStep(game, "witch");
+        game.act(seats.get("女巫").get(0), "poison", beauty);
+        untilPhase(game, "day_announce");
+        Assertions.assertFalse(aliveInDb(game, beauty));
+        Assertions.assertFalse(aliveInDb(game, charmed), "被魅惑的人殉情");
+        Assertions.assertFalse(aliveInDb(game, knifed));
+        JsonNode judgeRound = game.snapshot(game.host).path("rounds").path(0);
+        Assertions.assertEquals("martyr", judgeRound.path("deathCauses").path(String.valueOf(charmed)).path(0).asText(), judgeRound.toString());
+    }
+
+    @Test
+    void theBeautyCannotCharmTheSamePersonTwoNightsInARow() throws Exception {
+        Game game = beautyGame(false);
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int beauty = seats.get("狼美人").get(0);
+        int charmed = seats.get("平民").get(0);
+        untilStep(game, "charm");
+        game.act(beauty, "charm", charmed);
+        untilPhase(game, "day_speech");
+        toNextNight(game);
+        untilStep(game, "charm");
+        Assertions.assertEquals(charmed, game.snapshot(game.players.get(beauty - 1)).path("nightInfo").path("lastCharmSeat").asInt());
+        JsonNode again = game.call(game.players.get(beauty - 1), "/night-action", "{\"actionType\":\"charm\",\"targetSeatNo\":" + charmed + "}");
+        Assertions.assertEquals(4000, again.path("code").asInt(), again.toString());
+        game.act(beauty, "charm", seats.get("平民").get(1));
+    }
+
+    @Test
+    void anExiledBeautyTakesTheCharmedWithHer() throws Exception {
+        Game game = beautyGame(false);
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int beauty = seats.get("狼美人").get(0);
+        int charmed = seats.get("预言家").get(0);
+        untilStep(game, "charm");
+        game.act(beauty, "charm", charmed);
+        untilPhase(game, "exile_vote");
+        for (int seat = 1; seat <= 12; seat++) {
+            if (seat != beauty) {
+                game.vote(seat, beauty);
+            }
+        }
+        JsonNode result = game.expireDeadline();
+        Assertions.assertFalse(aliveInDb(game, beauty));
+        Assertions.assertFalse(aliveInDb(game, charmed), "白天狼美人出局，被魅惑的人跟着殉情");
+        Assertions.assertTrue(result.path("latestAnnouncement").asText().contains(charmed + "号殉情"), result.toString());
+        int villager = seats.get("平民").get(0);
+        boolean publicMartyr = false;
+        for (JsonNode event : game.snapshot(game.players.get(villager - 1)).path("timeline")) {
+            publicMartyr |= "martyr".equals(event.path("actionType").asText());
+        }
+        Assertions.assertTrue(publicMartyr, "殉情是公开的");
+    }
+
+    @Test
+    void aKnightWhoFindsAWolfSendsEveryoneToNight() throws Exception {
+        Game game = beautyGame(false);
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int knight = seats.get("骑士").get(0);
+        int wolf = seats.get("狼人").get(0);
+        int villager = seats.get("平民").get(0);
+        untilPhase(game, "day_speech");
+        Assertions.assertTrue(game.snapshot(game.players.get(knight - 1)).path("dayInfo").path("canDuel").asBoolean(), "骑士发言时能决斗");
+        Assertions.assertFalse(game.snapshot(game.players.get(villager - 1)).path("dayInfo").path("canDuel").asBoolean());
+        Assertions.assertEquals(4003, duel(game, villager, wolf).path("code").asInt(), "只有骑士能决斗");
+        Assertions.assertEquals(4000, duel(game, knight, knight).path("code").asInt(), "不能和自己决斗");
+        JsonNode response = duel(game, knight, wolf);
+        Assertions.assertEquals(0, response.path("code").asInt(), response.toString());
+        Assertions.assertFalse(aliveInDb(game, wolf));
+        Assertions.assertTrue(aliveInDb(game, knight));
+        String announcement = response.path("data").path("latestAnnouncement").asText();
+        Assertions.assertTrue(response.path("data").path("currentPhase").asText().equals("skill_pending"), response.toString());
+        JsonNode afterWords = game.skipPending();
+        Assertions.assertEquals("night_action", afterWords.path("currentPhase").asText(), "决斗出狼，直接天黑：" + announcement);
+        Assertions.assertFalse(game.snapshot(game.players.get(villager - 1)).toString().contains("\"roleName\":\"狼人\""), "只报狼人好人，不翻牌");
+        untilPhase(game, "day_speech");
+        Assertions.assertFalse(game.snapshot(game.players.get(knight - 1)).path("dayInfo").path("canDuel").asBoolean(), "整局一次");
+        Assertions.assertEquals(4003, duel(game, knight, seats.get("狼人").get(1)).path("code").asInt());
+    }
+
+    @Test
+    void aKnightWhoPicksAGoodPlayerDiesAndTheDayGoesOn() throws Exception {
+        Game game = beautyGame(false);
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int knight = seats.get("骑士").get(0);
+        int villager = seats.get("平民").get(0);
+        untilPhase(game, "day_speech");
+        JsonNode response = duel(game, knight, villager);
+        Assertions.assertEquals(0, response.path("code").asInt(), response.toString());
+        Assertions.assertFalse(aliveInDb(game, knight), "对方是好人，骑士出局");
+        Assertions.assertTrue(aliveInDb(game, villager));
+        Assertions.assertTrue(response.path("data").path("latestAnnouncement").asText().contains(villager + "号是好人"), response.toString());
+        JsonNode back = game.skipPending();
+        Assertions.assertEquals("day_speech", back.path("currentPhase").asText(), "骑士留完遗言，白天接着发言");
+        JsonNode speech = back.path("speech");
+        List<Integer> left = new ArrayList<>();
+        for (int i = speech.path("index").asInt() + 1; i < speech.path("order").size(); i++) {
+            left.add(speech.path("order").path(i).asInt());
+        }
+        Assertions.assertFalse(left.contains(knight), "出局的骑士不再轮到发言：" + speech);
+        Assertions.assertNotNull(back.path("phaseDeadline").asText(null), "当前发言的人重新计时");
+    }
+
+    @Test
+    void aDueledBeautyTakesNoOneWithHer() throws Exception {
+        Game game = beautyGame(false);
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int beauty = seats.get("狼美人").get(0);
+        int knight = seats.get("骑士").get(0);
+        int charmed = seats.get("平民").get(0);
+        untilStep(game, "charm");
+        game.act(beauty, "charm", charmed);
+        untilPhase(game, "day_speech");
+        Assertions.assertEquals(0, duel(game, knight, beauty).path("code").asInt());
+        Assertions.assertFalse(aliveInDb(game, beauty));
+        Assertions.assertTrue(aliveInDb(game, charmed), "被决斗死的狼美人不殉情");
+    }
+
+    @Test
+    void aKnightWhoFindsAWolfOnStagePostponesTheElection() throws Exception {
+        Game game = beautyGame(true);
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int knight = seats.get("骑士").get(0);
+        int wolf = seats.get("狼人").get(0);
+        untilPhase(game, "sheriff_signup");
+        game.sheriff(knight, "{\"candidate\":true}");
+        game.sheriff(wolf, "{\"candidate\":true}");
+        untilPhase(game, "sheriff_speech");
+        JsonNode response = duel(game, knight, wolf);
+        Assertions.assertEquals(0, response.path("code").asInt(), response.toString());
+        Assertions.assertTrue(response.path("data").path("latestAnnouncement").asText().contains("警长竞选推迟到明天")
+                        || "skill_pending".equals(response.path("data").path("currentPhase").asText()),
+                "警上决斗出狼和警上自爆一样，竞选推迟：" + response);
+        Assertions.assertFalse(aliveInDb(game, wolf));
+        JsonNode night = toNextNight(game);
+        Assertions.assertEquals(2, night.path("currentDay").asInt(), night.toString());
+    }
+
+    @Test
+    void noPlayerSeesAnotherPlayersSecretsOnTheWolfBeautyKnightBoard() throws Exception {
+        playAndScan(beautyGame(false), 60);
     }
 
     @Test

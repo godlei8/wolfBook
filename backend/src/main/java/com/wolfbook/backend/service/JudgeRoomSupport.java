@@ -127,6 +127,10 @@ public class JudgeRoomSupport {
     static final String EVENT_JUDGE_PAUSED = "judge_paused";
     static final String EVENT_JUDGE_RESUMED = "judge_resumed";
     static final String EVENT_SELF_DESTRUCT = "self_destruct";
+    /** 骑士决斗（公开）：谁决斗谁、对方是狼人（wolf）还是好人（good）、是不是在警上。 */
+    static final String EVENT_DUEL = "duel";
+    /** 白天狼美人出局，被她魅惑的人殉情（公开）。夜里殉情的在 night_causes 里记成 martyr。 */
+    static final String EVENT_MARTYR = "martyr";
     static final TypeReference<Map<String, Object>> OBJECT_MAP = new TypeReference<>() {
     };
     static final TypeReference<List<String>> STRING_LIST = new TypeReference<>() {
@@ -305,7 +309,9 @@ public class JudgeRoomSupport {
             } else {
                 String label = safeText(asString(payload.get("actionType")), "");
                 String action = safeText(asString(payload.get("action")), RoleSkillRegistry.LEGACY_ACTIONS.getOrDefault(label, label));
-                mine.add(new NightResolver.Submission(actor.getSeatNo(), kind, action, asPositiveInteger(payload.get("targetSeatNo"))));
+                // 狼美人的魅惑是她自己那一步，不算进狼队的刀口
+                NightKind submissionKind = NightResolver.CHARM.equals(action) ? NightKind.CHARM : kind;
+                mine.add(new NightResolver.Submission(actor.getSeatNo(), submissionKind, action, asPositiveInteger(payload.get("targetSeatNo"))));
             }
             bySeat.put(actor.getSeatNo() + ":" + stepIndexOf(payload), mine);
         }
@@ -331,7 +337,8 @@ public class JudgeRoomSupport {
                             Mechanic.fromCode(asString(status.get("mechLearned"))).orElse(null),
                             trimToNull(asString(status.get("mechLearnedRole"))),
                             asPositiveInteger(status.get("mechLearnedDay")),
-                            !Boolean.FALSE.equals(status.get("mechPoison"))
+                            !Boolean.FALSE.equals(status.get("mechPoison")),
+                            asPositiveInteger(status.get("charmSeat"))
                     ));
                 });
         return seats;
@@ -384,6 +391,17 @@ public class JudgeRoomSupport {
                 && ROOM_STATUS_PLAYING.equals(room.getRoomStatus())
                 && Boolean.TRUE.equals(self.getPlaying()) && self.getSeatNo() != null && Boolean.TRUE.equals(self.getAlive())
                 && mechanicOf(self).map(Mechanic::canSelfDestruct).orElse(false)
+                && SELF_DESTRUCT_PHASES.contains(safeText(room.getCurrentPhase(), ""))
+                && !isPaused(room);
+    }
+
+    /** 骑士现在能不能决斗：活着、在警上发言或白天发言、没暂停、整局还没决斗过（roles/骑士.md）。 */
+    boolean canDuel(JudgeRoomEntity room, JudgeRoomPlayerEntity self) {
+        return self != null
+                && ROOM_STATUS_PLAYING.equals(room.getRoomStatus())
+                && Boolean.TRUE.equals(self.getPlaying()) && self.getSeatNo() != null && Boolean.TRUE.equals(self.getAlive())
+                && mechanicOf(self).map(Mechanic::canDuel).orElse(false)
+                && !Boolean.TRUE.equals(readMap(self.getStatusJson()).get("duelUsed"))
                 && SELF_DESTRUCT_PHASES.contains(safeText(room.getCurrentPhase(), ""))
                 && !isPaused(room);
     }
