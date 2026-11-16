@@ -353,11 +353,9 @@ onShow(() => {
       </view>
     </view>
 
+    <!-- 旧版笔记（时间线）只能看和删，不再加新记录；新建的笔记都是座位盘（pages/sessions/board） -->
     <view class="nt-bar sd-tools">
-      <view class="nt-btn nt-btn--ghost sd-tool" @tap="openEditor('seer')">查验</view>
-      <view class="nt-btn nt-btn--gold sd-tool" @tap="openEditor('vote')">投票</view>
-      <view class="nt-btn nt-btn--ghost sd-tool" @tap="openEditor('speech')">发言</view>
-      <view class="nt-btn nt-btn--ghost sd-tool" @tap="openEditor('wolfPack')">狼坑</view>
+      <text class="nt-meta">这是旧版笔记，只能查看。新记一局会用新的座位盘。</text>
     </view>
 
     <view v-if="showEditor" class="sd-mask" @tap="closeEditor">

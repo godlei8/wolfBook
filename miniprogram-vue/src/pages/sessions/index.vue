@@ -7,25 +7,21 @@ import { formatDateTime } from '../../utils/format'
 import { syncTabBar } from '../../utils/tabbar'
 import { showModal } from '../../utils/dialog.js'
 import NtDialogHost from '../../components/NtDialogHost.vue'
+import { noteCard } from '../../utils/notes/list.js'
 
 const sessions = ref([])
 
-const recordTypeMap = {
-  seer: '查验记录',
-  vote: '投票记录',
-  speech: '发言记录',
-  wolfPack: '狼坑分析',
-}
-
+// 新版笔记（座位盘）和旧版笔记（时间线）在同一个列表里，卡片上显示什么、点开去哪一页由 noteCard 定
 function buildSessionView(session) {
-  const records = session.records || []
-  const latestRecord = records.length ? records[records.length - 1] : null
+  const card = noteCard(session)
   return {
     ...session,
     createLabel: formatDateTime(session.createTime),
     updateLabel: formatDateTime(session.updateTime),
-    latestTypeLabel: latestRecord ? recordTypeMap[latestRecord.type] || '最新记录' : '准备开始',
-    latestPreview: latestRecord ? latestRecord.content : '还没有记录，点击进入后就可以补充发言、投票和夜间信息。',
+    url: card.url,
+    countText: card.countText,
+    latestTypeLabel: card.label,
+    latestPreview: card.preview,
   }
 }
 
@@ -42,8 +38,8 @@ function createSession() {
   uni.navigateTo({ url: '/pages/sessions/edit' })
 }
 
-function openSession(id) {
-  uni.navigateTo({ url: `/pages/sessions/detail?id=${id}` })
+function openSession(item) {
+  uni.navigateTo({ url: item.url })
 }
 
 function removeSession(id) {
@@ -79,15 +75,15 @@ onShow(() => {
     </view>
 
     <view class="nt-gutter nt-stack sx-body">
-      <text class="nt-meta">发言、票型和夜间信息记成一条时间线，方便复盘。</text>
+      <text class="nt-meta">在座位上点一点：你猜他是什么、他跳了什么、每天票怎么投的，一眼看全场。</text>
 
       <view v-if="!sessions.length" class="nt-empty">还没有对局笔记。点右上方的「记一局」开始。</view>
 
-      <view v-for="item in sessions" :key="item.sessionId" class="nt-ink sx-card" @tap="openSession(item.sessionId)">
+      <view v-for="item in sessions" :key="item.sessionId" class="nt-ink sx-card" @tap="openSession(item)">
         <view class="sx-card__top">
           <view class="sx-card__tags">
             <text class="nt-tag">{{ item.playerCount }} 人局</text>
-            <text class="nt-tag">{{ (item.records || []).length }} 条记录</text>
+            <text class="nt-tag">{{ item.countText }}</text>
           </view>
           <text class="sx-card__remove" @tap.stop="removeSession(item.sessionId)">删除</text>
         </view>

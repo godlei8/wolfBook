@@ -127,7 +127,7 @@ test('deferredElectionSaysItContinues', () => {
     roomId: 'r1', roomStatus: 'playing', currentPhase: 'sheriff_speech', currentDay: 2, host: true, paused: false,
     speech: { order: [3, 6], index: 0 }, rounds: [], players: [],
   }, NOW)
-  assert.equal(speech.lines[0], '昨天的警长竞选继续')
+  assert.deepEqual(speech.lines.slice(0, 2), ['天亮了', '昨天的警长竞选继续'], '推迟到今天的竞选，这一天也要先喊天亮了')
 })
 
 test('daySpeechExplosionIsAnnouncedAtNightfall', () => {
@@ -141,4 +141,47 @@ test('newNightStepsHaveTheirOwnLines', () => {
   assert.ok(voiceCue(night(0, 'mech_wolf', '机械狼'), NOW).lines.some((line) => line.includes('请决定今晚的行动')))
   assert.ok(voiceCue(night(4, 'psychic', '通灵师'), NOW).lines.some((line) => line.includes('请选择要查验的人')))
   assert.ok(voiceCue(night(5, 'idle', '白痴'), NOW).lines.some((line) => line.includes('请稍候')))
+})
+
+test('dawnIsAnnouncedBeforeTheLastWords', () => {
+  // 昨夜有人出局：房间一天亮就直接进了「留遗言」。房主手机要先喊「天亮了，昨晚 X 号出局」，再喊「请 X 号留遗言」
+  const pending = (extra = {}) => ({
+    roomId: 'r1', roomStatus: 'playing', currentPhase: 'skill_pending', currentDay: 2, host: true, paused: false,
+    rounds: [{ dayNo: 2, nightDeaths: [5], exile: [] }], players: [],
+    currentPending: { kind: 'last_words', seatNo: 5 }, phaseDeadline: '2026-10-30T20:02:00', ...extra,
+  })
+  const dawn = voiceCue(pending(), NOW, [])
+  assert.deepEqual(dawn.lines, ['天亮了', '昨晚 5 号出局'])
+  const announce = voiceCue(pending({ currentPhase: 'day_announce', currentPending: null }), NOW, [])
+  assert.equal(dawn.key, announce.key, '和公布死讯是同一句，说过就不再说')
+
+  const after = voiceCue(pending(), NOW, [dawn.key])
+  assert.deepEqual(after.lines, ['请 5 号留遗言'], '喊完天亮了，下一秒接着喊留遗言')
+
+  // 第一天有上警：竞选完才公布死讯，同样先说结果和死讯，再留遗言
+  const elected = voiceCue(pending({ currentDay: 1, sheriffSeatNo: 4, rounds: [{ dayNo: 1, nightDeaths: [5], exile: [], sheriff: { electedSeatNo: 4 } }] }), NOW, [])
+  assert.deepEqual(elected.lines, ['4 号当选警长', '昨晚 5 号出局'])
+})
+
+test('laterPendingsOfTheDayDoNotAnnounceDawnAgain', () => {
+  // 白天被放逐后的遗言、被带走的人的待办：不是天亮那一次，不再喊天亮了
+  const exiled = {
+    roomId: 'r1', roomStatus: 'playing', currentPhase: 'skill_pending', currentDay: 2, host: true, paused: false,
+    rounds: [{ dayNo: 2, nightDeaths: [], exile: [{ eliminatedSeatNo: 7 }] }], players: [],
+    currentPending: { kind: 'last_words', seatNo: 7 }, phaseDeadline: '2026-10-30T20:09:00',
+  }
+  assert.deepEqual(voiceCue(exiled, NOW, []).lines, ['请 7 号留遗言'])
+  // 警上自爆那天：公告由「X号自爆…」那一句来说，这里不抢
+  const boom = { ...exiled, rounds: [{ dayNo: 2, nightDeaths: [5], exile: [] }], nightNext: true, currentPending: { kind: 'last_words', seatNo: 4 } }
+  assert.deepEqual(voiceCue(boom, NOW, []).lines, ['请 4 号留遗言'])
+  // 不传播过的记录（老的调用方式）时和原来一样，不抢着说
+  assert.deepEqual(voiceCue({ ...exiled, rounds: [{ dayNo: 2, nightDeaths: [5], exile: [] }], currentPending: { kind: 'last_words', seatNo: 5 } }, NOW).lines, ['请 5 号留遗言'])
+})
+
+test('nightfallIsAlwaysAnnounced', () => {
+  // 入夜第一句永远是「天黑请闭眼」，不管这个板子夜里第一个睁眼的是谁
+  for (const [kind, role] of [['wolf', '狼人'], ['guard', '守卫'], ['mech_wolf', '机械狼'], ['idle', '白痴']]) {
+    assert.equal(voiceCue(night(0, kind, role, { currentDay: 3 }), NOW).lines[0], '天黑请闭眼')
+  }
+  assert.ok(!voiceCue(night(1, 'witch', '女巫'), NOW).lines.includes('天黑请闭眼'), '只在入夜那一刻说一次')
 })

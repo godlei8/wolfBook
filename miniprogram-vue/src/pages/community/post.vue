@@ -3,6 +3,7 @@
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import NavBar from '../../components/NavBar.vue'
+import PickSheet from '../../components/PickSheet.vue'
 import api from '../../services/api'
 import storage from '../../services/storage'
 
@@ -37,15 +38,19 @@ async function loadBoards() {
 }
 
 // 选择器第一项是「不关联」，之后是全部板子
-const boardNames = computed(() => ['不关联', ...boards.value.map((item) => item.name)])
-const boardPickerIndex = computed(() => {
-  const index = boards.value.findIndex((item) => item.id === boardId.value)
-  return index >= 0 ? index + 1 : 0
-})
-
-function chooseBoard(event) {
-  const index = Number(event.detail?.value || 0)
-  boardId.value = index === 0 ? 0 : boards.value[index - 1]?.id || 0
+// 关联板子用夜镇样式的底部面板（components/PickSheet.vue），不用系统的白色滚轮。第一项是「不关联」
+const boardPickerOpen = ref(false)
+const boardOptions = computed(() => [
+  { key: 0, label: '不关联', meta: '' },
+  ...boards.value.map((item) => ({
+    key: item.id,
+    label: item.name,
+    meta: item.playerCount ? `${item.playerCount} 人${item.difficulty ? ` · ${item.difficulty}` : ''}` : '',
+  })),
+])
+function chooseBoard(id) {
+  boardId.value = id || 0
+  boardPickerOpen.value = false
 }
 
 function chooseImages() {
@@ -118,15 +123,13 @@ onLoad((options) => {
         <text class="cp-count">{{ content.length }}/500</text>
       </view>
 
-      <picker mode="selector" :range="boardNames" :value="boardPickerIndex" @change="chooseBoard">
-        <view class="nt-row">
-          <view class="cp-board">
-            <text class="nt-label">关联板子</text>
-            <text class="cp-board__name" :class="{ 'c-moon': selectedBoard }">{{ selectedBoard ? selectedBoard.name : '不关联' }}</text>
-          </view>
-          <text class="nt-arrow">›</text>
+      <view class="nt-row" @tap="boardPickerOpen = true">
+        <view class="cp-board">
+          <text class="nt-label">关联板子</text>
+          <text class="cp-board__name" :class="{ 'c-moon': selectedBoard }">{{ selectedBoard ? selectedBoard.name : '不关联' }}</text>
         </view>
-      </picker>
+        <text class="nt-arrow">›</text>
+      </view>
 
       <view class="cp-images">
         <view v-for="(image, index) in images" :key="image" class="cp-image">
@@ -145,6 +148,15 @@ onLoad((options) => {
         {{ submitting ? '发布中…' : '发布到酒馆' }}
       </view>
     </view>
+
+    <PickSheet
+      v-if="boardPickerOpen"
+      title="关联板子"
+      :options="boardOptions"
+      :selected="boardId"
+      @pick="chooseBoard"
+      @close="boardPickerOpen = false"
+    />
   </view>
 </template>
 

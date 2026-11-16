@@ -2,8 +2,11 @@
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import NavBar from '../../components/NavBar.vue'
+import PickSheet from '../../components/PickSheet.vue'
 import api from '../../services/api'
 import userData from '../../services/user-data'
+import { isNoteV2 } from '../../utils/notes/model.js'
+import { newNoteSession } from '../../utils/notes/list.js'
 
 const sessionId = ref('')
 const sessionMode = ref('library')
@@ -57,10 +60,22 @@ function setSessionMode(mode) {
   sessionMode.value = mode
 }
 
-function chooseBoard(event) {
-  const index = Number(event.detail.value)
-  selectedBoardIndex.value = index
-  selectedBoardId.value = boards.value[index]?.id || 0
+// 选板子用夜镇样式的底部面板（components/PickSheet.vue），不用系统的白色滚轮
+const pickerOpen = ref(false)
+const boardOptions = computed(() => boards.value.map((item) => ({
+  key: item.id,
+  label: item.name,
+  meta: `${item.playerCount} 人${item.difficulty ? ` · ${item.difficulty}` : ''}`,
+})))
+
+function openPicker() {
+  if (boards.value.length) pickerOpen.value = true
+}
+
+function chooseBoard(id) {
+  selectedBoardIndex.value = boards.value.findIndex((item) => item.id === id)
+  selectedBoardId.value = id
+  pickerOpen.value = false
 }
 
 function handleCustomBoardNameInput(event) {
@@ -164,15 +179,12 @@ async function saveSession() {
   try {
     const current = sessionId.value ? await userData.getSessionById(sessionId.value) : null
     const now = new Date().toISOString()
-    const session = {
-      sessionId: sessionId.value || makeId('session'),
-      ...base,
-      createTime: current ? current.createTime : now,
-      updateTime: now,
-      records: current ? current.records || [] : [],
-    }
+    // 新建的都是新版笔记（座位盘 + 票型）；改已有笔记的对局信息时记录原样留着
+    const session = current
+      ? { sessionId: sessionId.value, ...base, createTime: current.createTime, updateTime: now, records: current.records || [] }
+      : newNoteSession({ sessionId: makeId('session'), base, board: sessionMode.value === 'library' ? selectedBoard.value : null, now })
     const saved = await userData.saveSession(session)
-    uni.redirectTo({ url: `/pages/sessions/detail?id=${saved.sessionId}` })
+    uni.redirectTo({ url: `/pages/sessions/${isNoteV2(saved) ? 'board' : 'detail'}?id=${saved.sessionId}` })
   } catch (error) {
     saving.value = false
     uni.showToast({ title: error?.message || '保存失败', icon: 'none' })
@@ -236,22 +248,13 @@ onLoad((options) => {
       </view>
 
       <block v-if="sessionMode === 'library'">
-        <picker
-          mode="selector"
-          :range="boards"
-          range-key="pickerLabel"
-          :value="selectedBoardIndex >= 0 ? selectedBoardIndex : 0"
-          :disabled="!boards.length"
-          @change="chooseBoard"
-        >
-          <view class="nt-row">
-            <view class="se-pick">
-              <text class="nt-label">板子</text>
-              <text class="se-pick__value" :class="{ 'c-moon': selectedBoard }">{{ selectedBoardLabel }}</text>
-            </view>
-            <text class="nt-arrow">›</text>
+        <view class="nt-row" @tap="openPicker">
+          <view class="se-pick">
+            <text class="nt-label">板子</text>
+            <text class="se-pick__value" :class="{ 'c-moon': selectedBoard }">{{ selectedBoardLabel }}</text>
           </view>
-        </picker>
+          <text class="nt-arrow">›</text>
+        </view>
         <text v-if="boardLoadError" class="se-error" @tap="loadBoardOptions">{{ boardLoadError }}，点这里重试</text>
 
         <view v-if="selectedBoard" class="nt-ink se-preview">
@@ -325,6 +328,15 @@ onLoad((options) => {
         {{ saving ? '保存中…' : '保存并开始记录' }}
       </view>
     </view>
+
+    <PickSheet
+      v-if="pickerOpen"
+      title="选板子"
+      :options="boardOptions"
+      :selected="selectedBoardId"
+      @pick="chooseBoard"
+      @close="pickerOpen = false"
+    />
   </view>
 </template>
 

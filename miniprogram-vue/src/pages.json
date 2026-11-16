@@ -99,6 +99,12 @@
       }
     },
     {
+      "path": "pages/sessions/board",
+      "style": {
+        "navigationBarTitleText": "对局笔记"
+      }
+    },
+    {
       "path": "pages/user/favorites",
       "style": {
         "navigationBarTitleText": "收藏的板子"

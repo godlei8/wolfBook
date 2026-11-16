@@ -69,6 +69,8 @@ export function createJudgeVoicePlayer() {
       audio.onEnded(handleEnded)
       audio.onError(handleError)
       audio.src = filePath
+      // 播报按满音量放，夜晚背景音乐比它低（utils/judge/bgm.js）
+      audio.volume = 1
       audio.play()
     })
   }

@@ -362,6 +362,13 @@ onShow(() => {
           <text class="nt-arrow">›</text>
         </view>
       </view>
+
+      <!-- 授权要求的署名：夜晚背景音乐是 CC BY 4.0 -->
+      <view class="me-credits">
+        <text class="me-credits__line">夜晚背景音乐："Myst on the Moor" Kevin MacLeod (incompetech.com)</text>
+        <text class="me-credits__line">Licensed under Creative Commons: By Attribution 4.0</text>
+        <text class="me-credits__line">http://creativecommons.org/licenses/by/4.0/</text>
+      </view>
     </view>
 
     <view v-if="profileEditorVisible" class="me-mask" @tap="profileEditorVisible = false">
@@ -719,5 +726,21 @@ onShow(() => {
 
 .me-sheet__half {
   flex: 1;
+}
+
+.me-credits {
+  margin-top: 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4rpx;
+}
+
+.me-credits__line {
+  font-size: 20rpx;
+  line-height: 1.5;
+  color: var(--text-2);
+  opacity: 0.7;
+  text-align: center;
 }
 </style>

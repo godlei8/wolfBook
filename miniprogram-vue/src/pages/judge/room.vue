@@ -2,7 +2,7 @@
 // 电子法官房间页（新流程房间）。页面只管：拉快照和轮询、导航栏、暂停遮罩、把快照交给当前视图组件。
 // 画面上的判断都在 utils/judge/ 下的纯函数里；视图组件放在 ./views/，页面里只嵌一层。
 // 旧流程房间（线上旧版小程序建的，autoJudge = false）跳到 room-legacy 的旧主持台。
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { onHide, onLoad, onShareAppMessage, onShow, onUnload } from '@dcloudio/uni-app'
 import NavBar from '../../components/NavBar.vue'
 import LobbyView from './views/LobbyView.vue'
@@ -14,6 +14,7 @@ import SpeechView from './views/SpeechView.vue'
 import VoteView from './views/VoteView.vue'
 import ResultView from './views/ResultView.vue'
 import LogSheet from './views/LogSheet.vue'
+import NotesBoard from '../../components/NotesBoard.vue'
 import api from '../../services/api'
 import storage from '../../services/storage'
 import { mergePollResult, pollInterval } from '../../utils/judge/room-poll.js'
@@ -24,8 +25,15 @@ import { judgeSeatSheet } from '../../utils/judge/judge-desk.js'
 import { hostActions } from '../../utils/judge/day.js'
 import { rememberCue, retryCue, shouldPlay, voiceCue, withTimeout } from '../../utils/judge/voice-cue.js'
 import { createJudgeVoicePlayer } from '../../utils/judge/voice'
+import { createBgmPlayer, nightBgm } from '../../utils/judge/bgm.js'
+import { NIGHT_BGM_URL } from '../../services/config'
 import { goToUserTab, hasAuthToken } from '../../utils/auth'
 import { showActionSheet, showModal } from '../../utils/dialog.js'
+import userData from '../../services/user-data'
+import { decodeNote, encodeNote, isNoteV2 } from '../../utils/notes/model.js'
+import { createRoomNote, roomNoteId, syncFromSnapshot } from '../../utils/notes/sync.js'
+import { roomSpeaker } from '../../utils/notes/speech.js'
+import { createNoteSaver } from '../../utils/notes/saver.js'
 import NtDialogHost from '../../components/NtDialogHost.vue'
 
 const roomId = ref('')
@@ -45,6 +53,9 @@ let serverOffset = 0
 
 // 房主手机播报：同一个 key 只播一次，播过的 key 存本地（切后台、断网重连回来不重播）
 const voicePlayer = createJudgeVoicePlayer()
+// 夜晚背景音乐：和播报一样只在房主 / 法官的手机上放，跟同一个声音开关走；播报时自动压低
+const bgmPlayer = createBgmPlayer({ url: NIGHT_BGM_URL, createAudio: () => uni.createInnerAudioContext() })
+const hasSound = voicePlayer.supported || Boolean(NIGHT_BGM_URL)
 const voiceOn = ref(true)
 let voicePlaying = false
 let voiceRun = 0
@@ -77,8 +88,114 @@ const menuItems = computed(() => hostMenu(snapshot.value))
 const hostItems = computed(() => hostActions(snapshot.value))
 const hasBar = computed(() => view.value === 'lobby' || hasJudgeBar.value || hostItems.value.length > 0)
 // 点杀：先打开座位面板选人，再二次确认
-// 对局记录面板（右上角常驻入口，白天夜里都能开）
+// 对局记录面板：对局中只有法官顶栏有入口（玩家看笔记），结束后从结果页底部打开
 const logOpen = ref(false)
+
+// 对局笔记（入座的玩家才有，法官没有）：第一次点开才建，建了之后每次快照把公开信息并进去（utils/notes/sync.js，
+// 只读全场都看得到的字段）。夜里每换一步面板自动收起——所有人一样，免得有技能的人埋头记笔记错过自己的行动。
+const NOTE_FLAG = 'wolfbook_room_note:'
+const roomNote = ref(null)
+const notesOpen = ref(false)
+let notesBusy = false
+let notesRestored = false
+let nightStepKey = ''
+const noteSaver = createNoteSaver({ save: (value) => userData.saveSession(encodeNote(value, new Date().toISOString())) })
+const canNote = computed(() => Boolean(snapshot.value?.selfPlayer?.seatNo) && !snapshot.value.judgeViewer && view.value !== 'lobby')
+const noteNames = computed(() => Object.fromEntries(
+  (snapshot.value?.players || []).filter((player) => player.seatNo).map((player) => [player.seatNo, player.nickname || '']),
+))
+const noteAvatars = computed(() => Object.fromEntries(
+  (snapshot.value?.players || []).filter((player) => player.seatNo && player.avatar).map((player) => [player.seatNo, player.avatar]),
+))
+const noteSpeaker = computed(() => roomSpeaker(snapshot.value))
+
+async function loadRoomNote(id) {
+  try {
+    const session = await userData.getSessionById(id)
+    return session && isNoteV2(session) ? decodeNote(session) : null
+  } catch (error) {
+    return null
+  }
+}
+
+function setRoomNote(note) {
+  const synced = syncFromSnapshot(note, snapshot.value)
+  roomNote.value = synced
+  if (synced !== note) noteSaver.touch(synced)
+}
+
+async function openNotes() {
+  if (!canNote.value || notesBusy) return
+  if (!roomNote.value) {
+    notesBusy = true
+    const id = roomNoteId(snapshot.value)
+    const existing = await loadRoomNote(id)
+    const note = existing || createRoomNote(snapshot.value, board.value, new Date().toISOString())
+    setRoomNote(note)
+    if (!existing) noteSaver.touch(roomNote.value)
+    try {
+      uni.setStorageSync(NOTE_FLAG + id, 1)
+    } catch (error) {
+      // 记不住也没关系，下次点开会再去取
+    }
+    notesBusy = false
+  }
+  notesTop.value = 0
+  notesScroll = 0
+  notesHome = null
+  notesOpen.value = true
+}
+
+// 笔记面板自己滚：点开的座位被座位面板挡住时，往上滚一点让那一排停在面板上方
+const notesTop = ref(0)
+let notesScroll = 0
+function onNotesScroll(event) {
+  notesScroll = event.detail?.scrollTop || 0
+}
+let notesHome = null
+function scrollNotesTo(value) {
+  // scroll-top 要先对上现在的位置再改，不然同一个值不会再滚
+  notesTop.value = notesScroll
+  nextTick(() => {
+    notesTop.value = value
+  })
+}
+function onNotesReveal(delta) {
+  if (notesHome === null) notesHome = notesScroll
+  scrollNotesTo(notesScroll + delta)
+}
+// 座位面板收起：滚回点开之前的位置
+function onNotesSettle() {
+  if (notesHome === null) return
+  scrollNotesTo(notesHome)
+  notesHome = null
+}
+
+function onNoteChange(next) {
+  roomNote.value = next
+  noteSaver.touch(next)
+}
+
+// 每次拿到新快照：已经有笔记就并进公开信息；这台手机上记过这个房间，就在后台把笔记取回来接着记
+function followNotes(data) {
+  const stepKey = data.currentPhase === 'night_action' ? `${data.currentDay}:${data.currentStep?.index}` : ''
+  if (stepKey && stepKey !== nightStepKey) notesOpen.value = false
+  nightStepKey = stepKey
+  if (roomNote.value) {
+    setRoomNote(roomNote.value)
+    return
+  }
+  if (notesRestored || !canNote.value) return
+  notesRestored = true
+  const id = roomNoteId(data)
+  let known = false
+  try {
+    known = Boolean(uni.getStorageSync(NOTE_FLAG + id))
+  } catch (error) {
+    known = false
+  }
+  if (known) loadRoomNote(id).then((note) => { if (note && !roomNote.value) setRoomNote(note) })
+}
 
 function safeDecode(value) {
   if (!value) return ''
@@ -144,6 +261,7 @@ function applySnapshot(data) {
   storage.clearPendingJudgeInvite()
   loadBoard(data.boardId)
   narrate()
+  followNotes(data)
 }
 
 async function loadBoard(boardId) {
@@ -233,9 +351,14 @@ function savePlayedKeys() {
   }
 }
 
+function syncBgm() {
+  bgmPlayer.sync(nightBgm(snapshot.value, { on: voiceOn.value && active, url: NIGHT_BGM_URL, speaking: voicePlaying }))
+}
+
 function narrate() {
+  syncBgm()
   if (!voicePlayer.supported || !voiceOn.value || voicePlaying || !active) return
-  const next = voiceCue(snapshot.value, now.value)
+  const next = voiceCue(snapshot.value, now.value, playedKeys)
   if (!shouldPlay(next, playedKeys)) return
   playedKeys = rememberCue(playedKeys, next)
   savePlayedKeys()
@@ -258,8 +381,11 @@ function toggleVoice() {
   voiceOn.value = !voiceOn.value
   if (!voiceOn.value) {
     stopVoice()
+    bgmPlayer.stop()
     return
   }
+  syncBgm()
+  if (!voicePlayer.supported) return
   // 打开时先试播一句：房主当场知道这台手机有没有声音；合成失败、播放失败分开提示
   stopVoice()
   const run = ++voiceRun
@@ -378,7 +504,7 @@ function confirmFinish() {
   })
 }
 
-// 房主右上方的设置菜单：暂停 / 继续游戏、提前结束（播报开关在顶栏）
+// 房主右上方的设置菜单：暂停 / 继续游戏、提前结束（声音开关在顶栏）
 function openMenu() {
   const items = menuItems.value
   if (!items.length) return
@@ -509,7 +635,9 @@ onHide(() => {
   stopPolling()
   stopClock()
   stopVoice()
+  bgmPlayer.stop()
   keepScreenOn(false)
+  noteSaver.flush()
 })
 
 onUnload(() => {
@@ -517,7 +645,9 @@ onUnload(() => {
   stopPolling()
   stopClock()
   voicePlayer.destroy()
+  bgmPlayer.destroy()
   keepScreenOn(false)
+  noteSaver.flush()
 })
 </script>
 
@@ -525,10 +655,12 @@ onUnload(() => {
   <view class="nt-page" :class="{ 'nt-page--bar': hasBar }">
     <NavBar back :title="title">
       <template #side>
-        <text v-if="snapshot && view !== 'lobby'" class="jr-logbtn" @tap="logOpen = true">记录</text>
+        <!-- 玩家看「笔记」（公开信息自动记在里面），不再有「记录」；法官没有笔记，对局中还用「记录」。结束后结果页底部有「对局记录」 -->
+        <text v-if="snapshot && snapshot.judgeViewer && view !== 'lobby' && view !== 'result'" class="jr-logbtn" @tap="logOpen = true">记录</text>
         <text v-if="identity" class="jr-logbtn" @tap="identityOpen = true">身份</text>
+        <text v-if="canNote" class="jr-logbtn" @tap="openNotes">笔记</text>
         <text v-if="snapshot && snapshot.judgeViewer && view !== 'lobby'" class="jr-judgechip">法官</text>
-        <text v-if="snapshot && snapshot.host && voicePlayer.supported" class="jr-logbtn" @tap="toggleVoice">{{ voiceOn ? '播报开' : '播报关' }}</text>
+        <text v-if="snapshot && snapshot.host && hasSound" class="jr-logbtn" @tap="toggleVoice">{{ voiceOn ? '声音开' : '声音关' }}</text>
       </template>
       <template #right>
         <view v-if="menuItems.length" class="jr-gear" aria-label="设置" @tap="openMenu">
@@ -606,6 +738,38 @@ onUnload(() => {
         <text v-if="identity.duel && identity.duel.hint" class="jr-identity__hint">{{ identity.duel.hint }}</text>
         <view class="nt-btn nt-btn--ghost jr-identity__close" @tap="identityOpen = false">盖上</view>
       </view>
+    </view>
+
+    <!-- 对局笔记：和「记录」同级的底部面板。公开信息自动记，自己只点判断 -->
+    <view v-if="notesOpen && roomNote" class="jr-sheet" @tap="notesOpen = false">
+      <scroll-view
+        class="jr-notes"
+        scroll-y
+        scroll-with-animation
+        :show-scrollbar="false"
+        :scroll-top="notesTop"
+        @scroll="onNotesScroll"
+        @tap.stop
+      >
+        <view class="jr-notes__body">
+          <view class="jr-notes__head">
+            <text class="jr-notes__title serif">对局笔记</text>
+            <text class="jr-notes__close" @tap="notesOpen = false">收起</text>
+          </view>
+          <NotesBoard
+            room
+            :note="roomNote"
+            :me="snapshot.selfPlayer.seatNo"
+            :speaking="noteSpeaker"
+            :names="noteNames"
+            :avatars="noteAvatars"
+            :today="snapshot.currentDay || 1"
+            @change="onNoteChange"
+            @reveal="onNotesReveal"
+            @settle="onNotesSettle"
+          />
+        </view>
+      </scroll-view>
     </view>
 
     <NtDialogHost />
@@ -733,6 +897,48 @@ onUnload(() => {
 
 
 
+
+.jr-notes {
+  /* 几乎占满：上面留一条能看到牌桌、点一下收起 */
+  height: 94vh;
+  box-sizing: border-box;
+  background: var(--bg);
+  border-top: 4rpx solid var(--ink);
+  border-radius: 48rpx 48rpx 0 0;
+}
+
+.jr-notes__body {
+  box-sizing: border-box;
+  padding: 24rpx 32rpx calc(env(safe-area-inset-bottom) + 40rpx);
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.jr-notes__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.jr-notes__title {
+  font-size: 34rpx;
+  font-weight: 900;
+}
+
+.jr-notes__close {
+  flex-shrink: 0;
+  height: 64rpx;
+  padding: 0 24rpx;
+  border-radius: 24rpx;
+  border: 3rpx solid var(--ink);
+  background: var(--panel);
+  box-shadow: 3rpx 3rpx 0 var(--ink);
+  display: flex;
+  align-items: center;
+  font-size: 26rpx;
+}
 
 .jr-logbtn {
   margin-left: 12rpx;

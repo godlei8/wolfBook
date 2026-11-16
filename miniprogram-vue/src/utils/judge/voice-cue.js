@@ -43,7 +43,28 @@ function nightCue(snapshot, now) {
   return cue(snapshot, `night:${step.index}`, step.index === 0 ? [exploded || '天黑请闭眼', open] : [open])
 }
 
-function dayCue(snapshot, now) {
+// 天亮公布死讯那一句：「天亮了 / X 号当选警长 / 警徽流失」+「昨晚 X 号出局 / 昨晚是平安夜」。
+// 公布死讯那一步和天亮直接进遗言那一步用同一个 key，说过一次就不再说
+function dawnCue(snapshot) {
+  const panel = announcePanel(snapshot)
+  const round = (snapshot.rounds || []).find((item) => item.dayNo === (snapshot.currentDay || 1))
+  // 当天上过警的话「天亮了」已经在上警前播过
+  const opening = round?.sheriff ? (snapshot.sheriffSeatNo ? `${snapshot.sheriffSeatNo} 号当选警长` : '警徽流失') : '天亮了'
+  return cue(snapshot, 'day_announce', [opening, panel.text])
+}
+
+// 昨夜有人出局时，房间一天亮就直接进了遗言 / 出局技能，没经过「公布死讯」。
+// 这时房主手机要先把天亮那一句说了（还没说过的话），再说「请 X 号留遗言」。
+// 白天放逐之后的待办、警上自爆那天（公告由自爆那一句来说）不算
+function dawnBeforePending(snapshot, playedKeys) {
+  if (!Array.isArray(playedKeys) || snapshot.nightNext) return null
+  const round = (snapshot.rounds || []).find((item) => item.dayNo === (snapshot.currentDay || 1))
+  if (!round?.nightDeaths?.length || round.exile?.length) return null
+  const dawn = dawnCue(snapshot)
+  return dawn && !playedKeys.includes(dawn.key) ? dawn : null
+}
+
+function dayCue(snapshot, now, playedKeys) {
   const phase = snapshot.currentPhase
   switch (phase) {
     case 'sheriff_signup':
@@ -51,9 +72,11 @@ function dayCue(snapshot, now) {
     case 'sheriff_speech': {
       const speaker = speakerOf(snapshot)
       const index = snapshot.speech?.index || 0
-      // 昨天警上有人自爆，今天接着竞选
-      const resumed = (snapshot.currentDay || 1) > 1 && index === 0 ? '昨天的警长竞选继续' : ''
-      return cue(snapshot, `${phase}:${index}`, [resumed, speaker ? `请 ${speaker} 号警上发言` : '警上发言'])
+      // 昨天警上有人自爆，今天一天亮就接着竞选（不经过上警报名），「天亮了」在这里说
+      const resumed = (snapshot.currentDay || 1) > 1 && index === 0
+      return cue(snapshot, `${phase}:${index}`, [
+        resumed ? '天亮了' : '', resumed ? '昨天的警长竞选继续' : '', speaker ? `请 ${speaker} 号警上发言` : '警上发言',
+      ])
     }
     case 'sheriff_vote':
       return cue(snapshot, phase, ['请警下玩家投票选警长'])
@@ -62,11 +85,7 @@ function dayCue(snapshot, now) {
     case 'day_announce': {
       // 警上自爆：先报公告、等遗言，「天黑请闭眼」留给自动天黑之后夜里第一步
       if (snapshot.nightNext) return cue(snapshot, `${phase}:explode`, [snapshot.latestAnnouncement, '请出局的玩家发表遗言'])
-      const panel = announcePanel(snapshot)
-      const round = (snapshot.rounds || []).find((item) => item.dayNo === (snapshot.currentDay || 1))
-      // 当天上过警的话「天亮了」已经在上警前播过
-      const opening = round?.sheriff ? (snapshot.sheriffSeatNo ? `${snapshot.sheriffSeatNo} 号当选警长` : '警徽流失') : '天亮了'
-      return cue(snapshot, phase, [opening, panel.text])
+      return dawnCue(snapshot)
     }
     case 'day_speech': {
       const speaker = speakerOf(snapshot)
@@ -91,26 +110,33 @@ function dayCue(snapshot, now) {
       const today = (snapshot.rounds || []).find((item) => item.dayNo === (snapshot.currentDay || 1))
       return cue(snapshot, `${phase}:${today?.exile?.length || 0}`, [line])
     }
-    case 'skill_pending':
+    case 'skill_pending': {
+      const dawn = dawnBeforePending(snapshot, playedKeys)
+      if (dawn) return dawn
       // 遗言公开：每条遗言轮到时播一次「请 X 号留遗言」
       if (snapshot.currentPending?.kind === 'last_words') {
         return cue(snapshot, `words:${snapshot.currentPending.seatNo}:${snapshot.phaseDeadline || ''}`, [`请 ${snapshot.currentPending.seatNo} 号留遗言`])
       }
       // 房主不是当事人时拿不到 pending；每条待办有自己的截止时间，用它区分同一天的几次待办
       return cue(snapshot, `pending:${snapshot.phaseDeadline || ''}`, ['请出局的玩家在手机上确认'])
+    }
     default:
       return null
   }
 }
 
-export function voiceCue(snapshot, now = Date.now()) {
+/**
+ * 现在该播哪一句。playedKeys 是已经播过的 key：天亮直接进遗言时，用它判断「天亮了」说过没有（不传就不判断）。
+ * 入夜的第一句永远是「天黑请闭眼」（白天有人自爆时由「X号自爆，天黑请闭眼」代替）。
+ */
+export function voiceCue(snapshot, now = Date.now(), playedKeys) {
   if (!snapshot?.host || snapshot.paused) return null
   if (snapshot.roomStatus === 'finished') {
     const verdict = verdictText(snapshot)
     return { key: `${snapshot.roomId}:finished`, lines: ['游戏结束', verdict.reason || verdict.title] }
   }
   if (snapshot.roomStatus !== 'playing') return null
-  return snapshot.currentPhase === 'night_action' ? nightCue(snapshot, now) : dayCue(snapshot, now)
+  return snapshot.currentPhase === 'night_action' ? nightCue(snapshot, now) : dayCue(snapshot, now, playedKeys)
 }
 
 /** 播放超时就放弃（来电、别的应用抢走音频时 onEnded 可能永远不来），不让播报整局卡住。 */
