@@ -198,4 +198,12 @@ test('theKnightsAndTheDueledsStories', () => {
   })
   assert.equal(log.people.find((p) => p.person.seatNo === 7).story, '决斗 3 号')
   assert.equal(log.people.find((p) => p.person.seatNo === 3).story, '被 7 号决斗出局')
+  // 被决斗的好人也记一笔（骑士出局，他还活着）
+  const good = gameLog({
+    roomStatus: 'finished',
+    players: [{ seatNo: 7, roleName: '骑士', faction: '好人', alive: false }, { seatNo: 2, roleName: '平民', faction: '好人', alive: true }],
+    rounds: [{ dayNo: 1, nightDeaths: [], exile: [], skills: [{ kind: 'duel', actorSeatNo: 7, targetSeatNo: 2, result: 'good' }] }],
+  })
+  assert.equal(good.people.find((p) => p.person.seatNo === 2).story, '被 7 号决斗')
+  assert.equal(good.people.find((p) => p.person.seatNo === 7).story, '决斗 2 号 · 第 1 天决斗出局')
 })

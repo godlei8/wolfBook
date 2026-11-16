@@ -15,10 +15,16 @@ export function isWolfTeam(role) {
   return role.faction === '狼人' && !SOLO_WOLVES.includes(name)
 }
 
+/** 狼美人：和狼队一起刀，刀完单独睁眼魅惑（和后端 NightPlan 的 CHARM 一步一致）。 */
+function isBeauty(role) {
+  return role?.mechanic === 'wolf_beauty' || (role?.roleName || role?.name) === '狼美人'
+}
+
 /** 某一步对应的行动类型。 */
 export function stepKind(step) {
   if (!step) return 'generic'
   if (step.team === 'wolf') return 'wolf'
+  if (step.charm) return 'charm'
   const name = step.roleName || ''
   if (name.includes('女巫')) return 'witch'
   if (name.includes('预言家') || name.includes('通灵师')) return 'seer'
@@ -33,6 +39,7 @@ const DEFAULT_ACTIONS = {
   seer: '预言家请睁眼，你要查验谁？',
   guard: '守卫请睁眼，你今晚要守护谁？',
   hunter: '猎人请睁眼，确认你今晚的开枪状态。',
+  charm: '狼美人请睁眼，你今晚要魅惑谁？',
 }
 
 function stepFromRole(role, extra = {}) {
@@ -46,6 +53,16 @@ function stepFromRole(role, extra = {}) {
     campColor: role.campColor,
     ...extra,
   }
+}
+
+/** 阵容里有狼美人：狼人那一步后面紧跟她的魅惑一步。 */
+function withCharmStep(steps, roles) {
+  const beauty = roles.find(isBeauty)
+  const wolfIndex = steps.findIndex((step) => step.team === 'wolf')
+  if (!beauty || wolfIndex < 0) return steps
+  const result = [...steps]
+  result.splice(wolfIndex + 1, 0, stepFromRole(beauty, { charm: true, action: '' }))
+  return result
 }
 
 /**
@@ -75,6 +92,7 @@ export function buildNightSteps(board) {
         return merged
       })
       .filter(Boolean)
+    steps = withCharmStep(steps, roles)
   } else {
     steps = []
     DEFAULT_NIGHT_ORDER.forEach((name) => {
@@ -88,6 +106,7 @@ export function buildNightSteps(board) {
       const role = roles.find((item) => item.name === name)
       if (role) steps.push(stepFromRole(role))
     })
+    steps = withCharmStep(steps, roles)
   }
   return steps.map((step, index) => ({
     ...step,

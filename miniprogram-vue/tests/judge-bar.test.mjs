@@ -127,3 +127,32 @@ test('thePauseOverlayLetsTheControllerResume', () => {
   assert.equal(pausedOverlay(room({ paused: true })).canResume, true, '法官')
   assert.equal(pausedOverlay(room({ paused: true, judgeViewer: false, host: false })).canResume, false)
 })
+
+test('theJudgeSeesTheBeautyInTheWolfRowAndHerCharmAndTheKnight', () => {
+  // 狼美人骑士：狼美人和狼人一起刀（算狼队那一行），之后她单独一行魅惑；骑士夜里是空步
+  const beautyPlayers = [
+    { seatNo: 1, roleName: '狼人', faction: '狼人', mechanic: 'wolf', alive: true, playing: true },
+    { seatNo: 7, roleName: '狼美人', faction: '狼人', mechanic: 'wolf_beauty', alive: true, playing: true },
+    { seatNo: 3, roleName: '女巫', faction: '好人', mechanic: 'witch', alive: true, playing: true },
+    { seatNo: 8, roleName: '骑士', faction: '好人', mechanic: 'knight', alive: true, playing: true },
+    { seatNo: 5, roleName: '平民', faction: '好人', mechanic: 'villager', alive: true, playing: true },
+  ]
+  const night = (step, nightActions) => tonightRows(room({ players: beautyPlayers, currentStep: step, nightActions }))
+  const atWolf = night({ index: 0, kind: 'wolf', roleName: '狼人' }, [
+    { actorSeatNo: 1, targetSeatNo: 5, actionType: 'kill', dayNo: 1 },
+    { actorSeatNo: 7, targetSeatNo: 5, actionType: 'kill', dayNo: 1 },
+  ])
+  const wolves = atWolf.find((row) => row.role === '狼人')
+  assert.deepEqual(wolves.seats, [1, 7])
+  assert.equal(wolves.state, '刀口 5 号 · 1→5 7→5')
+  assert.deepEqual(atWolf.find((row) => row.role === '狼美人'), { role: '狼美人', seats: [7], state: '还没轮到' })
+  assert.equal(atWolf.find((row) => row.role === '骑士').state, '还没轮到')
+  const charmed = night({ index: 1, kind: 'charm', roleName: '狼美人' }, [
+    { actorSeatNo: 1, targetSeatNo: 5, actionType: 'kill', dayNo: 1 },
+    { actorSeatNo: 7, targetSeatNo: 5, actionType: 'kill', dayNo: 1 },
+    { actorSeatNo: 7, targetSeatNo: 3, actionType: 'charm', dayNo: 1 },
+  ])
+  assert.equal(charmed.find((row) => row.role === '狼美人').state, '魅惑 3 号', '只写魅惑，不重复她的刀')
+  assert.equal(charmed.find((row) => row.role === '女巫').state, '还没轮到')
+  assert.equal(godSeats(room({ players: beautyPlayers, nightActions: [{ actorSeatNo: 7, targetSeatNo: 5, actionType: 'kill', dayNo: 1 }] })).get(5).votes, 1, '狼美人的刀也算票')
+})

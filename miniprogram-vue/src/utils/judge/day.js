@@ -104,3 +104,28 @@ export function hostActions(snapshot) {
   }))
   return items
 }
+
+/**
+ * 今天白天的公开事件写成一行（实测问题：骑士决斗的结果只在播报里，遗言、接着发言时屏幕上看不到）。
+ * 只读公开的对局记录 rounds：决斗（只说狼人 / 好人）、自爆、放逐、开枪带走、殉情、法官点杀。
+ */
+export function dayNews(snapshot) {
+  const round = (snapshot?.rounds || []).find((item) => item?.dayNo === snapshot?.currentDay)
+  const before = []
+  const after = []
+  for (const skill of round?.skills || []) {
+    // 发言时的决斗、自爆在放逐之前，开枪、殉情、点杀跟在出局之后
+    const lines = skill.kind === 'duel' || skill.kind === 'self_destruct' ? before : after
+    const a = skill.actorSeatNo
+    const b = skill.targetSeatNo
+    if (skill.kind === 'duel') {
+      const wolf = skill.result === 'wolf'
+      lines.push(`${a}号决斗${b}号，${b}号是${wolf ? '狼人' : '好人'}，${wolf ? b : a}号出局`)
+    } else if (skill.kind === 'self_destruct') lines.push(`${a}号自爆`)
+    else if (skill.kind === 'hunter_shot') lines.push(`${a}号发动技能，带走了${b}号`)
+    else if (skill.kind === 'martyr') lines.push(`${b}号殉情`)
+    else if (skill.kind === 'force_out') lines.push(`${b || a}号被法官判罚出局`)
+  }
+  const exiled = (round?.exile || []).map((item) => item?.eliminatedSeatNo).filter(Boolean).map((seat) => `${seat}号被放逐出局`)
+  return [...before, ...exiled, ...after].join('；')
+}

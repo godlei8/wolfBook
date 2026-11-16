@@ -12,9 +12,12 @@ function tonight(snapshot) {
 const ALIASES = { 刀人: 'kill', 空刀: 'none' }
 const actionOf = (action) => ALIASES[action?.actionType] || action?.action || action?.actionType || ''
 
+// 跟狼队一起刀人的机制（狼美人刀完还有自己的魅惑一步；机械狼单独一步，不在里面）
+const WOLF_TEAM_MECHANICS = new Set(['wolf', 'wolf_king', 'wolf_beauty'])
+
 /** 跟狼队一起刀人的座位：有机制看机制（机械狼单独一步），没有按阵营。 */
 function inWolfTeam(player) {
-  if (player?.mechanic) return player.mechanic === 'wolf' || player.mechanic === 'wolf_king'
+  if (player?.mechanic) return WOLF_TEAM_MECHANICS.has(player.mechanic)
   return player?.faction === '狼人'
 }
 

@@ -39,7 +39,7 @@ export function godSeats(snapshot) {
   if (!snapshot?.judgeViewer) return seats
   const votes = new Map()
   if (snapshot.currentPhase === 'night_action') {
-    for (const action of latestBySeat(tonight(snapshot)).values()) {
+    for (const action of knivesBySeat(snapshot).values()) {
       if (actionCode(action) === 'kill' && action.targetSeatNo) votes.set(action.targetSeatNo, (votes.get(action.targetSeatNo) || 0) + 1)
     }
   }
@@ -55,14 +55,22 @@ export function godSeats(snapshot) {
 }
 
 // 没配夜间顺序时的通用顺序（和后端机制优先级一致）；用来判断某个角色「还没轮到」还是「没有行动」。
-const ROLE_ORDER = { 机械狼: 0.5, 守卫: 1, 狼人: 2, 女巫: 3, 预言家: 4, 通灵师: 4, 猎人: 5, 白痴: 6 }
+const ROLE_ORDER = { 机械狼: 0.5, 守卫: 1, 狼人: 2, 狼美人: 2.5, 女巫: 3, 预言家: 4, 通灵师: 4, 猎人: 5, 白痴: 6, 骑士: 6 }
 const KIND_ORDER = { mech_wolf: 0.5, guard: 1, wolf: 2, charm: 2.5, witch: 3, seer: 4, psychic: 4, hunter: 5, idle: 6 }
 const VERBS = { save: '救', poison: '毒', check: '查验', guard: '守', kill: '刀', kill_pierce: '破盾刀', learn: '学习', charm: '魅惑' }
 
+// 跟狼队一起刀人的机制（狼美人刀完还有自己的魅惑一步；机械狼单独一步，不在里面）
+const WOLF_TEAM_MECHANICS = new Set(['wolf', 'wolf_king', 'wolf_beauty'])
+
 /** 跟狼队一起睁眼的座位：有机制看机制（机械狼单独一步），没有按阵营。 */
 function inWolfTeam(player) {
-  if (player?.mechanic) return player.mechanic === 'wolf' || player.mechanic === 'wolf_king'
+  if (player?.mechanic) return WOLF_TEAM_MECHANICS.has(player.mechanic)
   return player?.faction === '狼人'
+}
+
+/** 每个座位今晚最后一次刀人 / 空刀（狼美人之后的魅惑不算进刀口）。 */
+function knivesBySeat(snapshot) {
+  return latestBySeat(tonight(snapshot).filter((action) => actionCode(action) !== 'charm'))
 }
 
 /** 每个座位今晚的全部行动（机械狼一次可以交几件事）。 */
@@ -103,6 +111,8 @@ function nightRanking(snapshot, board) {
     const name = isWolfTeam(step) ? '狼人' : step.roleName
     if (name && !ranks.has(name)) ranks.set(name, ranks.size + 1)
   }
+  // 狼美人在板子顺序里并进了狼人那一步，她的魅惑紧跟在后面
+  if (ranks.has('狼人') && !ranks.has('狼美人')) ranks.set('狼美人', ranks.get('狼人') + 0.5)
   const step = snapshot?.currentStep
   const currentName = step?.kind === 'wolf' ? '狼人' : step?.roleName
   return { orderOf: (role) => ranks.get(role) || 99, current: ranks.get(currentName) || 0 }
@@ -112,23 +122,37 @@ function nightRanking(snapshot, board) {
 export function tonightRows(snapshot, board = null) {
   if (!snapshot?.judgeViewer) return []
   const bySeat = latestBySeat(tonight(snapshot))
+  const knives = knivesBySeat(snapshot)
   const alive = (snapshot.players || []).filter((player) => player?.seatNo && player.alive !== false)
   const ranking = nightRanking(snapshot, board)
   const currentOrder = ranking.current
   const rows = []
+  const waiting = (role) => {
+    const order = ranking.orderOf(role)
+    return order > currentOrder ? '还没轮到' : order === currentOrder ? '行动中' : '没有行动'
+  }
 
   const wolves = alive.filter(inWolfTeam).map((player) => player.seatNo).sort((a, b) => a - b)
   if (wolves.length) {
     const picks = wolves.map((seat) => {
-      const action = bySeat.get(seat)
+      const action = knives.get(seat)
       if (!action) return `${seat}→?`
       return actionCode(action) === 'kill' && action.targetSeatNo ? `${seat}→${action.targetSeatNo}` : `${seat}→空刀`
     })
-    rows.push({ role: '狼人', seats: wolves, state: `刀口 ${knifeText(bySeat, wolves)} · ${picks.join(' ')}` })
+    rows.push({ role: '狼人', seats: wolves, state: `刀口 ${knifeText(knives, wolves)} · ${picks.join(' ')}` })
+  }
+
+  // 狼美人刀完单独一行魅惑（只写魅惑，她的刀已经在狼人那一行）
+  const everything = allBySeat(tonight(snapshot))
+  const beauties = alive.filter((player) => player.mechanic === 'wolf_beauty')
+  if (beauties.length) {
+    const seats = beauties.map((player) => player.seatNo).sort((a, b) => a - b)
+    const charms = seats.flatMap((seat) => everything.get(seat) || []).filter((action) => actionCode(action) === 'charm' && action.targetSeatNo)
+    const role = beauties[0].roleName || '狼美人'
+    rows.push({ role, seats, state: charms.length ? charms.map((action) => `魅惑 ${action.targetSeatNo} 号`).join(' · ') : waiting(role) })
   }
 
   const byRole = new Map()
-  const everything = allBySeat(tonight(snapshot))
   for (const player of alive) {
     if (inWolfTeam(player)) continue
     if (ranking.orderOf(player.roleName) === 99 && !bySeat.has(player.seatNo)) continue
@@ -148,8 +172,7 @@ export function tonightRows(snapshot, board = null) {
         })
         .join(' · ')
     } else {
-      const order = ranking.orderOf(role)
-      state = order > currentOrder ? '还没轮到' : order === currentOrder ? '行动中' : '没有行动'
+      state = waiting(role)
     }
     rows.push({ role, seats, state })
   }

@@ -5,6 +5,7 @@
 import { computed, ref, watch } from 'vue'
 import { countdown, phaseTitle } from '../../../utils/judge/room-view.js'
 import { pendingPanel } from '../../../utils/judge/pending.js'
+import { dayNews } from '../../../utils/judge/day.js'
 import { gameAreaStyle, stageLayout } from '../../../utils/judge/stage.js'
 import { useStageFit } from '../../../utils/judge/stage-fit.js'
 
@@ -29,6 +30,7 @@ watch(pendingKey, () => {
 
 const layout = computed(() => stageLayout(props.snapshot, 'pending', { selection: selection.value, stageHeight: props.stageHeight }))
 const panel = computed(() => pendingPanel(props.snapshot, selection.value))
+const news = computed(() => dayNews(props.snapshot))
 const title = computed(() => phaseTitle(props.snapshot))
 const clock = computed(() => countdown(props.snapshot.pending?.deadline || props.snapshot.phaseDeadline, props.now, props.snapshot.paused))
 const picked = computed(() => (panel.value.needsTarget && panel.value.targets.includes(selection.value) ? selection.value : 0))
@@ -106,11 +108,13 @@ function tapButton(button) {
       <view class="nt-panel nt-game__panel">
         <block v-if="panel.kind === 'waiting'">
           <text class="nt-game__lead">{{ panel.title }}</text>
+          <text v-if="news" class="jv-news">{{ news }}</text>
           <text class="nt-game__hint">出局的玩家在自己手机上处理，超时当作不发动。</text>
           <text v-if="panel.detail" class="nt-game__hint">{{ panel.detail }}</text>
         </block>
         <block v-else>
           <text class="nt-game__lead">{{ panel.title }}</text>
+          <text v-if="news" class="jv-news">{{ news }}</text>
           <text v-if="panel.needsTarget" class="nt-game__hint">点两侧的座位选人，再点下面的按钮。</text>
           <text v-if="panel.hint" class="nt-game__hint">{{ panel.hint }}</text>
           <view class="nt-game__buttons">
@@ -127,3 +131,17 @@ function tapButton(button) {
     </view>
   </view>
 </template>
+
+<style scoped lang="scss">
+/* 今天白天的公开事件（决斗、自爆、开枪、殉情），遗言和接着发言时还看得到 */
+.jv-news {
+  display: block;
+  margin-top: 14rpx;
+  padding: 14rpx 20rpx;
+  border-radius: 18rpx;
+  background: var(--panel-sunk);
+  font-size: 26rpx;
+  line-height: 1.5;
+  color: var(--text);
+}
+</style>

@@ -48,3 +48,29 @@ test('wolf team includes every wolf except solo wolves', () => {
   assert.deepEqual(players.filter(isWolfTeam).map((player) => player.seatNo), [1, 2])
   assert.equal(isWolfTeam(players[2]), false)
 })
+
+test('the beauty knifes with the wolves and then charms in her own step', () => {
+  // 24 狼美人骑士：守卫 → 狼人 + 狼美人 → 狼美人（魅惑）→ 女巫 → 预言家
+  const lineup = [
+    { roleId: 1, name: '预言家', faction: '好人' },
+    { roleId: 2, name: '女巫', faction: '好人' },
+    { roleId: 4, name: '狼人', faction: '狼人' },
+    { roleId: 8, name: '狼美人', faction: '狼人', mechanic: 'wolf_beauty' },
+    { roleId: 9, name: '守卫', faction: '好人' },
+  ]
+  const auto = buildNightSteps({ roles: lineup, ruleDetail: { nightOrder: [] } })
+  assert.deepEqual(auto.map((step) => step.roleName), ['守卫', '狼人', '狼美人', '女巫', '预言家'])
+  assert.equal(auto[2].kind, 'charm')
+  assert.equal(auto[2].action, '狼美人请睁眼，你今晚要魅惑谁？')
+  const configured = buildNightSteps({
+    roles: lineup,
+    ruleDetail: { nightOrder: [
+      { roleId: 9, roleName: '守卫', faction: '好人' },
+      { roleId: 4, roleName: '狼人', faction: '狼人' },
+      { roleId: 8, roleName: '狼美人', faction: '狼人' },
+      { roleId: 2, roleName: '女巫', faction: '好人' },
+    ] },
+  })
+  assert.deepEqual(configured.map((step) => step.roleName), ['守卫', '狼人', '狼美人', '女巫'])
+  assert.equal(configured[2].kind, 'charm')
+})

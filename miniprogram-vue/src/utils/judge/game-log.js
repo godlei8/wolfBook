@@ -224,6 +224,8 @@ function peopleOf(snapshot, rounds, history, bySeat, person) {
     if (voted.length) parts.push(`投 ${join(uniq(voted))} 号`)
     for (const round of rounds) {
       for (const skill of round.skills || []) {
+        // 被决斗的好人还活着（骑士出局），也记一笔；被决斗出局的狼在下面写出局方式
+        if (skill.kind === 'duel' && skill.targetSeatNo === seat && skill.result !== 'wolf') parts.push(`被 ${skill.actorSeatNo} 号决斗`)
         if (skill.actorSeatNo !== seat) continue
         if (skill.kind === 'hunter_shot' && skill.targetSeatNo) parts.push(`带走 ${skill.targetSeatNo} 号`)
         else if (skill.kind === 'badge_passed' && !skill.targetSeatNo) parts.push('撕掉警徽')

@@ -3,7 +3,7 @@
 // 发言者本人有「结束发言」，到点自动换下一位。法官的「跳过发言」在房间页底部的操作栏。
 import { computed } from 'vue'
 import { countdown, phaseTitle } from '../../../utils/judge/room-view.js'
-import { speechPanel } from '../../../utils/judge/day.js'
+import { dayNews, speechPanel } from '../../../utils/judge/day.js'
 import { judgeRecap } from '../../../utils/judge/judge-desk.js'
 import { gameAreaStyle, stageLayout } from '../../../utils/judge/stage.js'
 import { useStageFit } from '../../../utils/judge/stage-fit.js'
@@ -22,6 +22,7 @@ const recap = computed(() => judgeRecap(props.snapshot))
 
 const layout = computed(() => stageLayout(props.snapshot, 'speech', { stageHeight: props.stageHeight }))
 const panel = computed(() => speechPanel(props.snapshot))
+const news = computed(() => dayNews(props.snapshot))
 const title = computed(() => phaseTitle(props.snapshot))
 const clock = computed(() => countdown(props.snapshot.phaseDeadline, props.now, props.snapshot.paused))
 const speaker = computed(() => (props.snapshot.players || []).find((player) => player.seatNo && player.seatNo === panel.value.speakerSeat) || null)
@@ -103,6 +104,7 @@ function endSpeech() {
           <text class="nt-game__label">发言</text>
           <text class="js-direction__text serif">{{ panel.directionText }}</text>
         </view>
+        <text v-if="news" class="jv-news">{{ news }}</text>
         <view v-if="panel.isSpeaker" class="nt-game__buttons">
           <view class="nt-btn nt-btn--gold nt-game__button" :class="{ 'nt-btn--disabled': busy }" @tap="endSpeech">结束发言</view>
         </view>
@@ -117,6 +119,17 @@ function endSpeech() {
 </template>
 
 <style scoped lang="scss">
+/* 今天白天的公开事件（决斗、自爆、开枪、殉情），遗言和接着发言时还看得到 */
+.jv-news {
+  display: block;
+  margin-top: 14rpx;
+  padding: 14rpx 20rpx;
+  border-radius: 18rpx;
+  background: var(--panel-sunk);
+  font-size: 26rpx;
+  line-height: 1.5;
+  color: var(--text);
+}
 .jd-recap {
   margin-top: 16rpx;
   padding: 18rpx 22rpx;

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { hostActions, speechPanel, voteResultPanel, votePanel } from '../src/utils/judge/day.js'
+import { hostActions, speechPanel, voteResultPanel, votePanel, dayNews } from '../src/utils/judge/day.js'
 
 const players = [1, 2, 3, 4, 5, 6].map((seatNo) => ({ seatNo, nickname: `P${seatNo}`, alive: seatNo !== 6, playing: true }))
 const room = (phase, self, extra = {}) => ({
@@ -116,4 +116,23 @@ test('speechOnlyTellsTheDirection', () => {
   assert.equal(panel(null).directionText, '从 3 号开始')
   assert.equal(panel(null, []).directionText, '')
   assert.equal('sequence' in panel('left'), false)
+})
+
+test('todaysPublicEventsStayOnScreen', () => {
+  // 实测问题：骑士决斗的结果只在播报里，遗言和接着发言时屏幕上看不到；今天的公开事件写一行
+  const day = (skills, currentDay = 2) => dayNews({ currentDay, rounds: [{ dayNo: 1, skills: [{ kind: 'self_destruct', actorSeatNo: 9 }] }, { dayNo: 2, skills }] })
+  assert.equal(day([{ kind: 'duel', actorSeatNo: 6, targetSeatNo: 2, result: 'good' }]), '6号决斗2号，2号是好人，6号出局')
+  assert.equal(day([{ kind: 'duel', actorSeatNo: 6, targetSeatNo: 4, result: 'wolf' }]), '6号决斗4号，4号是狼人，4号出局')
+  assert.equal(day([
+    { kind: 'hunter_shot', actorSeatNo: 3, targetSeatNo: 10 },
+    { kind: 'martyr', actorSeatNo: 10, targetSeatNo: 8 },
+    { kind: 'badge_passed', actorSeatNo: 3, targetSeatNo: 5 },
+  ]), '3号发动技能，带走了10号；8号殉情')
+  assert.equal(day([]), '', '今天还没事')
+  assert.equal(day([], 1), '9号自爆', '只看今天')
+  // 放逐也写进去，按白天的先后：决斗 / 自爆 → 放逐 → 开枪 / 殉情
+  const exiled = dayNews({ currentDay: 1, rounds: [{ dayNo: 1, exile: [{ eliminatedSeatNo: null, pkSeatNos: [4, 10] }, { eliminatedSeatNo: 10 }],
+    skills: [{ kind: 'martyr', actorSeatNo: 10, targetSeatNo: 3 }, { kind: 'duel', actorSeatNo: 6, targetSeatNo: 2, result: 'good' }] }] })
+  assert.equal(exiled, '6号决斗2号，2号是好人，6号出局；10号被放逐出局；3号殉情')
+  assert.equal(dayNews(null), '')
 })
