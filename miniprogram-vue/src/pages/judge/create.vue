@@ -1,24 +1,20 @@
 <script setup>
-// 建房分两步：① 选板子（列表，点一下就进下一步）→ ② 配置房间：基本信息、板子规则（跟板子走，只读：玩法概述、
-// 胜负和专属配置、夜间顺序、每个角色的规则；通用规则是一行入口，点开弹窗看）、有法官 / 无法官（一行两个小按钮）、
-// 房间规则（节奏，大厅里还能改）→ 创建并进入大厅。从板子详情 / 再来一局带 boardId 进来直接到第二步。
+// 建房分两步：① 选板子（列表，点一下就进下一步）→ ② 配置房间：基本信息、板子配置（跟板子走，只读）、
+// 有法官 / 无法官、房间规则（节奏，大厅里还能改）→ 创建并进入大厅。从板子详情 / 再来一局带 boardId 进来直接到第二步。
 // 新建的房间都走新流程（autoJudge）。
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import NavBar from '../../components/NavBar.vue'
-import RuleSheet from '../../components/RuleSheet.vue'
 import api from '../../services/api'
-import { getJudgeSupportMeta } from '../../utils/judge/meta'
+import { getJudgeSupportMeta, judgeModeOptions } from '../../utils/judge/meta'
 import {
   ROOM_RULE_STEPS,
-  boardRuleIntro,
+  boardConfigRows,
   buildCreatePayload,
   canChooseJoined,
   defaultRoomRules,
-  judgeModeRow,
   stepRule,
 } from '../../utils/judge/create-room.js'
-import { commonRules, commonRulesSummary } from '../../utils/judge/common-rules.js'
 
 const boards = ref([])
 const selectedBoardIndex = ref(-1)
@@ -34,29 +30,15 @@ const selectedBoard = computed(() => boards.value[selectedBoardIndex.value] || n
 const selectedDetail = computed(() => (selectedBoard.value ? details.value[selectedBoard.value.id] || null : null))
 const supportMeta = computed(() => getJudgeSupportMeta(selectedDetail.value?.judgeSupportLevel))
 const joinedAllowed = computed(() => canChooseJoined(selectedDetail.value))
+const configRows = computed(() => boardConfigRows(selectedDetail.value))
 const lineup = computed(() => (selectedDetail.value?.roles || []).filter((role) => role?.name))
-const ruleIntro = computed(() => boardRuleIntro(selectedDetail.value))
-const modeRow = computed(() => judgeModeRow(selectedDetail.value, judgeMode.value))
-// 板子规则里点开了哪些角色、哪些章节
-const openRoles = ref({})
-const openSections = ref({})
-// 通用规则（所有板子一样）不占页面：一行入口，点开弹窗看
-const commonSections = commonRules()
-const commonSummary = commonRulesSummary()
-const commonOpen = ref(false)
+const modeHint = computed(() => judgeModeOptions.find((item) => item.value === judgeMode.value)?.subtitle || '')
 const ruleSteps = Object.entries(ROOM_RULE_STEPS).map(([key, range]) => ({ key, label: range.label }))
 const navTitle = computed(() => (step.value === 'board' ? '选板子' : '配置房间'))
 
-function toggleRole(roleId) {
-  openRoles.value = { ...openRoles.value, [roleId]: !openRoles.value[roleId] }
-}
-
-function toggleSection(title) {
-  openSections.value = { ...openSections.value, [title]: !openSections.value[title] }
-}
-
-function openBoardDetail() {
-  if (selectedBoard.value) uni.navigateTo({ url: `/pages/boards/detail?id=${selectedBoard.value.id}` })
+function modeDesc(item) {
+  if (item.value === 'joined' && selectedDetail.value && !joinedAllowed.value) return '这个板子有系统还不会结算的角色，只能开有法官'
+  return item.value === 'joined' ? '你也拿牌，系统当法官' : '你当法官，不拿牌'
 }
 
 // 没配横版背景的板子：缩略图用阵容立绘（中间那张，一般是特殊狼）
@@ -263,12 +245,11 @@ onLoad((options) => {
 
         <view class="nt-panel">
           <view class="nt-panel__head">
-            <text class="nt-h2">板子规则</text>
-            <text class="jc-change" @tap="openBoardDetail">完整介绍</text>
+            <text class="nt-h2">板子配置</text>
+            <text class="nt-meta">跟板子走</text>
           </view>
           <view v-if="!selectedDetail" class="nt-empty">正在加载板子规则…</view>
-          <text v-if="ruleIntro.overview" class="jc-overview">{{ ruleIntro.overview }}</text>
-          <view v-for="row in ruleIntro.rows" :key="row.label" class="jc-rule" :class="{ 'jc-rule--column': row.label === '夜间顺序' }">
+          <view v-for="row in configRows" :key="row.label" class="jc-rule" :class="{ 'jc-rule--column': row.label === '夜间顺序' }">
             <text class="jc-rule__label">{{ row.label }}</text>
             <view v-if="row.label === '夜间顺序'" class="jc-order">
               <block v-for="(name, index) in row.value.split(' → ')" :key="name">
@@ -278,60 +259,25 @@ onLoad((options) => {
             </view>
             <text v-else class="jc-config__value">{{ row.value }}</text>
           </view>
-          <view v-if="ruleIntro.roles.length" class="jc-rule jc-rule--column">
-            <text class="jc-rule__label">角色规则</text>
-            <view class="jc-roles">
-              <view v-for="role in ruleIntro.roles" :key="role.roleId" class="jc-role" @tap="toggleRole(role.roleId)">
-                <view class="nt-token jc-role__token">
-                  <image v-if="role.portrait" class="nt-token__img" :src="role.portrait" mode="aspectFill" :style="{ borderColor: role.accent }" webp />
-                  <view v-else class="nt-token__text jc-board__text" :style="{ borderColor: role.accent }">{{ role.name.slice(0, 1) }}</view>
-                </view>
-                <view class="jc-role__body">
-                  <view class="jc-role__head">
-                    <text class="jc-role__name" :style="{ color: role.campColor }">{{ role.name }}</text>
-                    <text v-if="role.moreLabel" class="jc-role__more">{{ openRoles[role.roleId] ? '收起' : role.moreLabel }}</text>
-                  </view>
-                  <text class="jc-role__line">{{ role.lead }}</text>
-                  <block v-if="openRoles[role.roleId]">
-                    <text v-for="item in role.more" :key="item" class="jc-role__line">{{ item }}</text>
-                  </block>
-                </view>
-              </view>
-            </view>
-          </view>
-          <view class="jc-common" @tap="commonOpen = true">
-            <view class="jc-common__text">
-              <text class="jc-common__label">通用规则</text>
-              <text class="jc-common__sub">{{ commonSummary }}</text>
-            </view>
-            <text class="jc-common__go">查看 ›</text>
-          </view>
-          <view v-for="section in ruleIntro.sections" :key="section.title" class="jc-fold">
-            <view class="jc-fold__head" @tap="toggleSection(section.title)">
-              <text class="jc-rule__label">{{ section.title }}</text>
-              <text v-if="section.value" class="jc-fold__value">{{ section.value }}</text>
-              <text class="nt-fold__arrow" :class="{ 'nt-fold__arrow--open': openSections[section.title] }">›</text>
-            </view>
-            <view v-if="openSections[section.title]" class="nt-bullets jc-fold__body">
-              <text v-for="item in section.items" :key="item" class="nt-bullet">{{ item }}</text>
-            </view>
-          </view>
         </view>
 
         <view class="nt-panel">
-          <view class="jc-moderow">
+          <view class="nt-panel__head">
             <text class="nt-h2">法官模式</text>
-            <view class="jc-seg">
-              <view
-                v-for="item in modeRow.options"
-                :key="item.value"
-                class="jc-seg__item"
-                :class="{ 'jc-seg__item--on': item.on, 'jc-seg__item--off': item.disabled }"
-                @tap="chooseMode(item.value)"
-              >{{ item.label }}</view>
+          </view>
+          <view class="jc-modes">
+            <view
+              v-for="item in judgeModeOptions"
+              :key="item.value"
+              class="jc-mode"
+              :class="{ 'jc-mode--on': judgeMode === item.value, 'jc-mode--off': item.value === 'joined' && !joinedAllowed }"
+              @tap="chooseMode(item.value)"
+            >
+              <text class="jc-mode__title serif">{{ item.title }}</text>
+              <text class="jc-mode__desc">{{ modeDesc(item) }}</text>
             </view>
           </view>
-          <text class="jc-hint">{{ modeRow.hint }}</text>
+          <text class="jc-hint">{{ modeHint }}</text>
         </view>
 
         <view class="nt-panel">
@@ -362,7 +308,6 @@ onLoad((options) => {
         </view>
       </view>
     </block>
-    <RuleSheet :visible="commonOpen" title="通用规则" hint="所有板子都一样" :sections="commonSections" @close="commonOpen = false" />
   </view>
 </template>
 
@@ -524,40 +469,40 @@ onLoad((options) => {
   margin-top: 32rpx;
 }
 
-.jc-moderow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.jc-modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20rpx;
 }
 
-.jc-seg {
-  display: flex;
+.jc-mode {
+  padding: 28rpx;
   border-radius: 28rpx;
-  background: var(--panel-sunk);
-  border: 3rpx solid var(--line);
-  overflow: hidden;
-}
-
-.jc-seg__item {
-  height: 88rpx;
-  padding: 0 32rpx;
-  border-radius: 26rpx;
+  background: var(--panel-raised);
+  border: 4rpx solid transparent;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 28rpx;
+  flex-direction: column;
+  gap: 8rpx;
+  box-sizing: border-box;
+}
+
+.jc-mode--on {
+  border-color: var(--moon);
+}
+
+.jc-mode--off {
+  opacity: 0.5;
+}
+
+.jc-mode__title {
+  font-size: 34rpx;
+  font-weight: 900;
+}
+
+.jc-mode__desc {
   color: var(--text-2);
-}
-
-.jc-seg__item--on {
-  background: var(--text);
-  color: var(--ink);
-  font-weight: 700;
-}
-
-.jc-seg__item--off {
-  opacity: 0.45;
+  font-size: 24rpx;
+  line-height: 1.5;
 }
 
 .jc-board {
@@ -853,122 +798,5 @@ onLoad((options) => {
   line-height: 1.5;
   color: var(--text);
   text-align: right;
-}
-
-.jc-overview {
-  display: block;
-  padding-bottom: 20rpx;
-  font-size: 28rpx;
-  line-height: 1.7;
-  color: var(--text-soft);
-}
-
-.jc-roles {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 24rpx;
-}
-
-.jc-role {
-  display: flex;
-  align-items: flex-start;
-  gap: 20rpx;
-}
-
-.jc-role__token {
-  width: 72rpx;
-  height: 72rpx;
-  flex-shrink: 0;
-}
-
-.jc-role__body {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8rpx;
-}
-
-.jc-role__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 16rpx;
-}
-
-.jc-role__name {
-  font-size: 28rpx;
-  font-weight: 700;
-}
-
-.jc-role__more {
-  flex-shrink: 0;
-  font-size: 24rpx;
-  color: var(--moon);
-}
-
-.jc-role__line {
-  display: block;
-  font-size: 26rpx;
-  line-height: 1.6;
-  color: var(--text-soft);
-}
-
-.jc-common {
-  min-height: 112rpx;
-  border-top: 2rpx solid var(--panel-line);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24rpx;
-}
-
-.jc-common__text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6rpx;
-}
-
-.jc-common__label {
-  font-size: 28rpx;
-  color: var(--text);
-}
-
-.jc-common__sub {
-  font-size: 24rpx;
-  line-height: 1.5;
-  color: var(--text-2);
-}
-
-.jc-common__go {
-  flex-shrink: 0;
-  font-size: 26rpx;
-  font-weight: 700;
-  color: var(--moon);
-}
-
-.jc-fold {
-  border-top: 2rpx solid var(--panel-line);
-}
-
-.jc-fold__head {
-  min-height: 88rpx;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20rpx;
-}
-
-.jc-fold__value {
-  margin-left: auto;
-  font-size: 26rpx;
-  color: var(--text);
-}
-
-.jc-fold__body {
-  padding-bottom: 24rpx;
 }
 </style>
