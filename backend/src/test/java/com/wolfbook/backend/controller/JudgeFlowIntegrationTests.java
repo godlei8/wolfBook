@@ -2751,6 +2751,36 @@ class JudgeFlowIntegrationTests {
     }
 
     @Test
+    void anExiledLastBeautyTakingTheLastVillagerWithHerIsAWolfWin() throws Exception {
+        // roles/狼美人.md：殉情和狼美人算同一次出局；她是最后一只狼、殉情的是最后一个平民 → 双方同时达成，狼人胜
+        Game game = beautyGame(false);
+        Map<String, List<Integer>> seats = game.seatsByRole();
+        int beauty = seats.get("狼美人").get(0);
+        List<Integer> villagers = seats.get("平民");
+        int lastVillager = villagers.get(3);
+        untilStep(game, "charm");
+        game.act(beauty, "charm", lastVillager);
+        untilPhase(game, "day_speech");
+        // 其余三只狼、三个平民已经出局（直接改库，省掉几轮）
+        List<Integer> gone = new ArrayList<>(seats.get("狼人"));
+        gone.addAll(villagers.subList(0, 3));
+        for (int seat : gone) {
+            jdbcTemplate.update("UPDATE judge_room_players SET alive = 0 WHERE room_id = ? AND seat_no = ?", game.roomId, seat);
+        }
+        untilPhase(game, "exile_vote");
+        for (int seat = 1; seat <= 12; seat++) {
+            if (seat != beauty && aliveInDb(game, seat)) {
+                game.vote(seat, beauty);
+            }
+        }
+        JsonNode result = game.expireDeadline();
+        Assertions.assertEquals("finished", result.path("roomStatus").asText(), result.toString());
+        Assertions.assertEquals("狼人", result.path("winnerCamp").asText(), result.path("latestAnnouncement").asText());
+        Assertions.assertFalse(aliveInDb(game, beauty));
+        Assertions.assertFalse(aliveInDb(game, lastVillager), "最后一个平民跟着殉情");
+    }
+
+    @Test
     void theKnightCannotDuelDuringTheSheriffElection() throws Exception {
         // roles/骑士.md：警长竞选环节不能决斗，只在白天发言时（放逐投票前）
         Game game = beautyGame(true);
