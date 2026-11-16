@@ -59,6 +59,11 @@ export function voteResultPanel(snapshot) {
   const exiles = round?.exile || []
   const last = exiles[exiles.length - 1] || null
   const idiot = (round?.skills || []).find((skill) => skill.kind === 'idiot_revealed')
+  const eliminated = last?.eliminatedSeatNo ?? null
+  // 被放逐的是狼美人：随后被她魅惑的人殉情（用户给定：票型公布写上随后谁殉情）
+  const martyrs = (round?.skills || [])
+    .filter((skill) => skill.kind === 'martyr' && eliminated && skill.actorSeatNo === eliminated && skill.targetSeatNo)
+    .map((skill) => skill.targetSeatNo)
   return {
     tallies: (last?.tallies || []).map((tally) => ({
       targetSeatNo: tally.targetSeatNo,
@@ -66,7 +71,8 @@ export function voteResultPanel(snapshot) {
       voters: (tally.voterSeatNos || []).join('、'),
     })),
     abstain: (last?.abstainSeatNos || []).join('、'),
-    eliminatedSeat: last?.eliminatedSeatNo ?? null,
+    eliminatedSeat: eliminated,
+    martyrText: martyrs.length ? `${martyrs.join('、')} 号殉情` : '',
     revealedIdiot: idiot ? idiot.actorSeatNo : null,
     pkSeats: snapshot?.pkSeats?.length ? [...snapshot.pkSeats] : last?.pkSeatNos || [],
   }

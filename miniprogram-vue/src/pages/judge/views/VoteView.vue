@@ -98,6 +98,7 @@ function vote(targetSeatNo) {
           <block v-else>
             <text class="nt-scene__kicker">票型</text>
             <text class="nt-scene__title">{{ verdict }}</text>
+            <text v-if="outcome.martyrText" class="nt-scene__text">{{ outcome.martyrText }}</text>
             <view class="jv-tallies">
               <view v-for="tally in outcome.tallies" :key="tally.targetSeatNo" class="jv-tally">
                 <view class="jv-tally__head">
@@ -146,6 +147,7 @@ function vote(targetSeatNo) {
         </block>
         <block v-else>
           <text class="nt-game__lead">{{ verdict }}</text>
+          <text v-if="outcome.martyrText" class="nt-game__lead">{{ outcome.martyrText }}</text>
           <text class="nt-game__hint">弃票：{{ outcome.abstain || '无' }}</text>
           <text class="nt-game__hint">座位左上角是得票数（警长 1.5 票）。{{ clock.seconds > 0 ? `${clock.seconds} 秒后自动继续` : '马上继续' }}</text>
         </block>

@@ -136,3 +136,12 @@ test('todaysPublicEventsStayOnScreen', () => {
   assert.equal(exiled, '6号决斗2号，2号是好人，6号出局；10号被放逐出局；3号殉情')
   assert.equal(dayNews(null), '')
 })
+
+test('theVoteResultSaysWhoDiedWithAnExiledBeauty', () => {
+  // 用户给定：票型公布写上随后谁殉情
+  const rounds = [{ dayNo: 2, exile: [{ tallies: [{ targetSeatNo: 11, weight: 10.5, voterSeatNos: [1, 2] }], abstainSeatNos: [11], eliminatedSeatNo: 11 }],
+    skills: [{ kind: 'martyr', actorSeatNo: 11, targetSeatNo: 6 }, { kind: 'badge_passed', actorSeatNo: 6, targetSeatNo: 9 }] }]
+  assert.equal(voteResultPanel(room('vote_result', me(1), { rounds })).martyrText, '6 号殉情')
+  const plain = [{ dayNo: 2, exile: [{ tallies: [], abstainSeatNos: [], eliminatedSeatNo: 5 }], skills: [] }]
+  assert.equal(voteResultPanel(room('vote_result', me(1), { rounds: plain })).martyrText, '')
+})
