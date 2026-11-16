@@ -1,6 +1,21 @@
 // 玩家自己的身份牌（纯函数，有单测）。导航栏的「身份」入口每个入座的玩家都有，点开才显示，不会因人而异。
 // 法官不拿牌（他在座位上看全场身份），开局前也没有身份。
 
+const SHERIFF_PHASES = new Set(['sheriff_signup', 'sheriff_speech', 'sheriff_vote', 'sheriff_pk'])
+
+/**
+ * 骑士的决斗按钮（roles/骑士.md）：活着的骑士一直有这个按钮，只在白天发言时能点；
+ * 不能点时写明原因（用户给定：警上发言时是禁用状态）。决斗过没有看公开的对局记录。
+ */
+function duelButton(snapshot, self) {
+  if (self.mechanic !== 'knight' || self.alive === false) return null
+  if (snapshot.dayInfo?.canDuel) return { enabled: true, hint: '' }
+  const used = (snapshot.rounds || []).some((round) => (round.skills || []).some((skill) => skill.kind === 'duel' && skill.actorSeatNo === self.seatNo))
+  if (used) return { enabled: false, hint: '本局已经决斗过了' }
+  if (SHERIFF_PHASES.has(snapshot.currentPhase)) return { enabled: false, hint: '警长竞选环节不能决斗' }
+  return { enabled: false, hint: '白天发言时才能决斗' }
+}
+
 export function identityCard(snapshot, board) {
   const self = snapshot?.selfPlayer
   if (!self?.seatNo || !self.roleName || snapshot.judgeViewer || snapshot.roomStatus === 'lobby') return null
@@ -16,6 +31,7 @@ export function identityCard(snapshot, board) {
     // 自爆、决斗按钮只放在身份弹层里：别人看不到谁的弹层多一个按钮；能不能用只看本人快照
     canSelfDestruct: Boolean(snapshot.dayInfo?.canSelfDestruct),
     canDuel: Boolean(snapshot.dayInfo?.canDuel),
+    duel: duelButton(snapshot, self),
   }
 }
 

@@ -40,3 +40,18 @@ test('theKnightsDuelButtonAndTargets', () => {
   assert.equal(identityCard(room(knight, { dayInfo: { canDuel: false }, players }), board).canDuel, false)
   assert.deepEqual(duelTargets(snapshot), [{ seatNo: 1, label: '1 号 阿岚' }, { seatNo: 9, label: '9 号 小鱼' }])
 })
+
+test('theKnightsDuelButtonIsGreyedOutWhenItCannotBeUsed', () => {
+  // 用户给定：警上发言时骑士的技能是禁用状态（按钮在，点不了），别的时候也写明为什么不能用
+  const knight = { seatNo: 7, roleName: '骑士', faction: '好人', alive: true, mechanic: 'knight' }
+  const at = (phase, extra = {}) => identityCard(room(knight, { currentPhase: phase, dayInfo: { canDuel: false }, ...extra }), board).duel
+  assert.deepEqual(identityCard(room(knight, { currentPhase: 'day_speech', dayInfo: { canDuel: true } }), board).duel, { enabled: true, hint: '' })
+  assert.deepEqual(at('sheriff_speech'), { enabled: false, hint: '警长竞选环节不能决斗' })
+  assert.deepEqual(at('sheriff_signup'), { enabled: false, hint: '警长竞选环节不能决斗' })
+  assert.deepEqual(at('night_action'), { enabled: false, hint: '白天发言时才能决斗' })
+  const used = { rounds: [{ dayNo: 1, skills: [{ kind: 'duel', actorSeatNo: 7, targetSeatNo: 3, result: 'good' }] }] }
+  assert.deepEqual(at('day_speech', used), { enabled: false, hint: '本局已经决斗过了' })
+  assert.deepEqual(at('night_action', used), { enabled: false, hint: '本局已经决斗过了' })
+  assert.equal(identityCard(room({ ...knight, alive: false }, { currentPhase: 'day_speech' }), board).duel, null, '出局的骑士没有按钮')
+  assert.equal(identityCard(room({ seatNo: 4, roleName: '狼人', faction: '狼人', alive: true, mechanic: 'wolf' }, { currentPhase: 'day_speech' }), board).duel, null)
+})

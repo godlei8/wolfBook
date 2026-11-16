@@ -424,7 +424,12 @@ function confirmSelfDestruct() {
   })
 }
 
-// 骑士决斗（roles/骑士.md）：选一个人，再确认一次；全场只知道对方是狼人还是好人
+// 骑士决斗（roles/骑士.md）：选一个人，再确认一次；全场只知道对方是狼人还是好人。
+// 按钮一直在（活着的骑士），警上发言、夜里、用过之后是禁用状态，点了没反应
+function tapDuel() {
+  if (identity.value?.duel?.enabled) chooseDuel()
+}
+
 function chooseDuel() {
   const targets = duelTargets(snapshot.value)
   if (!targets.length) return
@@ -592,7 +597,13 @@ onUnload(() => {
         <text class="jr-identity__role serif">{{ identity.roleName }}</text>
         <text class="jr-identity__camp" :class="{ 'jr-identity__camp--wolf': identity.wolf }">{{ identity.camp }}</text>
         <view v-if="identity.canSelfDestruct" class="nt-btn jr-identity__explode" @tap="confirmSelfDestruct">自爆</view>
-        <view v-if="identity.canDuel" class="nt-btn jr-identity__explode" @tap="chooseDuel">决斗</view>
+        <view
+          v-if="identity.duel"
+          class="nt-btn jr-identity__explode"
+          :class="{ 'nt-btn--disabled': !identity.duel.enabled }"
+          @tap="tapDuel"
+        >决斗</view>
+        <text v-if="identity.duel && identity.duel.hint" class="jr-identity__hint">{{ identity.duel.hint }}</text>
         <view class="nt-btn nt-btn--ghost jr-identity__close" @tap="identityOpen = false">盖上</view>
       </view>
     </view>
@@ -784,6 +795,12 @@ onUnload(() => {
 .jr-identity__close {
   margin-top: 16rpx;
   width: 100%;
+}
+
+.jr-identity__hint {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  color: var(--text-3);
 }
 
 .jr-loading {
