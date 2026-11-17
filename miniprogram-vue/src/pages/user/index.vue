@@ -224,20 +224,11 @@ function openFavorites() {
 }
 
 function openRoles() {
-  uni.navigateTo({ url: '/pages/roles/list' })
+  uni.switchTab({ url: '/pages/roles/list' })
 }
 
 function openHosted() {
   uni.switchTab({ url: '/pages/judge/index' })
-}
-
-function openMyPosts() {
-  if (!storage.getAuthToken()) {
-    uni.showToast({ title: '请先登录', icon: 'none' })
-    return
-  }
-  storage.setCommunityFilterContext({ mine: true })
-  uni.switchTab({ url: '/pages/community/index' })
 }
 
 async function loadArtRoles() {
@@ -299,7 +290,7 @@ onShow(() => {
     <view class="nt-gutter nt-stack me-body">
       <view v-if="!user" class="nt-ink me-login">
         <text class="me-login__title serif">登录 Wolfbook</text>
-        <text class="nt-meta">登录后可以建房当法官、入座、发帖评论，收藏和笔记也会同步到云端。</text>
+        <text class="nt-meta">登录后可以建房当法官、入座，收藏和笔记也会同步到云端。</text>
         <view class="nt-btn nt-btn--gold nt-btn--block" :class="{ 'nt-btn--disabled': loginLoading }" @tap="handleLogin">
           {{ loginLoading ? '登录中…' : '微信登录' }}
         </view>
@@ -358,11 +349,6 @@ onShow(() => {
           <text class="me-row__label">收藏的板子</text>
           <text class="nt-arrow">›</text>
         </view>
-        <view class="me-row" @tap="openMyPosts">
-          <view class="me-row__icon"><view class="me-ico-doc"><view class="me-ico-doc__line" /><view class="me-ico-doc__line" /><view class="me-ico-doc__line" /></view></view>
-          <text class="me-row__label">我的帖子</text>
-          <text class="nt-arrow">›</text>
-        </view>
         <view class="me-row" @tap="aboutVisible = true">
           <view class="me-row__icon"><text class="me-ico-note">♪</text></view>
           <text class="me-row__label">关于与致谢</text>
@@ -390,7 +376,7 @@ onShow(() => {
       <view class="me-sheet" @tap.stop>
         <view class="me-sheet__handle" />
         <text class="nt-h2">微信头像和昵称</text>
-        <text class="nt-meta">保存后，发帖、评论和入座都会用这份资料。</text>
+        <text class="nt-meta">保存后，入座和对局记录都会用这份资料。</text>
         <view class="me-sheet__avatar-row">
           <view class="me-avatar me-avatar--sm">
             <image v-if="viewState.avatarPreview" class="me-avatar__img" :src="viewState.avatarPreview" mode="aspectFill" />

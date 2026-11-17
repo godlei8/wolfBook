@@ -112,7 +112,7 @@ function onFeaturedChange(event) {
 }
 
 function openRoles() {
-  uni.navigateTo({ url: '/pages/roles/list' })
+  uni.switchTab({ url: '/pages/roles/list' })
 }
 
 function openMe() {

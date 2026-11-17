@@ -20,13 +20,6 @@
       }
     },
     {
-      "path": "pages/community/index",
-      "style": {
-        "navigationBarTitleText": "酒馆",
-        "enablePullDownRefresh": true
-      }
-    },
-    {
       "path": "pages/user/index",
       "style": {
         "navigationBarTitleText": "我的"
@@ -66,18 +59,6 @@
       "path": "pages/judge/room",
       "style": {
         "navigationBarTitleText": "法官房间"
-      }
-    },
-    {
-      "path": "pages/community/detail",
-      "style": {
-        "navigationBarTitleText": "帖子详情"
-      }
-    },
-    {
-      "path": "pages/community/post",
-      "style": {
-        "navigationBarTitleText": "发帖"
       }
     },
     {
@@ -153,10 +134,10 @@
         "selectedIconPath": "static/tabbar/judge-active.png"
       },
       {
-        "pagePath": "pages/community/index",
-        "text": "社区",
-        "iconPath": "static/tabbar/community-inactive.png",
-        "selectedIconPath": "static/tabbar/community-active.png"
+        "pagePath": "pages/roles/list",
+        "text": "图鉴",
+        "iconPath": "static/tabbar/roles-inactive.png",
+        "selectedIconPath": "static/tabbar/roles-active.png"
       },
       {
         "pagePath": "pages/user/index",

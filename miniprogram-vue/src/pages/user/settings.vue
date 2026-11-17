@@ -37,7 +37,7 @@ function clearData() {
       <view class="nt-panel">
         <text class="nt-label">关于</text>
         <text class="st-title serif">Wolfbook 夜镇卡牌</text>
-        <text class="nt-meta">狼人杀板子图鉴、电子法官、对局笔记和酒馆交流的一体化小程序。</text>
+        <text class="nt-meta">狼人杀板子与角色图鉴、电子法官和对局笔记的一体化小程序。</text>
         <text class="nt-meta">版本：V3 夜镇卡牌</text>
       </view>
 

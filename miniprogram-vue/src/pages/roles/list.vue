@@ -1,9 +1,10 @@
 <script setup>
 // 角色图鉴（原型 D3）：顶部是「夜镇编年史」入口，下面按阵营分区的立绘卡牌墙，三列。没有立绘的角色显示卡背。
 import { computed, ref } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import NavBar from '../../components/NavBar.vue'
 import api from '../../services/api'
+import { syncTabBar } from '../../utils/tabbar'
 
 const FILTERS = [
   { value: 'all', label: '全部' },
@@ -67,11 +68,16 @@ onLoad(() => {
   loadRoles()
   loadWorld()
 })
+
+// 底部导航的一页（社区下掉后换成了图鉴）：高亮由页面告诉 tabBar
+onShow(() => {
+  syncTabBar()
+})
 </script>
 
 <template>
-  <view class="nt-page">
-    <NavBar back />
+  <view class="nt-page nt-page--tab">
+    <NavBar wordmark="ROLES" />
 
     <view class="nt-gutter rl-head">
       <text class="nt-title">角色图鉴</text>

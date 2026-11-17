@@ -39,10 +39,8 @@ function openRole(role) {
 }
 
 function openRoles() {
-  const pages = getCurrentPages()
-  const previous = pages.length > 1 ? pages[pages.length - 2] : null
-  if (previous && previous.route === 'pages/roles/list') uni.navigateBack()
-  else uni.navigateTo({ url: '/pages/roles/list' })
+  // 图鉴是底部导航的一页，只能 switchTab
+  uni.switchTab({ url: '/pages/roles/list' })
 }
 
 function ask() {
