@@ -45,14 +45,14 @@ export function seatTap(snapshot, seatNo) {
   return { choices: [{ ...swap, label: swap.action === 'cancel' ? '撤回换座申请' : '申请换座' }, { ...remove, label: '请他离开' }] }
 }
 
-/** 大厅底部的「解散房间 / 离开房间」（只在大厅）：房主解散（房间就没有了），入座的玩家离开（还可以再进）。 */
+/** 大厅底部操作栏左边的「解散 / 离开」（只在大厅）：房主解散（房间就没有了），入座的玩家离开（还可以再进）。 */
 export function exitAction(snapshot) {
   if (snapshot?.roomStatus !== 'lobby') return null
   if (snapshot?.host) {
-    return { kind: 'dissolve', label: '解散房间', title: '解散房间', confirm: '解散后房间就没有了，房间里的人都会退出。' }
+    return { kind: 'dissolve', label: '解散', title: '解散房间', confirm: '解散后房间就没有了，房间里的人都会退出。' }
   }
   if (snapshot?.selfPlayer?.seatNo) {
-    return { kind: 'leave', label: '离开房间', title: '离开房间', confirm: '离开后座位会空出来，还可以再进。' }
+    return { kind: 'leave', label: '离开', title: '离开房间', confirm: '离开后座位会空出来，还可以再进。' }
   }
   return null
 }

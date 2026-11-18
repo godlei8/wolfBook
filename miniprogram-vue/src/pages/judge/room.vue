@@ -20,7 +20,6 @@ import storage from '../../services/storage'
 import { mergePollResult, pollInterval } from '../../utils/judge/room-poll.js'
 import { clockOffset, navTitle, pickView } from '../../utils/judge/room-view.js'
 import { duelTargets, identityCard } from '../../utils/judge/identity.js'
-import { exitAction } from '../../utils/judge/lobby.js'
 import { hostMenu, judgeActions, pausedOverlay } from '../../utils/judge/judge-bar.js'
 import { judgeSeatSheet } from '../../utils/judge/judge-desk.js'
 import { hostActions } from '../../utils/judge/day.js'
@@ -581,21 +580,6 @@ function chooseDuel() {
   })
 }
 
-const lobbyExit = computed(() => (view.value === 'lobby' && snapshot.value ? exitAction(snapshot.value) : null))
-
-function confirmLobbyExit() {
-  const item = lobbyExit.value
-  if (!item || actionLoading.value) return
-  showModal({
-    title: item.title,
-    content: item.confirm,
-    confirmText: item.kind === 'dissolve' ? '解散' : '离开',
-    success: (result) => {
-      if (result.confirm) onAct({ kind: item.kind })
-    },
-  })
-}
-
 function pauseOrResume() {
   onAct({ kind: 'advance', payload: { action: judgeBar.value.resume ? 'resume' : 'pause' } })
 }
@@ -679,8 +663,6 @@ onUnload(() => {
         <text v-if="snapshot && snapshot.host && hasSound" class="jr-logbtn" @tap="toggleVoice">{{ voiceOn ? '声音开' : '声音关' }}</text>
       </template>
       <template #right>
-        <!-- 大厅里离开 / 解散放在顶栏，一眼看得到（原来只在页面最底下） -->
-        <text v-if="lobbyExit" class="jr-logbtn jr-exitbtn" @tap="confirmLobbyExit">{{ lobbyExit.label }}</text>
         <view v-if="menuItems.length" class="jr-gear" aria-label="设置" @tap="openMenu">
           <image class="jr-gear__icon" src="/static/icons/settings.svg" mode="aspectFit" />
         </view>
@@ -956,10 +938,6 @@ onUnload(() => {
   display: flex;
   align-items: center;
   font-size: 26rpx;
-}
-
-.jr-exitbtn {
-  margin-right: 12rpx;
 }
 
 .jr-logbtn {

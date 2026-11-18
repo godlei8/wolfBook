@@ -180,7 +180,17 @@ export function electionView(note, day, { avatars = {} } = {}) {
   }
 }
 
-/** 票型那一屏里的一天：警长竞选（有的话）和放逐投票，按投给谁分组。 */
+// 面杀时这一天还能不能「记警长竞选的票」：第 1 天能；第 2 天只在第 1 天的竞选还没出结果（比如竞选推迟）时能
+function canAddElection(note, day) {
+  if (day > 2) return false
+  const election = dayOf(note, day).election
+  if (election.up.length || election.votes.length || election.elected || election.lost) return false
+  if (day === 1) return true
+  const first = dayOf(note, 1).election
+  return !first.elected && !first.lost
+}
+
+/** 票型那一屏里的一天：警长竞选（有的话）和放逐投票是两块，各自按投给谁分组。 */
 export function voteView(note, day, { avatars = {} } = {}) {
   const data = dayOf(note, day)
   const groups = groupViews(note, data.votes, false, avatars)
@@ -190,8 +200,10 @@ export function voteView(note, day, { avatars = {} } = {}) {
   return {
     day,
     recorded,
-    title: `第 ${day} 天 · ${result}`,
+    title: `第 ${day} 天`,
+    exileTitle: `放逐投票 · ${result}`,
     election: electionView(note, day, { avatars }),
+    canAddElection: canAddElection(note, day),
     groups,
     abstain: data.abstain.map((no) => personView(note, no, avatars)),
     abstainText: data.abstain.length ? `弃票：${seatsText(data.abstain)}` : '',

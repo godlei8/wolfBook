@@ -97,7 +97,8 @@ test('voteViewGroupsByTargetAndColoursByMyMarks', () => {
   const { note, entry } = dayOne()
   const view = voteView(finishEntry(note, entry), 1)
   assert.equal(view.recorded, true)
-  assert.equal(view.title, '第 1 天 · 5 号被放逐')
+  assert.equal(view.title, '第 1 天')
+  assert.equal(view.exileTitle, '放逐投票 · 5 号被放逐')
   assert.deepEqual(view.groups.map((group) => [group.title, group.countText]), [
     ['投 5 号', '6.5 票 · 含警长'], ['投 3 号', '3 票'], ['投 9 号', '2 票'],
   ])
@@ -107,10 +108,23 @@ test('voteViewGroupsByTargetAndColoursByMyMarks', () => {
   assert.equal(view.groups[0].voters.find((voter) => voter.no === 3).tone, 'god')
 
   const empty = voteView(note, 2)
-  assert.deepEqual([empty.recorded, empty.title, empty.groups], [false, '第 2 天 · 还没记', []])
+  assert.deepEqual([empty.recorded, empty.exileTitle, empty.groups], [false, '放逐投票 · 还没记', []])
   const mixed = voteView({ ...note, dayData: { 1: { votes: [{ target: 1, voters: [4, 9, 2] }] } } }, 1)
   assert.equal(mixed.groups[0].hint, '其中 2 张是你标成狼的人')
-  assert.equal(mixed.title, '第 1 天 · 没有人被放逐')
+  assert.equal(mixed.exileTitle, '放逐投票 · 没有人被放逐')
+})
+
+test('theSheriffElectionCanOnlyBeAddedBeforeOneIsDecided', () => {
+  // 警长竞选和放逐投票是两块；第 1 天能记警长票，第 1 天已经选出警长（或警徽流失）后，第 2 天就不再出「记警长竞选的票」
+  const note = fresh()
+  assert.equal(voteView(note, 1).canAddElection, true)
+  assert.equal(voteView(note, 2).canAddElection, true, '第 1 天没出结果（比如竞选推迟），第 2 天还能记')
+  assert.equal(voteView(note, 3).canAddElection, false)
+  const elected = { ...note, dayData: { 1: { election: { up: [], off: [], votes: [{ target: 2, voters: [6, 7] }], elected: 2, lost: false } } } }
+  assert.equal(voteView(elected, 1).canAddElection, false, '这一天已经有竞选了，改在竞选那块里')
+  assert.equal(voteView(elected, 2).canAddElection, false)
+  const lost = { ...note, dayData: { 1: { election: { up: [3], off: [], votes: [], elected: 0, lost: true } } } }
+  assert.equal(voteView(lost, 2).canAddElection, false, '警徽流失了也不用再记')
 })
 
 test('theSheriffElectionShowsAboveTheExileVote', () => {

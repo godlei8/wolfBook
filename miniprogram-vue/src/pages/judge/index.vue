@@ -5,6 +5,7 @@ import NavBar from '../../components/NavBar.vue'
 import api from '../../services/api'
 import storage from '../../services/storage'
 import { getJudgePhaseLabel, getJudgeRoomStatusLabel } from '../../utils/judge/meta'
+import { recentRoomTags } from '../../utils/judge/recent.js'
 import { syncTabBar } from '../../utils/tabbar'
 import { goToUserTab, hasAuthToken, requireAuth } from '../../utils/auth'
 
@@ -124,8 +125,9 @@ function sharedInviteText() {
   return '好友邀请你通过微信分享进入一个法官房间。'
 }
 
+// 状态（大厅 / 对局中…）已经在左上角的标签里，这一行只写阶段
 function phaseLabel(item) {
-  return `${getJudgeRoomStatusLabel(item.roomStatus)} · ${getJudgePhaseLabel(item.currentPhase)}`
+  return getJudgePhaseLabel(item.currentPhase)
 }
 
 onLoad((options) => {
@@ -219,7 +221,8 @@ onShow(() => {
           <view class="ji-room__main">
             <view class="ji-room__tags">
               <text class="nt-tag" :class="`ji-status--${item.roomStatus}`">{{ getJudgeRoomStatusLabel(item.roomStatus) }}</text>
-              <text v-if="item.owned" class="nt-tag">我主持</text>
+              <!-- 有法官 / 无法官，和我在这间房里是谁（法官 · 房主、房主 · 玩家、玩家） -->
+              <text v-for="tag in recentRoomTags(item)" :key="tag.text" class="nt-tag" :class="`ji-tag--${tag.tone}`">{{ tag.text }}</text>
             </view>
             <text class="ji-room__name serif">{{ item.boardName }}</text>
             <text class="nt-meta">{{ item.playerCount }} 人 · {{ phaseLabel(item) }} · 已入座 {{ item.joinedCount }}/{{ item.playerCount }}</text>
@@ -417,7 +420,20 @@ onShow(() => {
 
 .ji-room__tags {
   display: flex;
+  flex-wrap: wrap;
   gap: 12rpx;
+}
+
+.ji-tag--me {
+  background: transparent;
+  border: 2rpx solid var(--gold);
+  color: var(--gold);
+}
+
+.ji-tag--player {
+  background: transparent;
+  border: 2rpx solid var(--moon);
+  color: var(--moon);
 }
 
 .ji-status--playing {

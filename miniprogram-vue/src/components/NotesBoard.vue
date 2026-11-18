@@ -369,15 +369,13 @@ function finish() {
           <view class="nb-legend__item"><view class="nb-dot nb-dot--god" /><text class="nb-muted">神</text></view>
         </view>
 
-        <view v-for="item in voteDays" :key="item.day" class="nb-card" :class="{ 'nb-card--dashed': !item.recorded && !item.election }">
-          <view class="nb-card__head">
-            <text class="nb-card__title serif">{{ item.title }}</text>
-            <text v-if="!room" class="nb-link" @tap="openEntry(item.day)">{{ item.recorded ? '改' : '记票' }}</text>
-          </view>
-          <!-- 警长竞选：房间里自动记，面杀点「记警长票」 -->
-          <view v-if="item.election" class="nb-election">
+        <!-- 一天两块：警长竞选（有的话）和放逐投票分开记、分开显示 -->
+        <view v-for="item in voteDays" :key="item.day" class="nb-day">
+          <text class="nb-day__title serif">{{ item.title }}</text>
+          <!-- 警长竞选：房间里自动记，面杀点「记警长竞选的票」；警长选出来以后，之后的天数不再出这个入口 -->
+          <view v-if="item.election" class="nb-card nb-election">
             <view class="nb-card__head">
-              <text class="nb-election__title">{{ item.election.title }}</text>
+              <text class="nb-card__title nb-election__title">{{ item.election.title }}</text>
               <text v-if="!room" class="nb-link" @tap="openEntry(item.day, 'sheriff')">改</text>
             </view>
             <view v-if="item.election.up.length" class="nb-bar__row">
@@ -418,38 +416,43 @@ function finish() {
               <text v-if="group.hint" class="nb-group__hint nb-bar__hint">{{ group.hint }}</text>
             </view>
           </view>
-          <text v-else-if="!room && item.day <= 2" class="nb-chip nb-chip--dashed nb-election__add" @tap="openEntry(item.day, 'sheriff')">+ 记警长竞选的票</text>
+          <text v-else-if="!room && item.canAddElection" class="nb-chip nb-chip--dashed nb-election__add" @tap="openEntry(item.day, 'sheriff')">+ 记警长竞选的票</text>
 
-          <text v-if="item.election && (item.recorded || room)" class="nb-election__title">放逐投票</text>
-          <text v-if="!item.recorded" class="nb-muted">{{ room ? '投票结束后自动填入。' : '点「记票」：先点被投的人，再点投他的人。' }}</text>
-          <view v-for="group in item.groups" :key="group.target" class="nb-bar">
-            <view class="nb-bar__row">
-              <view class="nb-av nb-av--m" :class="`nb-av--${group.tone}`">
-                <image v-if="group.avatar" class="nb-av__img" :src="group.avatar" mode="aspectFill" />
-                <text v-if="group.avatar" class="nb-av__no">{{ group.target }}</text>
-                <text v-else class="nb-av__num serif">{{ group.target }}</text>
-              </view>
-              <view class="nb-bar__track">
-                <view class="nb-bar__fill" :class="{ 'nb-bar__fill--top': group.top }" :style="{ width: `${group.pct}%` }" />
-              </view>
-              <text class="nb-bar__count">{{ group.countText }}</text>
+          <view class="nb-card" :class="{ 'nb-card--dashed': !item.recorded }">
+            <view class="nb-card__head">
+              <text class="nb-card__title">{{ item.exileTitle }}</text>
+              <text v-if="!room" class="nb-link" @tap="openEntry(item.day)">{{ item.recorded ? '改' : '记票' }}</text>
             </view>
-            <view class="nb-bar__voters">
-              <view v-for="voter in group.voters" :key="voter.no" class="nb-av nb-av--s" :class="`nb-av--${voter.tone}`">
-                <image v-if="voter.avatar" class="nb-av__img" :src="voter.avatar" mode="aspectFill" />
-                <text v-if="voter.avatar" class="nb-av__no">{{ voter.no }}</text>
-                <text v-else class="nb-av__num serif">{{ voter.no }}</text>
+            <text v-if="!item.recorded" class="nb-muted">{{ room ? '投票结束后自动填入。' : '点「记票」：先点被投的人，再点投他的人。' }}</text>
+            <view v-for="group in item.groups" :key="group.target" class="nb-bar">
+              <view class="nb-bar__row">
+                <view class="nb-av nb-av--m" :class="`nb-av--${group.tone}`">
+                  <image v-if="group.avatar" class="nb-av__img" :src="group.avatar" mode="aspectFill" />
+                  <text v-if="group.avatar" class="nb-av__no">{{ group.target }}</text>
+                  <text v-else class="nb-av__num serif">{{ group.target }}</text>
+                </view>
+                <view class="nb-bar__track">
+                  <view class="nb-bar__fill" :class="{ 'nb-bar__fill--top': group.top }" :style="{ width: `${group.pct}%` }" />
+                </view>
+                <text class="nb-bar__count">{{ group.countText }}</text>
               </view>
+              <view class="nb-bar__voters">
+                <view v-for="voter in group.voters" :key="voter.no" class="nb-av nb-av--s" :class="`nb-av--${voter.tone}`">
+                  <image v-if="voter.avatar" class="nb-av__img" :src="voter.avatar" mode="aspectFill" />
+                  <text v-if="voter.avatar" class="nb-av__no">{{ voter.no }}</text>
+                  <text v-else class="nb-av__num serif">{{ voter.no }}</text>
+                </view>
+              </view>
+              <text v-if="group.hint" class="nb-group__hint nb-bar__hint">{{ group.hint }}</text>
             </view>
-            <text v-if="group.hint" class="nb-group__hint nb-bar__hint">{{ group.hint }}</text>
-          </view>
-          <view v-if="item.abstain.length" class="nb-bar__row nb-bar__row--abstain">
-            <text class="nb-muted">弃票</text>
-            <view class="nb-bar__voters nb-bar__voters--flat">
-              <view v-for="voter in item.abstain" :key="voter.no" class="nb-av nb-av--s" :class="`nb-av--${voter.tone}`">
-                <image v-if="voter.avatar" class="nb-av__img" :src="voter.avatar" mode="aspectFill" />
-                <text v-if="voter.avatar" class="nb-av__no">{{ voter.no }}</text>
-                <text v-else class="nb-av__num serif">{{ voter.no }}</text>
+            <view v-if="item.abstain.length" class="nb-bar__row nb-bar__row--abstain">
+              <text class="nb-muted">弃票</text>
+              <view class="nb-bar__voters nb-bar__voters--flat">
+                <view v-for="voter in item.abstain" :key="voter.no" class="nb-av nb-av--s" :class="`nb-av--${voter.tone}`">
+                  <image v-if="voter.avatar" class="nb-av__img" :src="voter.avatar" mode="aspectFill" />
+                  <text v-if="voter.avatar" class="nb-av__no">{{ voter.no }}</text>
+                  <text v-else class="nb-av__num serif">{{ voter.no }}</text>
+                </view>
               </view>
             </view>
           </view>
@@ -1117,17 +1120,24 @@ function finish() {
   font-weight: 900;
 }
 
-.nb-election {
+.nb-day {
   display: flex;
   flex-direction: column;
   gap: 16rpx;
-  padding-bottom: 20rpx;
-  border-bottom: 2rpx solid var(--panel-line);
+}
+
+.nb-day__title {
+  margin-top: 12rpx;
+  font-size: 30rpx;
+  font-weight: 900;
+  color: var(--text-2);
+}
+
+.nb-election {
+  border-color: rgba(242, 179, 61, 0.35);
 }
 
 .nb-election__title {
-  font-size: 28rpx;
-  font-weight: 700;
   color: var(--gold);
 }
 

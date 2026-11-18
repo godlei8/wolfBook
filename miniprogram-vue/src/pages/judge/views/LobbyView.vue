@@ -234,10 +234,16 @@ function copyRoomCode() {
         <text class="jr-tip__text">开局后系统按顺序叫每个角色，大家闭眼用自己的手机操作；夜里所有手机画面一样，记得调成静音。</text>
       </view>
 
-      <view v-if="exit" class="jl-exit" :class="{ 'jl-exit--disabled': busy }" @tap="tapExit">{{ exit.label }}</view>
     </view>
 
     <view class="nt-bar">
+      <!-- 解散 / 离开放在操作栏最左边：一眼看得到，又不挤顶栏的标题 -->
+      <view
+        v-if="exit"
+        class="nt-btn nt-btn--ghost jl-exitbtn"
+        :class="[`jl-exitbtn--${exit.kind}`, { 'nt-btn--disabled': busy }]"
+        @tap="tapExit"
+      >{{ exit.label }}</view>
       <view
         v-if="action.secondary"
         class="nt-btn nt-btn--ghost jl-secondary"
@@ -442,17 +448,15 @@ function copyRoomCode() {
   display: block;
   margin-top: 12rpx;
 }
-.jl-exit {
-  margin: 36rpx auto 8rpx;
-  padding: 16rpx 32rpx;
-  width: fit-content;
-  font-size: 26rpx;
-  color: var(--text-3);
-  text-decoration: underline;
-  text-underline-offset: 6rpx;
+.jl-exitbtn {
+  flex: none;
+  width: 136rpx;
+  margin-right: 16rpx;
+  padding-left: 0;
+  padding-right: 0;
 }
-.jl-exit--disabled {
-  opacity: 0.5;
+.jl-exitbtn--dissolve {
+  color: var(--camp-wolf);
 }
 
 .jr-seat--empty {

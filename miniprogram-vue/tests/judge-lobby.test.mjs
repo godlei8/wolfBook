@@ -120,12 +120,12 @@ test('hostTapsAnOccupiedSeatToAskThePlayerToLeave', () => {
 test('hostDissolvesAndPlayersLeave', () => {
   const judge = { seatNo: null, judgeObserver: true, self: true }
   assert.deepEqual(exitAction(room({ host: true, self: judge, players: [judge] })),
-    { kind: 'dissolve', label: '解散房间', title: '解散房间', confirm: '解散后房间就没有了，房间里的人都会退出。' })
+    { kind: 'dissolve', label: '解散', title: '解散房间', confirm: '解散后房间就没有了，房间里的人都会退出。' })
   const me = seat(1, false, { self: true })
   assert.deepEqual(exitAction(room({ mode: 'joined', host: true, self: me, players: [me] })).kind, 'dissolve', '无法官房主也是解散，不是离开')
   const player = seat(3, true, { self: true })
   assert.deepEqual(exitAction(room({ self: player, players: [player] })),
-    { kind: 'leave', label: '离开房间', title: '离开房间', confirm: '离开后座位会空出来，还可以再进。' })
+    { kind: 'leave', label: '离开', title: '离开房间', confirm: '离开后座位会空出来，还可以再进。' })
   assert.equal(exitAction(room({ self: null, players: [] })), null, '还没进房的人没有')
   assert.equal(exitAction(room({ host: true, self: judge, players: [judge], extra: { roomStatus: 'playing' } })), null, '开局后没有')
 })
