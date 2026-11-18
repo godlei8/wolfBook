@@ -8,7 +8,7 @@ import {
   addTargetTag, daySummary, markPanel, seatCards, setGuess, setJudgment, setSayText,
   toggleClaim, toggleOut, togglePeace, toggleSheriff, toggleTag, wolfPit,
 } from '../utils/notes/board.js'
-import { entryView, finishEntry, pickTarget, restAbstain, startEntry, toggleVoter, voteView } from '../utils/notes/votes.js'
+import { electionSection, entryView, finishEntry, pickTarget, restAbstain, startEntry, toggleVoter, voteView } from '../utils/notes/votes.js'
 import { applyDockChip, speechDock } from '../utils/notes/speech.js'
 
 const props = defineProps({
@@ -61,6 +61,8 @@ const dock = computed(() => (props.room && tab.value === 'seats' && !selected.va
 const dockWrite = computed(() => dock.value?.chips.find((chip) => chip.kind === 'text') || null)
 const dockChips = computed(() => (dock.value ? dock.value.chips.filter((chip) => chip.kind !== 'text') : []))
 const voteDays = computed(() => days.value.map((item) => voteView(props.note, item, { avatars: props.avatars })))
+// 警长竞选整局一块，不分天
+const election = computed(() => electionSection(props.note, { avatars: props.avatars }))
 const entryScreen = computed(() => (entry.value ? entryView(props.note, entry.value) : null))
 
 function update(next) {
@@ -205,7 +207,7 @@ function finish() {
           :class="{ 'nb-pick--gold': item.on, 'nb-pick--done': item.done && !item.on }"
           @tap="entry = pickTarget(entry, item.no)"
         >
-          <text class="nb-pick__no serif">{{ item.no }}</text>
+          <text class="nb-pick__no">{{ item.no }}</text>
         </view>
       </view>
 
@@ -222,7 +224,7 @@ function finish() {
           :class="{ 'nb-pick--on': item.on, 'nb-pick--used': item.used }"
           @tap="entry = toggleVoter(entry, item.no)"
         >
-          <text class="nb-pick__no serif">{{ item.no }}</text>
+          <text class="nb-pick__no">{{ item.no }}</text>
           <text class="nb-pick__label">{{ item.label }}</text>
         </view>
       </view>
@@ -369,58 +371,65 @@ function finish() {
           <view class="nb-legend__item"><view class="nb-dot nb-dot--god" /><text class="nb-muted">神</text></view>
         </view>
 
-        <!-- 一天两块：警长竞选（有的话）和放逐投票分开记、分开显示 -->
-        <view v-for="item in voteDays" :key="item.day" class="nb-day">
-          <text class="nb-day__title serif">{{ item.title }}</text>
-          <!-- 警长竞选：房间里自动记，面杀点「记警长竞选的票」；警长选出来以后，之后的天数不再出这个入口 -->
-          <view v-if="item.election" class="nb-card nb-election">
-            <view class="nb-card__head">
-              <text class="nb-card__title nb-election__title">{{ item.election.title }}</text>
-              <text v-if="!room" class="nb-link" @tap="openEntry(item.day, 'sheriff')">改</text>
-            </view>
-            <view v-if="item.election.up.length" class="nb-bar__row">
-              <text class="nb-muted">上警</text>
-              <view class="nb-bar__voters nb-bar__voters--flat">
-                <view
-                  v-for="person in item.election.up"
-                  :key="person.no"
-                  class="nb-av nb-av--s"
-                  :class="[`nb-av--${person.tone}`, { 'nb-av--off': person.off }]"
-                >
-                  <image v-if="person.avatar" class="nb-av__img" :src="person.avatar" mode="aspectFill" />
-                  <text v-if="person.avatar" class="nb-av__no">{{ person.no }}</text>
-                  <text v-else class="nb-av__num serif">{{ person.no }}</text>
-                  <text v-if="person.elected" class="nb-av__badge">警</text>
-                </view>
+        <!-- 警长竞选：整局一块放在最上面，不跟着第几天。房间里自动记，面杀点「记票」 -->
+        <view v-for="item in election.items" :key="`e${item.day}`" class="nb-card nb-election">
+          <view class="nb-card__head">
+            <text class="nb-card__title nb-election__title">{{ item.title }}</text>
+            <text v-if="!room" class="nb-link" @tap="openEntry(item.day, 'sheriff')">改</text>
+          </view>
+          <view v-if="item.up.length" class="nb-bar__row">
+            <text class="nb-muted">上警</text>
+            <view class="nb-bar__voters nb-bar__voters--flat">
+              <view
+                v-for="person in item.up"
+                :key="person.no"
+                class="nb-av nb-av--s"
+                :class="[`nb-av--${person.tone}`, { 'nb-av--off': person.off }]"
+              >
+                <image v-if="person.avatar" class="nb-av__img" :src="person.avatar" mode="aspectFill" />
+                <text v-if="person.avatar" class="nb-av__no">{{ person.no }}</text>
+                <text v-else class="nb-av__num">{{ person.no }}</text>
+                <text v-if="person.elected" class="nb-av__badge">警</text>
               </view>
-            </view>
-            <view v-for="group in item.election.groups" :key="group.target" class="nb-bar">
-              <view class="nb-bar__row">
-                <view class="nb-av nb-av--m" :class="`nb-av--${group.tone}`">
-                  <image v-if="group.avatar" class="nb-av__img" :src="group.avatar" mode="aspectFill" />
-                  <text v-if="group.avatar" class="nb-av__no">{{ group.target }}</text>
-                  <text v-else class="nb-av__num serif">{{ group.target }}</text>
-                </view>
-                <view class="nb-bar__track">
-                  <view class="nb-bar__fill" :class="{ 'nb-bar__fill--top': group.top }" :style="{ width: `${group.pct}%` }" />
-                </view>
-                <text class="nb-bar__count">{{ group.countText }}</text>
-              </view>
-              <view class="nb-bar__voters">
-                <view v-for="voter in group.voters" :key="voter.no" class="nb-av nb-av--s" :class="`nb-av--${voter.tone}`">
-                  <image v-if="voter.avatar" class="nb-av__img" :src="voter.avatar" mode="aspectFill" />
-                  <text v-if="voter.avatar" class="nb-av__no">{{ voter.no }}</text>
-                  <text v-else class="nb-av__num serif">{{ voter.no }}</text>
-                </view>
-              </view>
-              <text v-if="group.hint" class="nb-group__hint nb-bar__hint">{{ group.hint }}</text>
             </view>
           </view>
-          <text v-else-if="!room && item.canAddElection" class="nb-chip nb-chip--dashed nb-election__add" @tap="openEntry(item.day, 'sheriff')">+ 记警长竞选的票</text>
+          <view v-for="group in item.groups" :key="group.target" class="nb-bar">
+            <view class="nb-bar__row">
+              <view class="nb-av nb-av--m" :class="`nb-av--${group.tone}`">
+                <image v-if="group.avatar" class="nb-av__img" :src="group.avatar" mode="aspectFill" />
+                <text v-if="group.avatar" class="nb-av__no">{{ group.target }}</text>
+                <text v-else class="nb-av__num">{{ group.target }}</text>
+              </view>
+              <view class="nb-bar__track">
+                <view class="nb-bar__fill" :class="{ 'nb-bar__fill--top': group.top }" :style="{ width: `${group.pct}%` }" />
+              </view>
+              <text class="nb-bar__count">{{ group.countText }}</text>
+            </view>
+            <view class="nb-bar__voters">
+              <view v-for="voter in group.voters" :key="voter.no" class="nb-av nb-av--s" :class="`nb-av--${voter.tone}`">
+                <image v-if="voter.avatar" class="nb-av__img" :src="voter.avatar" mode="aspectFill" />
+                <text v-if="voter.avatar" class="nb-av__no">{{ voter.no }}</text>
+                <text v-else class="nb-av__num">{{ voter.no }}</text>
+              </view>
+            </view>
+            <text v-if="group.hint" class="nb-group__hint nb-bar__hint">{{ group.hint }}</text>
+          </view>
+        </view>
+        <view v-if="!room && election.addDay && !election.items.length" class="nb-card nb-card--dashed nb-election">
+          <view class="nb-card__head">
+            <text class="nb-card__title nb-election__title">警长竞选 · 还没记</text>
+            <text class="nb-link" @tap="openEntry(election.addDay, 'sheriff')">记票</text>
+          </view>
+          <text class="nb-muted">点「记票」：先点被投的人，再点投他的人。</text>
+        </view>
+        <text v-else-if="!room && election.addDay" class="nb-chip nb-chip--dashed nb-election__add" @tap="openEntry(election.addDay, 'sheriff')">+ 记第 {{ election.addDay }} 天的警长票</text>
 
+        <!-- 放逐投票：一天一张卡 -->
+        <text class="nb-section">放逐投票</text>
+        <view v-for="item in voteDays" :key="item.day" class="nb-day">
           <view class="nb-card" :class="{ 'nb-card--dashed': !item.recorded }">
             <view class="nb-card__head">
-              <text class="nb-card__title">{{ item.exileTitle }}</text>
+              <text class="nb-card__title">{{ item.title }}</text>
               <text v-if="!room" class="nb-link" @tap="openEntry(item.day)">{{ item.recorded ? '改' : '记票' }}</text>
             </view>
             <text v-if="!item.recorded" class="nb-muted">{{ room ? '投票结束后自动填入。' : '点「记票」：先点被投的人，再点投他的人。' }}</text>
@@ -429,7 +438,7 @@ function finish() {
                 <view class="nb-av nb-av--m" :class="`nb-av--${group.tone}`">
                   <image v-if="group.avatar" class="nb-av__img" :src="group.avatar" mode="aspectFill" />
                   <text v-if="group.avatar" class="nb-av__no">{{ group.target }}</text>
-                  <text v-else class="nb-av__num serif">{{ group.target }}</text>
+                  <text v-else class="nb-av__num">{{ group.target }}</text>
                 </view>
                 <view class="nb-bar__track">
                   <view class="nb-bar__fill" :class="{ 'nb-bar__fill--top': group.top }" :style="{ width: `${group.pct}%` }" />
@@ -440,7 +449,7 @@ function finish() {
                 <view v-for="voter in group.voters" :key="voter.no" class="nb-av nb-av--s" :class="`nb-av--${voter.tone}`">
                   <image v-if="voter.avatar" class="nb-av__img" :src="voter.avatar" mode="aspectFill" />
                   <text v-if="voter.avatar" class="nb-av__no">{{ voter.no }}</text>
-                  <text v-else class="nb-av__num serif">{{ voter.no }}</text>
+                  <text v-else class="nb-av__num">{{ voter.no }}</text>
                 </view>
               </view>
               <text v-if="group.hint" class="nb-group__hint nb-bar__hint">{{ group.hint }}</text>
@@ -451,7 +460,7 @@ function finish() {
                 <view v-for="voter in item.abstain" :key="voter.no" class="nb-av nb-av--s" :class="`nb-av--${voter.tone}`">
                   <image v-if="voter.avatar" class="nb-av__img" :src="voter.avatar" mode="aspectFill" />
                   <text v-if="voter.avatar" class="nb-av__no">{{ voter.no }}</text>
-                  <text v-else class="nb-av__num serif">{{ voter.no }}</text>
+                  <text v-else class="nb-av__num">{{ voter.no }}</text>
                 </view>
               </view>
             </view>
@@ -482,7 +491,7 @@ function finish() {
           >
             <image v-if="avatars[seat.no]" class="nb-av__img" :src="avatars[seat.no]" mode="aspectFill" />
             <text v-if="avatars[seat.no]" class="nb-av__no">{{ seat.no }}</text>
-            <text v-else class="nb-av__num serif">{{ seat.no }}</text>
+            <text v-else class="nb-av__num">{{ seat.no }}</text>
           </view>
         </view>
         <text class="nb-status__item nb-status__item--back" @tap="pending = ''">不选了</text>
@@ -1126,10 +1135,10 @@ function finish() {
   gap: 16rpx;
 }
 
-.nb-day__title {
+.nb-section {
   margin-top: 12rpx;
-  font-size: 30rpx;
-  font-weight: 900;
+  font-size: 28rpx;
+  font-weight: 700;
   color: var(--text-2);
 }
 
@@ -1211,10 +1220,10 @@ function finish() {
 }
 
 .nb-bar__voters {
-  padding-left: 104rpx;
+  padding-left: 84rpx;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 22rpx 0;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 16rpx 0;
 }
 
 .nb-bar__voters--flat {
@@ -1224,7 +1233,7 @@ function finish() {
 }
 
 .nb-bar__hint {
-  padding-left: 104rpx;
+  padding-left: 84rpx;
 }
 
 /* 圆形头像：边框颜色是我在座位上标的；有头像时号码是右下角的小圆，没头像（面杀）时号码在圆里 */
@@ -1233,7 +1242,7 @@ function finish() {
   flex-shrink: 0;
   box-sizing: border-box;
   border-radius: 50%;
-  border: 4rpx solid var(--line-strong);
+  border: 3rpx solid var(--line-strong);
   background: var(--panel-raised);
   display: flex;
   align-items: center;
@@ -1241,29 +1250,29 @@ function finish() {
 }
 
 .nb-av--m {
-  width: 84rpx;
-  height: 84rpx;
+  width: 64rpx;
+  height: 64rpx;
 }
 
 .nb-av--s {
-  width: 76rpx;
-  height: 76rpx;
+  width: 56rpx;
+  height: 56rpx;
 }
 
 .nb-av--wolf {
-  border-width: 6rpx;
+  border-width: 4rpx;
   border-color: var(--camp-wolf);
   background: var(--nb-wolf-bg);
 }
 
 .nb-av--good {
-  border-width: 6rpx;
+  border-width: 4rpx;
   border-color: var(--camp-villager);
   background: var(--nb-good-bg);
 }
 
 .nb-av--god {
-  border-width: 6rpx;
+  border-width: 4rpx;
   border-color: var(--camp-god);
   background: var(--nb-god-bg);
 }
@@ -1287,7 +1296,7 @@ function finish() {
 }
 
 .nb-av--pick .nb-av__num {
-  font-size: 36rpx;
+  font-size: 32rpx;
 }
 
 .nb-av--picked {
@@ -1296,10 +1305,10 @@ function finish() {
 
 .nb-av__badge {
   position: absolute;
-  left: -12rpx;
-  top: -12rpx;
-  width: 34rpx;
-  height: 34rpx;
+  left: -10rpx;
+  top: -10rpx;
+  width: 30rpx;
+  height: 30rpx;
   box-sizing: border-box;
   border-radius: 50%;
   background: var(--gold);
@@ -1317,30 +1326,33 @@ function finish() {
   border-radius: 50%;
 }
 
+/* 号码用无衬线的等宽数字，小一号更利落 */
 .nb-av__num {
-  font-size: 32rpx;
-  font-weight: 900;
+  font-size: 24rpx;
+  font-weight: 700;
   line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
 }
 
 .nb-av--m .nb-av__num {
-  font-size: 36rpx;
+  font-size: 28rpx;
 }
 
 .nb-av__no {
   position: absolute;
   right: -10rpx;
   bottom: -8rpx;
-  width: 36rpx;
-  height: 36rpx;
+  width: 32rpx;
+  height: 32rpx;
   box-sizing: border-box;
   border-radius: 50%;
   background: var(--ink);
   border: 2rpx solid var(--line-strong);
   color: var(--text);
-  font-size: 20rpx;
+  font-size: 18rpx;
   font-weight: 700;
-  line-height: 30rpx;
+  line-height: 28rpx;
   text-align: center;
 }
 
@@ -1389,17 +1401,18 @@ function finish() {
   color: var(--text-2);
 }
 
+/* 记票页的号码：一行六个，小一点 */
 .nb-picks {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 16rpx;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12rpx;
 }
 
 .nb-pick {
-  height: 96rpx;
+  height: 72rpx;
   box-sizing: border-box;
-  border-radius: 28rpx;
-  border: 4rpx solid var(--line-strong);
+  border-radius: 18rpx;
+  border: 2rpx solid var(--line-strong);
   background: var(--panel-raised);
   color: var(--text);
   display: flex;
@@ -1410,25 +1423,25 @@ function finish() {
 }
 
 .nb-pick--tall {
-  height: 120rpx;
+  height: 88rpx;
   background: var(--panel);
   color: var(--text-soft);
 }
 
 .nb-pick--gold {
   background: var(--gold);
-  border-color: var(--ink);
+  border-color: var(--gold);
   color: var(--ink);
-  box-shadow: 6rpx 6rpx 0 var(--ink);
 }
 
 .nb-pick--done {
   border-color: var(--gold);
+  color: var(--gold);
 }
 
 .nb-pick--on {
-  background: var(--text);
-  border-color: var(--ink);
+  background: var(--moon);
+  border-color: var(--moon);
   color: var(--ink);
 }
 
@@ -1437,13 +1450,14 @@ function finish() {
 }
 
 .nb-pick__no {
-  font-size: 36rpx;
-  font-weight: 900;
+  font-size: 30rpx;
+  font-weight: 700;
   line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .nb-pick__label {
-  font-size: 22rpx;
+  font-size: 20rpx;
   line-height: 1;
 }
 

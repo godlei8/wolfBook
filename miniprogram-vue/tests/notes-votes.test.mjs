@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createNote, dayOf, seatOf } from '../src/utils/notes/model.js'
 import { setGuess, toggleOut, toggleSheriff } from '../src/utils/notes/board.js'
-import { electionView, entryView, finishEntry, pickTarget, restAbstain, startEntry, toggleVoter, voteView } from '../src/utils/notes/votes.js'
+import { electionSection, electionView, entryView, finishEntry, pickTarget, restAbstain, startEntry, toggleVoter, voteView } from '../src/utils/notes/votes.js'
 
 const fresh = (extra = {}) => createNote({
   sessionId: 's1', boardMode: 'custom', boardName: '周五面杀局', playerCount: 12, wolves: 4, now: '2026-11-16T12:00:00.000Z', ...extra,
@@ -97,8 +97,7 @@ test('voteViewGroupsByTargetAndColoursByMyMarks', () => {
   const { note, entry } = dayOne()
   const view = voteView(finishEntry(note, entry), 1)
   assert.equal(view.recorded, true)
-  assert.equal(view.title, '第 1 天')
-  assert.equal(view.exileTitle, '放逐投票 · 5 号被放逐')
+  assert.equal(view.title, '第 1 天 · 5 号被放逐')
   assert.deepEqual(view.groups.map((group) => [group.title, group.countText]), [
     ['投 5 号', '6.5 票 · 含警长'], ['投 3 号', '3 票'], ['投 9 号', '2 票'],
   ])
@@ -108,23 +107,32 @@ test('voteViewGroupsByTargetAndColoursByMyMarks', () => {
   assert.equal(view.groups[0].voters.find((voter) => voter.no === 3).tone, 'god')
 
   const empty = voteView(note, 2)
-  assert.deepEqual([empty.recorded, empty.exileTitle, empty.groups], [false, '放逐投票 · 还没记', []])
+  assert.deepEqual([empty.recorded, empty.title, empty.groups], [false, '第 2 天 · 还没记', []])
   const mixed = voteView({ ...note, dayData: { 1: { votes: [{ target: 1, voters: [4, 9, 2] }] } } }, 1)
   assert.equal(mixed.groups[0].hint, '其中 2 张是你标成狼的人')
-  assert.equal(mixed.exileTitle, '放逐投票 · 没有人被放逐')
+  assert.equal(mixed.title, '第 1 天 · 没有人被放逐')
 })
 
-test('theSheriffElectionCanOnlyBeAddedBeforeOneIsDecided', () => {
-  // 警长竞选和放逐投票是两块；第 1 天能记警长票，第 1 天已经选出警长（或警徽流失）后，第 2 天就不再出「记警长竞选的票」
-  const note = fresh()
-  assert.equal(voteView(note, 1).canAddElection, true)
-  assert.equal(voteView(note, 2).canAddElection, true, '第 1 天没出结果（比如竞选推迟），第 2 天还能记')
-  assert.equal(voteView(note, 3).canAddElection, false)
+test('theSheriffElectionIsOneBlockForTheWholeGame', () => {
+  // 警长竞选单独一块放在票型页最上面，不跟着第几天；没记的时候面杀记到第 1 天
+  const note = { ...fresh(), days: 3 }
+  assert.deepEqual(electionSection(note), { items: [], addDay: 1 })
   const elected = { ...note, dayData: { 1: { election: { up: [], off: [], votes: [{ target: 2, voters: [6, 7] }], elected: 2, lost: false } } } }
-  assert.equal(voteView(elected, 1).canAddElection, false, '这一天已经有竞选了，改在竞选那块里')
-  assert.equal(voteView(elected, 2).canAddElection, false)
+  const section = electionSection(elected)
+  assert.deepEqual(section.items.map((item) => [item.day, item.title]), [[1, '警长竞选 · 2 号当选']])
+  assert.equal(section.addDay, 0, '选出警长了就不用再记')
   const lost = { ...note, dayData: { 1: { election: { up: [3], off: [], votes: [], elected: 0, lost: true } } } }
-  assert.equal(voteView(lost, 2).canAddElection, false, '警徽流失了也不用再记')
+  assert.equal(electionSection(lost).addDay, 0, '警徽流失了也不用再记')
+  // 竞选推迟（第 1 天警上有人自爆）：第 1 天那次没出结果，可以补记第 2 天的；两次都记了就标上第几天
+  const postponed = { ...note, dayData: { 1: { election: { up: [3, 5], off: [], votes: [], elected: 0, lost: false } } } }
+  assert.equal(electionSection(postponed).addDay, 2)
+  assert.equal(electionSection({ ...postponed, days: 1 }).addDay, 0, '还没到第 2 天不出入口')
+  const both = { ...postponed, dayData: { ...postponed.dayData, 2: { election: { up: [3, 5], off: [], votes: [{ target: 5, voters: [1, 2] }], elected: 5, lost: false } } } }
+  assert.deepEqual(electionSection(both), {
+    items: electionSection(both).items,
+    addDay: 0,
+  })
+  assert.deepEqual(electionSection(both).items.map((item) => item.title), ['警长竞选 · 第 1 天 · 推迟到第 2 天', '警长竞选 · 第 2 天 · 5 号当选'])
 })
 
 test('theSheriffElectionShowsAboveTheExileVote', () => {
@@ -140,8 +148,7 @@ test('theSheriffElectionShowsAboveTheExileVote', () => {
   ], '票多的排前面；竞选时还没有警长，一人一票')
   assert.deepEqual(view.groups[1].voters.map((voter) => voter.tone), ['wolf', 'wolf'], '方块颜色还是我标的')
   assert.equal(view.groups[1].hint, '这 2 张票都是你标成狼的人')
-  assert.deepEqual(voteView(note, 1).election, view, '跟着那一天的票型卡一起给出去')
-  assert.equal(voteView(note, 2).election, null)
+  assert.deepEqual(electionSection(note).items, [{ ...view, day: 1 }], '整局一块，放在票型页最上面')
 
   const withElection = (election) => ({ ...note, dayData: { 1: { election } } })
   assert.equal(electionView(withElection({ up: [3, 5], off: [], votes: [], elected: 0, lost: false }), 1).title, '警长竞选 · 还没出结果')
@@ -207,7 +214,7 @@ test('votesAreDrawnLikeTheGameLogWithFacesAndMarkColours', () => {
   assert.deepEqual(withAbstain.abstain, [{ no: 4, tone: 'wolf', avatar: '' }, { no: 6, tone: 'none', avatar: '' }], '弃票的人也是一排头像')
 
   const election = { up: [3, 5], off: [], votes: [{ target: 3, voters: [1, 2, 4] }, { target: 5, voters: [6] }], elected: 3, lost: false }
-  const elected = voteView({ ...done, dayData: { 1: { election } } }, 1, { avatars }).election
+  const elected = electionSection({ ...done, dayData: { 1: { election } } }, { avatars }).items[0]
   assert.deepEqual(elected.groups.map((group) => [group.target, group.avatar, group.pct, group.top]), [[3, 'https://x/3.png', 100, true], [5, 'https://x/5.png', 33, false]])
   assert.deepEqual(elected.up.map((person) => [person.no, person.avatar, person.off, person.elected]), [[3, 'https://x/3.png', false, true], [5, 'https://x/5.png', false, false]])
 })

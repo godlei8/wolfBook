@@ -174,13 +174,14 @@ export function electionView(note, day, { avatars = {} } = {}) {
   const off = election.off.length ? `退水：${seatsText(election.off)}` : ''
   return {
     title: `警长竞选 · ${result}`,
+    result,
     upText: [up, off].filter(Boolean).join(' · '),
     up: election.up.map((no) => ({ ...personView(note, no, avatars), off: election.off.includes(no), elected: election.elected === no })),
     groups: groupViews(note, election.votes, true, avatars),
   }
 }
 
-// 面杀时这一天还能不能「记警长竞选的票」：第 1 天能；第 2 天只在第 1 天的竞选还没出结果（比如竞选推迟）时能
+// 面杀时这一天还能不能记警长竞选的票：第 1 天能；第 2 天只在第 1 天的竞选还没出结果（比如竞选推迟）时能
 function canAddElection(note, day) {
   if (day > 2) return false
   const election = dayOf(note, day).election
@@ -190,7 +191,29 @@ function canAddElection(note, day) {
   return !first.elected && !first.lost
 }
 
-/** 票型那一屏里的一天：警长竞选（有的话）和放逐投票是两块，各自按投给谁分组。 */
+/**
+ * 票型页最上面的「警长竞选」：整局一块，不跟着第几天（数据还是记在竞选那一天）。
+ * 一般只有第 1 天一次；竞选推迟时第 2 天还有一次，这时标上第几天，第 1 天那次写「推迟到第 2 天」。
+ * addDay：面杀时「记票」记到哪一天，警长选出来（或警徽流失）以后是 0。
+ */
+export function electionSection(note, { avatars = {} } = {}) {
+  const views = []
+  for (let day = 1; day <= Math.min(note.days || 1, 2); day += 1) {
+    const view = electionView(note, day, { avatars })
+    if (view) views.push({ ...view, day })
+  }
+  const items = views.map((view, index) => {
+    if (views.length === 1 && view.day === 1) return view
+    const later = views[index + 1]
+    const result = later && view.result === '还没出结果' ? `推迟到第 ${later.day} 天` : view.result
+    return { ...view, title: `警长竞选 · 第 ${view.day} 天 · ${result}` }
+  })
+  const decided = [1, 2].some((day) => dayOf(note, day).election.elected || dayOf(note, day).election.lost)
+  const addDay = decided ? 0 : [1, 2].find((day) => day <= (note.days || 1) && canAddElection(note, day)) || 0
+  return { items, addDay }
+}
+
+/** 票型那一屏里的一天：放逐投票，按投给谁分组（警长竞选在 electionSection，不分天）。 */
 export function voteView(note, day, { avatars = {} } = {}) {
   const data = dayOf(note, day)
   const groups = groupViews(note, data.votes, false, avatars)
@@ -200,10 +223,7 @@ export function voteView(note, day, { avatars = {} } = {}) {
   return {
     day,
     recorded,
-    title: `第 ${day} 天`,
-    exileTitle: `放逐投票 · ${result}`,
-    election: electionView(note, day, { avatars }),
-    canAddElection: canAddElection(note, day),
+    title: `第 ${day} 天 · ${result}`,
     groups,
     abstain: data.abstain.map((no) => personView(note, no, avatars)),
     abstainText: data.abstain.length ? `弃票：${seatsText(data.abstain)}` : '',
